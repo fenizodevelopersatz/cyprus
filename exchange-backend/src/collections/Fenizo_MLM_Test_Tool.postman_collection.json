@@ -1,0 +1,230 @@
+{
+  "info": {
+    "_postman_id": "4f7d0d71-7f57-4ef4-bd9a-mlm-test-tool",
+    "name": "CryptoSignal MLM Test Tool",
+    "description": "Dev-only Postman collection for local MLM test tool routes. These endpoints require admin authentication with a Bearer token and are disabled when NODE_ENV=production.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": "1"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Generate Users",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"totalUsers\": 25,\n  \"maxTreeDepth\": 3,\n  \"maxDirectChildren\": 4,\n  \"activeRatio\": 70,\n  \"minDeposit\": 100,\n  \"maxDeposit\": 5000,\n  \"minimumEligibleBalance\": 300,\n  \"mode\": \"basic\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/generate-users",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "generate-users"
+          ]
+        },
+        "description": "Creates a new MLM test run with generated users, sponsor tree, deposits, and initial level calculation."
+      },
+      "response": []
+    },
+    {
+      "name": "Generate Deposits",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"runId\": {{runId}},\n  \"minDeposit\": 100,\n  \"maxDeposit\": 5000,\n  \"multipleDeposits\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/generate-deposits",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "generate-deposits"
+          ]
+        },
+        "description": "Regenerates dummy deposit values for an existing MLM test run."
+      },
+      "response": []
+    },
+    {
+      "name": "Rebuild Tree",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"runId\": {{runId}},\n  \"maxTreeDepth\": 3,\n  \"maxDirectChildren\": 4\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/rebuild-tree",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "rebuild-tree"
+          ]
+        },
+        "description": "Rebuilds sponsor relationships for an existing run while keeping the same user count."
+      },
+      "response": []
+    },
+    {
+      "name": "Recalculate Levels",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"runId\": {{runId}},\n  \"minimumEligibleBalance\": 300,\n  \"mode\": \"basic\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/recalculate-levels",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "recalculate-levels"
+          ]
+        },
+        "description": "Recalculates direct/team metrics and simulated level outputs for the selected run."
+      },
+      "response": []
+    },
+    {
+      "name": "Results - Latest",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/results",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "results"
+          ]
+        },
+        "description": "Returns the latest MLM test run results."
+      },
+      "response": []
+    },
+    {
+      "name": "Results - By Run ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/results?runId={{runId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "results"
+          ],
+          "query": [
+            {
+              "key": "runId",
+              "value": "{{runId}}"
+            }
+          ]
+        },
+        "description": "Returns MLM test results for a specific run."
+      },
+      "response": []
+    },
+    {
+      "name": "Reset",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/dev/mlm-test/reset",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "dev",
+            "mlm-test",
+            "reset"
+          ]
+        },
+        "description": "Deletes all MLM test runs and related generated test data."
+      },
+      "response": []
+    }
+  ]
+}

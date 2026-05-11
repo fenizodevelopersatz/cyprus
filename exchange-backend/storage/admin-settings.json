@@ -1,0 +1,95 @@
+{
+  "siteName": "CryptoSignal Exchange",
+  "siteLogoUrl": "https://q29l3cr9-4500.inc1.devtunnels.ms/api/storage/site/siteLogoUrl-1777368661012-34e884f6c4b7.png",
+  "siteFaviconUrl": "https://q29l3cr9-4500.inc1.devtunnels.ms/api/storage/site/siteFaviconUrl-1778046455457-431296c13df6.webp",
+  "maintenanceMode": false,
+  "enableKyc": true,
+  "enableLanguageSwitcher": true,
+  "enableDarkMode": true,
+  "darkModeDefault": true,
+  "requireReferralCode": true,
+  "withdrawalLimitKyc": 0,
+  "withdrawalLimitNonKyc": 0,
+  "withdrawalAdminFeePercent": 12,
+  "withdrawalLockPeriodDays": 55,
+  "earlyWithdrawalPenaltyPercent": 25,
+  "rewardReductionEnabled": true,
+  "rewardReductionType": "",
+  "minimumWithdrawalAmount": 0,
+  "maximumWithdrawalAmount": 0,
+  "withdrawalNote": "Site Policy by admin",
+  "isWithdrawalEnabled": true,
+  "defaultSwapMarket": "BTCUSDT",
+  "tradeMakerFee": 0.1,
+  "tradeTakerFee": 0.2,
+  "referralFee": 0,
+  "transferCommission": 0,
+  "disableTrades": true,
+  "mailType": "smtp",
+  "mailHost": "smtp.hostinger.com",
+  "mailPort": 465,
+  "mailUsername": "exchange@fenizomlmsoft.com",
+  "mailPassword": ">2O7|*nS2/Fv",
+  "mailSenderName": "CryptoSignalSoft",
+  "mailSenderEmail": "exchange@fenizomlmsoft.com",
+  "mailEncryption": "ssl",
+  "notificationAdminEmail": "",
+  "notifyCryptoDeposits": false,
+  "notifyCryptoWithdrawals": false,
+  "notifyFiatDeposits": false,
+  "notifyFiatWithdrawals": false,
+  "notifyKyc": false,
+  "notifyNewUser": false,
+  "stripePublicKey": "",
+  "stripeSecretKey": "",
+  "stripeBaseCurrency": "usd",
+  "recaptchaEnabled": false,
+  "recaptchaSiteKey": "",
+  "recaptchaSecretKey": "",
+  "socialYoutube": "",
+  "socialFacebook": "",
+  "socialTelegram": "",
+  "socialTwitter": "",
+  "socialInstagram": "",
+  "socialLinkedin": "",
+  "sipEnabled": true,
+  "sipSupportedFiats": [
+    "USD"
+  ],
+  "sipDefaultFrequency": "DAILY",
+  "sipAllowedFrequencies": [
+    "HOURLY",
+    "DAILY",
+    "WEEKLY",
+    "MONTHLY"
+  ],
+  "sipDefaultWalletSource": "spot:available",
+  "sipDefaultStartBufferMinutes": 10,
+  "sipGraceMinutes": 15,
+  "sipMinFiatAmount": 10,
+  "sipMaxFiatAmount": 100000,
+  "sipMinAssetQuantity": "0.00001000",
+  "sipMaxAssetQuantity": null,
+  "sipMaxFailedExecutions": 3,
+  "sipFiatExchangeRates": {
+    "USD": 1
+  },
+  "sipHero": {
+    "title": "SIP for Cryptos",
+    "subtitle": "Automate USD contributions into your favourite coins and smoothen volatility with disciplined investing.",
+    "sections": [
+      {
+        "title": "Steer Through the Volatility",
+        "body": "Invest a fixed INR or USD amount on a recurring schedule to accumulate coins at the best blended cost."
+      },
+      {
+        "title": "Gradually Build Wealth",
+        "body": "Remove emotions from trading. SIP executes on a fixed cadence so you keep stacking through all market cycles."
+      }
+    ],
+    "cta": {
+      "label": "Start a SIP",
+      "helper": "Choose a coin, enter INR/USD amount or quantity, schedule and confirm."
+    }
+  }
+}

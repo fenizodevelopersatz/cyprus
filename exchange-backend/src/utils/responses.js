@@ -1,0 +1,2 @@
+﻿export const ok = (res, data, code = 200) => res.status(code).json({ status: true, code, data });
+export const fail = (res, message, code = 400, meta) => res.status(code).json({ status: false, code, message, meta });

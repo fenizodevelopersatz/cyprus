@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" fill="none">
+  <rect width="1200" height="800" rx="32" fill="#0F172A"/>
+  <rect x="40" y="40" width="1120" height="720" rx="28" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <path d="M244 584L406 422L530 546L668 408L892 632H244V584Z" fill="#1E293B"/>
+  <rect x="262" y="186" width="676" height="366" rx="24" stroke="#475569" stroke-width="10" stroke-dasharray="18 18"/>
+  <circle cx="438" cy="308" r="54" fill="#334155"/>
+  <path d="M376 476L486 366L588 468" stroke="#64748B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M560 476L670 382L820 532" stroke="#64748B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="600" y="664" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="42" text-anchor="middle">No image available</text>
+  <text x="600" y="708" fill="#64748B" font-family="Arial, sans-serif" font-size="24" text-anchor="middle">Preview could not be loaded</text>
+</svg>

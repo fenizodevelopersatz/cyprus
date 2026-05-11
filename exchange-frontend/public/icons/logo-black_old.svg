@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 72" role="img" aria-labelledby="logoTitle">
+  <title id="logoTitle">CryptoSignal Exchange</title>
+  <rect width="320" height="72" rx="18" fill="#ffffff"/>
+  <rect x="18" y="16" width="40" height="40" rx="12" fill="#f3f4f6"/>
+  <g fill="#000000">
+    <path d="M38 24c6.627 0 12 5.373 12 12s-5.373 12-12 12-12-5.373-12-12 5.373-12 12-12Zm0 5.5a6.5 6.5 0 1 0 0 13a6.5 6.5 0 0 0 0-13Z"/>
+    <path d="M38 20l2.8 5.5h-5.6L38 20Zm0 32l-2.8-5.5h5.6L38 52Z"/>
+  </g>
+  <g fill="#000000">
+    <text x="74" y="31" font-family="Arial, Helvetica, sans-serif" font-size="12" letter-spacing="4.2">CRYPTOSIGNAL</text>
+    <text x="74" y="50" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700">EXCHANGE</text>
+  </g>
+</svg>

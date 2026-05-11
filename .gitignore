@@ -82,7 +82,7 @@ node_modules/
 exchange-backend/storage/kyc/
 node_modules/
 
-exchange-backend/storage/kyc/
+#exchange-backend/storage/kyc/
 exchange-backend/node_modules/
 #exchange-backend/.env
 exchange-frontend/node_modules/

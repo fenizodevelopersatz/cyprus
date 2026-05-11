@@ -647,12 +647,12 @@ export default function AdminSettingsPage() {
                     onChange={(val) => handleChange("earlyWithdrawalPenaltyPercent", val)}
                   />
                   <NumberInput
-                    label="Minimum withdrawal amount"
+                    label="Minimum withdrawal amount($)"
                     value={Number(form.minimumWithdrawalAmount ?? 0)}
                     onChange={(val) => handleChange("minimumWithdrawalAmount", val)}
                   />
                   <NumberInput
-                    label="Maximum withdrawal amount"
+                    label="Maximum withdrawal amount($)"
                     value={Number(form.maximumWithdrawalAmount ?? 0)}
                     onChange={(val) => handleChange("maximumWithdrawalAmount", val)}
                   />
@@ -961,16 +961,35 @@ function ToggleField({ label, value, onChange }: { label: string; value: boolean
 }
 
 function NumberInput({ label, value, onChange }: { label: string; value: number; onChange: (next: number) => void }) {
+  const [draft, setDraft] = useState(() => (Number.isFinite(value) ? String(value) : ""));
+
+  useEffect(() => {
+    setDraft(Number.isFinite(value) ? String(value) : "");
+  }, [value]);
+
   return (
     <label className="flex flex-col gap-2 text-sm text-slate-200">
       <span>{label}</span>
       <input
-        type="number"
-        min={0}
-        step="0.01"
+        type="text"
+        inputMode="decimal"
+        pattern="[0-9]*[.,]?[0-9]*"
         className={fieldCls}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={draft}
+        onChange={(e) => {
+          const cleaned = e.target.value.replace(/[^0-9.]/g, "");
+          const normalized = cleaned.replace(/(\..*)\./g, "$1");
+          setDraft(normalized);
+          if (normalized !== "") {
+            onChange(Number(normalized));
+          }
+        }}
+        onBlur={() => {
+          if (draft === "") {
+            onChange(0);
+            setDraft("0");
+          }
+        }}
       />
     </label>
   );

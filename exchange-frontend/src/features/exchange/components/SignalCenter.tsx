@@ -1,6 +1,8 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
+import InlineFeedback from "../../../ui/InlineFeedback";
+import { useTimedFeedback } from "../../../hooks/useTimedFeedback";
 import {
   applySignal,
   fetchSignalHistory,
@@ -19,11 +21,6 @@ import {
   validateTradeEligibility,
 } from "../signal/signal.helpers";
 import { formatMoneyWithSymbol } from "../../../utils/money";
-
-type FeedbackState = {
-  type: "success" | "error" | "info";
-  message: string;
-};
 
 const currencyFormatter = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
@@ -119,8 +116,6 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
   const [activeSlot, setActiveSlot] = useState(walletSummary.activeSlot);
   const [signalCodeInput, setSignalCodeInput] = useState("");
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [signalHistory, setSignalHistory] = useState<SignalHistoryRow[]>([]);
   const [walletLedger, setWalletLedger] = useState<WalletLedgerRow[]>([]);
@@ -129,6 +124,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
   const [historyLoading, setHistoryLoading] = useState(true);
   const [activeTab] = useState<HistoryTab>("overview");
   const [clockNow, setClockNow] = useState(() => new Date());
+  const { feedback: submitFeedback, setFeedback: setSubmitFeedback, clearFeedback: clearSubmitFeedback } = useTimedFeedback();
   const signalInputRef = useRef<HTMLInputElement | null>(null);
   const syncDerivedState = useCallback((summary: SignalWalletSummary) => {
     const packageState = detectEligiblePackage(summary.currentBalance, summary.userLevel);
@@ -163,9 +159,9 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         setSignalHistory(history);
         setWalletLedger(ledger);
       });
-      setSubmitError(null);
+      clearSubmitFeedback();
     } catch (error) {
-      setSubmitError(parseApiError(error, "Unable to load signal data right now."));
+      setSubmitFeedback({ tone: "error", text: parseApiError(error, "Unable to load signal data right now.") });
     } finally {
       setLoading(false);
       setHistoryLoading(false);
@@ -192,12 +188,12 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       setPendingIntent(detail);
       const nextActiveSlot = getActiveSlot(new Date(), walletSummary.availableSlots);
       setHasSubmitted(true);
-      setSubmitSuccess(null);
-      setSubmitError(
-        nextActiveSlot
+      setSubmitFeedback({
+        tone: "error",
+        text: nextActiveSlot
           ? `${detail.side} ${detail.type} request for ${detail.symbol} moved here. Submit the admin-issued signal code for the active ${nextActiveSlot.start} to ${nextActiveSlot.end} window.`
-          : ``
-      );
+          : "",
+      });
       window.setTimeout(() => signalInputRef.current?.focus(), 180);
     };
 
@@ -250,8 +246,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
 
   const handleSubmitSignal = useCallback(async () => {
     setHasSubmitted(true);
-    setSubmitError(null);
-    setSubmitSuccess(null);
+    clearSubmitFeedback();
 
     try {
       const latestSummary = await fetchSignalWalletSummary();
@@ -267,7 +262,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       });
 
       if (!eligibility.ok) {
-        setSubmitError(eligibility.message);
+        setSubmitFeedback({ tone: "error", text: eligibility.message });
         return;
       }
 
@@ -275,7 +270,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       const isAllowedByExchangeTiming = latestSummary.todayUsedSignals < allowedSignalCount && Boolean(eligibility.activeSlot);
 
       if (!isAllowedByExchangeTiming) {
-        setSubmitError("This signal can only be submitted during the current active time slot.");
+        setSubmitFeedback({ tone: "error", text: "This signal can only be submitted during the current active time slot." });
         return;
       }
 
@@ -288,23 +283,24 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         });
       } catch (error) {
         const message = parseApiError(error, "Invalid signal code.");
-        setSubmitError(
-          /already been used/i.test(message)
+        setSubmitFeedback({
+          tone: "error",
+          text: /already been used/i.test(message)
             ? "This signal token has already been used."
             : /already used a signal in the current time slot/i.test(message)
-            ? "You have already used a signal in the current time slot. Please wait for the next slot."
-            : /belongs to a different time slot/i.test(message)
-            ? "This signal code belongs to a different admin time slot."
-            : /not for today/i.test(message)
-            ? "This signal code is for a different date."
-            : /not active/i.test(message)
-            ? "This signal code is not active."
-            : /expired/i.test(message)
-            ? "This signal is no longer valid for the current time slot."
-            : /invalid|not found/i.test(message)
-            ? "Invalid signal code."
-            : message
-        );
+              ? "You have already used a signal in the current time slot. Please wait for the next slot."
+              : /belongs to a different time slot/i.test(message)
+                ? "This signal code belongs to a different admin time slot."
+                : /not for today/i.test(message)
+                  ? "This signal code is for a different date."
+                  : /not active/i.test(message)
+                    ? "This signal code is not active."
+                    : /expired/i.test(message)
+                      ? "This signal is no longer valid for the current time slot."
+                      : /invalid|not found/i.test(message)
+                        ? "Invalid signal code."
+                        : message,
+        });
         return;
       }
 
@@ -351,7 +347,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       });
       setSignalCodeInput("");
       setPendingIntent(null);
-      setSubmitSuccess("Buy executed. Wallet debited now; auto-sell will close this trade after the signal window.");
+      setSubmitFeedback({ tone: "success", text: "Buy executed. Wallet debited now; auto-sell will close this trade after the signal window." });
 
       const [refreshedSummary, refreshedHistory, refreshedLedger] = await Promise.all([
         fetchSignalWalletSummary(),
@@ -364,18 +360,16 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         setWalletLedger(refreshedLedger);
       });
     } catch (error) {
-      setSubmitError(parseApiError(error, "You are not allowed for the current trade."));
+      setSubmitFeedback({ tone: "error", text: parseApiError(error, "You are not allowed for the current trade.") });
     } finally {
       setSubmitLoading(false);
     }
   }, [pendingIntent, signalCodeInput, syncDerivedState, walletLedger]);
 
-  const validationFeedback: FeedbackState | null = useMemo(() => {
+  const validationFeedback = useMemo(() => {
     if (!hasSubmitted) return null;
-    if (submitError) return { type: "error", message: submitError };
-    if (submitSuccess) return { type: "success", message: submitSuccess };
-    return null;
-  }, [hasSubmitted, submitError, submitSuccess]);
+    return submitFeedback;
+  }, [hasSubmitted, submitFeedback]);
 
   const tradePreview = useMemo(
     () =>
@@ -392,17 +386,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
     <div className="exchange-card exchange-card-strong p-5">
       <div className="text-sm font-semibold text-white">Enter Signal Code</div>      
       {validationFeedback && (
-        <div
-          className={`mt-4 rounded-2xl border px-4 py-4 text-sm ${
-            validationFeedback.type === "success"
-              ? "border-[rgba(14,203,129,0.25)] bg-[rgba(14,203,129,0.12)] text-[var(--success)]"
-              : validationFeedback.type === "error"
-              ? "border-[rgba(246,70,93,0.25)] bg-[rgba(246,70,93,0.12)] text-[var(--danger)]"
-              : "border-[rgba(252,213,53,0.22)] bg-[rgba(252,213,53,0.12)] text-[var(--accent-yellow)]"
-          }`}
-        >
-          {validationFeedback.message}
-        </div>
+        <InlineFeedback feedback={validationFeedback} className="mt-4 text-sm" />
       )}
       <Input
         ref={signalInputRef}
@@ -439,17 +423,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
     <div className="rounded-[18px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-4">
       <div className="text-sm font-semibold text-white">Enter Signal Code</div>
       {validationFeedback && (
-        <div
-          className={`mt-3 rounded-2xl border px-3 py-3 text-sm ${
-            validationFeedback.type === "success"
-              ? "border-[rgba(14,203,129,0.25)] bg-[rgba(14,203,129,0.12)] text-[var(--success)]"
-              : validationFeedback.type === "error"
-              ? "border-[rgba(246,70,93,0.25)] bg-[rgba(246,70,93,0.12)] text-[var(--danger)]"
-              : "border-[rgba(252,213,53,0.22)] bg-[rgba(252,213,53,0.12)] text-[var(--accent-yellow)]"
-          }`}
-        >
-          {validationFeedback.message}
-        </div>
+        <InlineFeedback feedback={validationFeedback} className="mt-3 text-sm" />
       )}
       <Input
         ref={signalInputRef}

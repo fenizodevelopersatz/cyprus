@@ -52,6 +52,13 @@ const documentOptions: DocumentOption[] = [
     secondaryLabel: "Back of ID",
   },
   {
+    id: "aadhaarCard",
+    label: "Aadhaar Card",
+    hint: "Upload the Aadhaar front and the supporting back or address side if available.",
+    primaryLabel: "Aadhaar front",
+    secondaryLabel: "Aadhaar back or support file",
+  },
+  {
     id: "residence",
     label: "Proof of Residence",
     hint: "Utility bill or bank statement dated within 3 months.",
@@ -74,6 +81,7 @@ function normalizeDocumentTypeKey(value?: string | null) {
   if (!normalized) return "";
   if (normalized.includes("passport")) return "passport";
   if (normalized.includes("driver")) return "driversLicense";
+  if (normalized.includes("aadhaar") || normalized.includes("aadhar")) return "aadhaarCard";
   if (normalized.includes("residence") || normalized.includes("address")) return "residence";
   return normalized;
 }

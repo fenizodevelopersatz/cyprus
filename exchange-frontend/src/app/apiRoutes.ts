@@ -17,6 +17,8 @@ const normaliseBase = (raw?: string) => {
 };
 
 export const API_BASE_URL = normaliseBase(import.meta.env.VITE_API_URL as string | undefined);
+export const ADMIN_DASHBOARD_WS_PATH = "/ws/admin/dashboard";
+export const WALLET_WS_PATH = "/ws/wallet";
 
 const toAbsolute = (path: string) => {
   const safePath = path.startsWith("/") ? path : `/${path}`;
@@ -258,8 +260,6 @@ export const PORTFOLIO_ENDPOINTS = {
 };
 
 export const PORTFOLIO_WS_PATH = "/ws/portfolio";
-export const WALLET_WS_PATH = "/ws/wallet";
-
 export const STAKING_ENDPOINTS = {
   overview: toAbsolute(API_ROUTES.staking.overview),
   pools: toAbsolute(API_ROUTES.staking.pools),
@@ -398,6 +398,10 @@ export const ADMIN_ENDPOINTS = {
     depositAddresses: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/deposit-addresses`),
     adjustments: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/adjust`),
     updateStatus: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/status`),
+  },
+  internal: {
+    cronJobs: toAbsolute("/admin/internal/cron-jobs"),
+    runCronJob: (jobKey: string) => toAbsolute(`/admin/internal/cron-jobs/${encodeURIComponent(jobKey)}/run`),
   },
   wallet: {
     userWalletDeposits: (params?: { page?: number; limit?: number; network?: string; status?: string; userId?: string | number; txHash?: string }) => {

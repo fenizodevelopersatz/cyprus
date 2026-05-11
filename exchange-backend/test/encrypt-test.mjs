@@ -86,7 +86,7 @@ function decryptIt(encryptedString) {
 
 
 // Test your existing encrypted value
-const oldEncrypted = "/i5p1vezhzZUrt5loROhN63TgbhcDAB2GMObTRGGIw0=";
+const oldEncrypted = "Zv1nc+ljtRFtkJzV8Z2PAm6uKMicLv/z9RZuUNB1mPw=";
 
 console.log("\nOld Encrypted Decrypt:");
 console.log(decryptIt(oldEncrypted));

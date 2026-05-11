@@ -403,6 +403,9 @@ function DetailPanel({
           </div>
         </div>
         <p className="mt-3 text-slate-300">{tierMeta.description}</p>
+        <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-cyan-100">
+          KYC verification is now completed only after all required document types are approved by compliance.
+        </div>
         {request.resubmissionRequired && (
           <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-amber-100">
             Compliance requested updated paperwork for this submission.
@@ -505,7 +508,7 @@ function DetailPanel({
               {declinePending ? "Declining..." : "Decline"}
             </Button>
             <Button className="flex-1" disabled={actionPending} onClick={onApprove}>
-              {approvePending ? "Approving..." : "Approve"}
+              {approvePending ? "Approving..." : "Approve Document"}
             </Button>
           </div>
         )}

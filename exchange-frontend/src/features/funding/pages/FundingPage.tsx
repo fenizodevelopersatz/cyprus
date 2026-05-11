@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/state/auth.store";
 import Dialog from "../../../ui/Dialog";
+import { useTimedFeedback } from "../../../hooks/useTimedFeedback";
 import { DepositTab } from "../components/DepositTab";
 import { FundingTabs } from "../components/FundingTabs";
 import { WithdrawTab } from "../components/WithdrawTab";
@@ -11,6 +12,42 @@ import { loadWithdrawAddressBook } from "../../settings/utils/withdrawAddressBoo
 
 type DefaultWithdrawAddresses = Partial<Record<"tron" | "bsc" | "ethereum", string>>;
 
+function isValidWithdrawalAddress(network: string, value: string) {
+  const address = value.trim();
+  if (!address) return false;
+  if (network === "tron") return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
+  if (network === "bsc" || network === "ethereum") return /^0x[a-fA-F0-9]{40}$/.test(address);
+  return false;
+}
+
+function getAddressValidationMessage(network: string) {
+  if (network === "tron") return "Enter a valid TRC20 wallet address.";
+  if (network === "bsc") return "Enter a valid BEP20 wallet address.";
+  if (network === "ethereum") return "Enter a valid ERC20 wallet address.";
+  return "Enter a valid wallet address.";
+}
+
+function getWithdrawalErrorMessage(rawMessage: string, asset = "USDT") {
+  if (rawMessage.includes("WITHDRAWAL_REQUIRES_ACTIVE_USER")) {
+    return "Withdrawal is allowed only for active users.";
+  }
+  if (rawMessage.includes("WITHDRAWAL_REQUIRES_KYC")) {
+    return "Complete KYC verification before submitting a withdrawal request.";
+  }
+
+  const minimumMatch = rawMessage.match(/^MINIMUM_WITHDRAWAL_(.+)$/);
+  if (minimumMatch?.[1]) {
+    return `Minimum withdrawal amount is ${minimumMatch[1]} ${asset}.`;
+  }
+
+  const maximumMatch = rawMessage.match(/^MAXIMUM_WITHDRAWAL_(.+)$/);
+  if (maximumMatch?.[1]) {
+    return `Maximum withdrawal amount is ${maximumMatch[1]} ${asset}.`;
+  }
+
+  return rawMessage;
+}
+
 export default function FundingPage() {
   const funding = useFundingData();
   const user = useAuth((state) => state.user);
@@ -20,7 +57,7 @@ export default function FundingPage() {
   const [withdrawAddressTouched, setWithdrawAddressTouched] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawDetails, setWithdrawDetails] = useState("");
-  const [withdrawMessage, setWithdrawMessage] = useState<string | null>(null);
+  const { feedback: withdrawMessage, setFeedback: setWithdrawMessage } = useTimedFeedback();
   const [levelPreviewOpen, setLevelPreviewOpen] = useState(false);
   const [defaultWithdrawAddresses, setDefaultWithdrawAddresses] = useState<DefaultWithdrawAddresses>({});
   const withdrawAmountNumber = Number(withdrawAmount || 0);
@@ -141,7 +178,7 @@ export default function FundingPage() {
       return;
     }
     if (tab === "withdraw" && funding.summary?.withdrawalPolicy?.user.activeUser === false) {
-      setWithdrawMessage("Your account is not active yet. Withdrawal is available only for active users.");
+      setWithdrawMessage({ tone: "error", text: "Your account is not active yet. Withdrawal is available only for active users." });
       return;
     }
     setWithdrawMessage(null);
@@ -151,11 +188,18 @@ export default function FundingPage() {
     event.preventDefault();
     setWithdrawMessage(null);
     const amount = Number(withdrawAmount);
-    if (!funding.selectedAddress) return setWithdrawMessage("Select a network first.");
-    if (!withdrawAddress.trim()) return setWithdrawMessage("Destination address is required.");
-    if (!Number.isFinite(amount) || amount <= 0) return setWithdrawMessage("Enter a valid amount.");
-    if (liveWithdrawalPolicy && !liveWithdrawalPolicy.user.activeUser) return setWithdrawMessage("Withdrawal is allowed only for active users.");
-    if (liveWithdrawalPolicy && !liveWithdrawalPolicy.user.kycVerified) return setWithdrawMessage("Complete KYC verification before submitting a withdrawal request.");
+    if (!funding.selectedAddress) return setWithdrawMessage({ tone: "error", text: "Select a network first." });
+    if (!withdrawAddress.trim()) return setWithdrawMessage({ tone: "error", text: "Destination address is required." });
+    if (!isValidWithdrawalAddress(funding.selectedNetwork, withdrawAddress)) {
+      return setWithdrawMessage({ tone: "error", text: getAddressValidationMessage(funding.selectedNetwork) });
+    }
+    if (!Number.isFinite(amount) || amount <= 0) return setWithdrawMessage({ tone: "error", text: "Enter a valid amount." });
+    if (liveWithdrawalPolicy && !liveWithdrawalPolicy.user.activeUser) {
+      return setWithdrawMessage({ tone: "error", text: "Withdrawal is allowed only for active users." });
+    }
+    if (liveWithdrawalPolicy && !liveWithdrawalPolicy.user.kycVerified) {
+      return setWithdrawMessage({ tone: "error", text: "Complete KYC verification before submitting a withdrawal request." });
+    }
 
     try {
       await funding.submitWithdrawal({
@@ -174,12 +218,10 @@ export default function FundingPage() {
       setWithdrawAddressTouched(false);
       setWithdrawAmount("");
       setWithdrawDetails("");
-      setWithdrawMessage("Withdrawal request submitted.");
+      setWithdrawMessage({ tone: "success", text: "Withdrawal request submitted." });
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : "Withdrawal failed.";
-      if (rawMessage.includes("WITHDRAWAL_REQUIRES_ACTIVE_USER")) return setWithdrawMessage("Withdrawal is allowed only for active users.");
-      if (rawMessage.includes("WITHDRAWAL_REQUIRES_KYC")) return setWithdrawMessage("Complete KYC verification before submitting a withdrawal request.");
-      setWithdrawMessage(rawMessage);
+      setWithdrawMessage({ tone: "error", text: getWithdrawalErrorMessage(rawMessage, "USDT") });
     }
   }
 

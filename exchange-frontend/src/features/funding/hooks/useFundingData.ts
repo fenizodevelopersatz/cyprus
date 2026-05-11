@@ -150,7 +150,6 @@ export function useFundingData() {
         return response;
       } catch (err) {
         const message = parseError(err);
-        setError(message);
         throw new Error(message);
       } finally {
         setSubmittingWithdrawal(false);

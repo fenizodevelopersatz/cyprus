@@ -33,6 +33,7 @@ import adminSettingsRoutes from './routes/admin/settings.js';
 import adminKycRoutes from './routes/admin/kyc.js';
 import adminOrdersRoutes from './routes/admin/orders.js';
 import adminAssetsRoutes from './routes/admin/assets.js';
+import adminInternalRoutes from './routes/admin/internal.js';
 import adminSignalPackageRoutes from './routes/admin/signalPackages.js';
 import adminControlSettingsRoutes from './routes/admin/controlSettings.js';
 import adminCommissionRoutes from './routes/admin/commission.js';
@@ -184,6 +185,7 @@ export function createApp() {
   app.use('/admin/markets', adminMarketsRoutes);
   app.use('/admin/orders', adminOrdersRoutes);
   app.use('/admin/assets', adminAssetsRoutes);
+  app.use('/admin', adminInternalRoutes);
   app.use('/admin/package-settings', adminSignalPackageRoutes);
   app.use('/admin', adminControlSettingsRoutes);
   app.use('/admin', adminCommissionRoutes);

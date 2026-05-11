@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Button from "../../../ui/Button";
+import { FundingNetworkIcon } from "../../funding/components/FundingNetworkIcon";
 import {
   adminApproveWithdrawal,
   adminRejectWithdrawal,
@@ -28,22 +29,38 @@ export default function AdminWalletWithdrawQueuePage() {
     limit: 50,
     eligibleOnly: true,
   });
+  const normalizedUserId = filters.userId.trim();
+  const normalizedNetwork = filters.network.trim().toLowerCase();
+  const sanitizedFilters = useMemo(
+    () => ({
+      page: filters.page,
+      limit: filters.limit,
+      userId: /^\d+$/.test(normalizedUserId) ? normalizedUserId : "",
+      network: normalizedNetwork,
+      fromDate: filters.fromDate,
+      toDate: filters.toDate,
+      eligibleOnly: filters.eligibleOnly,
+    }),
+    [filters.eligibleOnly, filters.fromDate, filters.limit, filters.page, filters.toDate, normalizedNetwork, normalizedUserId]
+  );
+  const hasInvalidUserId = normalizedUserId.length > 0 && !/^\d+$/.test(normalizedUserId);
   const [modal, setModal] = useState<null | { type: "approve" | "reject"; item: AdminWithdrawal }>(null);
   const [modalInput, setModalInput] = useState("");
 
   const queueQuery = useQuery({
-    queryKey: ["admin", "admin-wallet-withdraw-queue", filters],
+    queryKey: ["admin", "admin-wallet-withdraw-queue", sanitizedFilters],
     queryFn: () =>
       fetchAdminWalletWithdrawQueue({
-        page: filters.page,
-        userId: filters.userId || undefined,
-        network: filters.network || undefined,
-        fromDate: filters.fromDate || undefined,
-        toDate: filters.toDate || undefined,
-        limit: filters.limit,
-        eligibleOnly: filters.eligibleOnly,
+        page: sanitizedFilters.page,
+        userId: sanitizedFilters.userId || undefined,
+        network: sanitizedFilters.network || undefined,
+        fromDate: sanitizedFilters.fromDate || undefined,
+        toDate: sanitizedFilters.toDate || undefined,
+        limit: sanitizedFilters.limit,
+        eligibleOnly: sanitizedFilters.eligibleOnly,
       }),
     refetchInterval: 10000,
+    retry: false,
   });
 
   const liveBalancesQuery = useQuery({
@@ -90,6 +107,7 @@ export default function AdminWalletWithdrawQueuePage() {
     if (modal.type === "approve") {
       const txHash = modalInput.trim();
       if (!txHash) return;
+      if (!isValidTxHashForNetwork(modal.item.chain, txHash)) return;
       approveMutation.mutate({ id: modal.item.id, txHash });
       return;
     }
@@ -149,7 +167,8 @@ export default function AdminWalletWithdrawQueuePage() {
             className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
             placeholder="User ID"
             value={filters.userId}
-            onChange={(event) => setFilters((prev) => ({ ...prev, userId: event.target.value, page: 1 }))}
+            inputMode="numeric"
+            onChange={(event) => setFilters((prev) => ({ ...prev, userId: event.target.value.replace(/[^\d]/g, ""), page: 1 }))}
           />
           <select
             className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
@@ -191,6 +210,32 @@ export default function AdminWalletWithdrawQueuePage() {
             Eligible only
           </label>
         </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+          <div>
+            {hasInvalidUserId
+              ? "User ID filter accepts numbers only."
+              : filters.eligibleOnly
+                ? "Showing only active users with completed KYC."
+                : "Showing all queued users."}
+          </div>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() =>
+              setFilters({
+                userId: "",
+                network: "",
+                fromDate: "",
+                toDate: "",
+                page: 1,
+                limit: 50,
+                eligibleOnly: true,
+              })
+            }
+          >
+            Clear filters
+          </Button>
+        </div>
       </section>
 
       <section className={panelCls}>
@@ -203,6 +248,11 @@ export default function AdminWalletWithdrawQueuePage() {
 
         <div className="space-y-3">
           {queueQuery.isLoading && <div className="text-slate-300/80">Loading withdrawal queue...</div>}
+          {queueQuery.isError && (
+            <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              Unable to load the withdrawal queue with the current filters.
+            </div>
+          )}
 
           {!queueQuery.isLoading &&
             items.map((item) => (
@@ -320,7 +370,11 @@ export default function AdminWalletWithdrawQueuePage() {
               </div>
             ))}
 
-          {!queueQuery.isLoading && items.length === 0 && <div className="text-slate-300/80">No pending withdrawal requests.</div>}
+          {!queueQuery.isLoading && !queueQuery.isError && items.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-300/80">
+              No withdrawal requests match the current filters. Try clearing the date range, switching network, or turning off Eligible only.
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs text-slate-400">
@@ -350,9 +404,26 @@ export default function AdminWalletWithdrawQueuePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 space-y-4">
             <h3 className="text-xl font-semibold text-white">{modal.type === "approve" ? "Approve and send withdrawal" : "Reject withdrawal"}</h3>
-            <p className="text-sm text-slate-300/80">
-              {modal.item.userName || modal.item.email || `User #${modal.item.userId}`} - {formatAmount(modal.item.amount, 4)} {modal.item.asset}
-            </p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <FundingNetworkIcon network={toFundingIconNetwork(modal.item.chain)} size="sm" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-white">
+                    {modal.item.userName || modal.item.email || `User #${modal.item.userId}`} - {formatAmount(getApprovalSendAmount(modal.item), 4)} {modal.item.asset}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {normalizeNetworkLabel(modal.item.chain)} payout amount for this approval
+                  </div>
+                </div>
+              </div>
+              {hasMetaValue(modal.item.meta, "requestedAmount") ? (
+                <div className="mt-3 grid grid-cols-1 gap-1 text-xs text-slate-400 sm:grid-cols-3">
+                  <div>Gross: {formatAmount(Number(modal.item.meta?.requestedAmount || modal.item.amount), 2)} {modal.item.asset}</div>
+                  <div>Admin fee: {formatAmount(Number(modal.item.meta?.adminFeeAmount || 0), 2)} {modal.item.asset}</div>
+                  <div>Penalty: {formatAmount(Number(modal.item.meta?.earlyPenaltyAmount || 0), 2)} {modal.item.asset}</div>
+                </div>
+              ) : null}
+            </div>
             <p className="text-xs text-slate-400">
               {modal.type === "approve"
                 ? "Enter the blockchain transaction hash used for this manual withdrawal approval."
@@ -365,6 +436,9 @@ export default function AdminWalletWithdrawQueuePage() {
               onChange={(e) => setModalInput(e.target.value)}
               rows={modal.type === "approve" ? 2 : 5}
             />
+            {modal.type === "approve" && modalInput.trim() && !isValidTxHashForNetwork(modal.item.chain, modalInput.trim()) ? (
+              <div className="text-sm text-rose-400">{getTxHashValidationMessage(modal.item.chain)}</div>
+            ) : null}
             {(approveMutation.isError || rejectMutation.isError) && (
               <div className="text-sm text-rose-400">
                 {(approveMutation.error as Error)?.message || (rejectMutation.error as Error)?.message}
@@ -374,7 +448,12 @@ export default function AdminWalletWithdrawQueuePage() {
               <Button
                 className="flex-1"
                 onClick={submitModal}
-                disabled={approveMutation.isPending || rejectMutation.isPending || !modalInput.trim()}
+                disabled={
+                  approveMutation.isPending ||
+                  rejectMutation.isPending ||
+                  !modalInput.trim() ||
+                  (modal.type === "approve" && !isValidTxHashForNetwork(modal.item.chain, modalInput.trim()))
+                }
               >
                 {approveMutation.isPending || rejectMutation.isPending ? "Submitting..." : "Confirm"}
               </Button>
@@ -495,6 +574,38 @@ function normalizeNetworkKey(value: string | undefined) {
   if (normalized === "bep20" || normalized === "bsc") return "bep20";
   if (normalized === "trc20" || normalized === "tron") return "trc20";
   return "";
+}
+
+function toFundingIconNetwork(value?: string): "ethereum" | "bsc" | "tron" {
+  const normalized = normalizeNetworkKey(value);
+  if (normalized === "erc20") return "ethereum";
+  if (normalized === "bep20") return "bsc";
+  return "tron";
+}
+
+function getApprovalSendAmount(item: AdminWithdrawal) {
+  const netAmount = Number(item.meta?.netAmount);
+  if (Number.isFinite(netAmount) && netAmount > 0) return netAmount;
+  const payoutAmount = Number(item.meta?.payoutAmount);
+  if (Number.isFinite(payoutAmount) && payoutAmount > 0) return payoutAmount;
+  return Number(item.amount || 0);
+}
+
+function isValidTxHashForNetwork(network: string | undefined, value: string) {
+  const trimmed = value.trim();
+  const normalized = normalizeNetworkKey(network);
+  if (!trimmed) return false;
+  if (normalized === "trc20") return /^[a-fA-F0-9]{64}$/.test(trimmed);
+  if (normalized === "erc20" || normalized === "bep20") return /^0x[a-fA-F0-9]{64}$/.test(trimmed);
+  return false;
+}
+
+function getTxHashValidationMessage(network: string | undefined) {
+  const normalized = normalizeNetworkKey(network);
+  if (normalized === "trc20") return "Enter a valid TRC20 transaction hash.";
+  if (normalized === "erc20") return "Enter a valid ERC20 transaction hash.";
+  if (normalized === "bep20") return "Enter a valid BEP20 transaction hash.";
+  return "Enter a valid transaction hash.";
 }
 
 function resolveWalletForCard(

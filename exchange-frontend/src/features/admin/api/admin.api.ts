@@ -72,6 +72,22 @@ export type AdminUser = {
   nextBonusDueAt?: string | null;
 };
 
+export type AdminManualCronJob = {
+  key: string;
+  label: string;
+  description: string;
+  method: "POST";
+  path: string;
+  samplePayload: Record<string, unknown>;
+};
+
+export type AdminManualCronRunResponse = {
+  jobKey: string;
+  startedAt: string;
+  completedAt: string;
+  result: Record<string, unknown>;
+};
+
 export type FuturesContractAdmin = {
   symbol: string;
   status?: string;
@@ -1116,6 +1132,16 @@ export async function fetchAdminUsers(params?: {
     meta: { page: number; pageSize: number; total: number; totalPages: number };
     items: AdminUser[];
   }>(data);
+}
+
+export async function fetchAdminManualCronJobs() {
+  const { data } = await api.get(ADMIN_ENDPOINTS.internal.cronJobs);
+  return unwrap<AdminManualCronJob[]>(data);
+}
+
+export async function runAdminManualCronJob(jobKey: string, payload?: Record<string, unknown>) {
+  const { data } = await api.post(ADMIN_ENDPOINTS.internal.runCronJob(jobKey), payload ?? {});
+  return unwrap<AdminManualCronRunResponse>(data);
 }
 
 export async function patchAdminUserStatus(userId: string | number, status: "active" | "inactive") {

@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import Input from "../../../ui/Input";
 import Button from "../../../ui/Button";
 import Dialog from "../../../ui/Dialog";
+import InlineFeedback from "../../../ui/InlineFeedback";
+import { useTimedFeedback } from "../../../hooks/useTimedFeedback";
 import CountrySelect from "../../auth/components/CountrySelect";
 import { getCountryByCode, getCountryByName } from "../../auth/data/countries";
 import { useAuth } from "../../auth/state/auth.store";
@@ -172,16 +174,16 @@ export default function SettingsPage() {
   const [secretCopied, setSecretCopied] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [personalSaving, setPersonalSaving] = useState(false);
-  const [personalFeedback, setPersonalFeedback] = useState<string | null>(null);
-  const [securityFeedback, setSecurityFeedback] = useState<string | null>(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
-  const [passwordFeedback, setPasswordFeedback] = useState<string | null>(null);
   const [personalErrors, setPersonalErrors] = useState<Record<string, string>>({});
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
   const [profilePhotoLoadError, setProfilePhotoLoadError] = useState(false);
   const [profilePhotoBlobUrl, setProfilePhotoBlobUrl] = useState<string | null>(null);
   const [deletePending, setDeletePending] = useState(false);
-  const [deleteFeedback, setDeleteFeedback] = useState<string | null>(null);
+  const { feedback: personalFeedback, setFeedback: setPersonalFeedback } = useTimedFeedback();
+  const { feedback: securityFeedback, setFeedback: setSecurityFeedback } = useTimedFeedback();
+  const { feedback: passwordFeedback, setFeedback: setPasswordFeedback } = useTimedFeedback();
+  const { feedback: deleteFeedback, setFeedback: setDeleteFeedback } = useTimedFeedback();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
   const [withdrawAddressHistory, setWithdrawAddressHistory] = useState<WithdrawAddressHistoryEntry[]>([]);
@@ -266,24 +268,6 @@ export default function SettingsPage() {
       }
     };
   }, [profilePhotoBlobUrl]);
-
-  useEffect(() => {
-    if (!personalFeedback) return;
-    const timeoutId = window.setTimeout(() => setPersonalFeedback(null), 20000);
-    return () => window.clearTimeout(timeoutId);
-  }, [personalFeedback]);
-
-  useEffect(() => {
-    if (!passwordFeedback) return;
-    const timeoutId = window.setTimeout(() => setPasswordFeedback(null), 20000);
-    return () => window.clearTimeout(timeoutId);
-  }, [passwordFeedback]);
-
-  useEffect(() => {
-    if (!securityFeedback) return;
-    const timeoutId = window.setTimeout(() => setSecurityFeedback(null), 20000);
-    return () => window.clearTimeout(timeoutId);
-  }, [securityFeedback]);
 
   useEffect(() => {
     let active = true;
@@ -415,15 +399,19 @@ export default function SettingsPage() {
       });
       saveWithdrawAddressBook(updatedAddressBook);
       setWithdrawAddressHistory(updatedAddressBook.history);
-      setPersonalFeedback("Personal information updated successfully.");
+      setPersonalFeedback({ tone: "success", text: "Personal information updated successfully." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to save personal information.";
       setPersonalFeedback(
-        message === "USERNAME_ALREADY_EXISTS"
-          ? "Username already exists."
-          : message === "INVALID_MOBILE_NUMBER"
-            ? "Enter a valid mobile number."
-            : message
+        {
+          tone: "error",
+          text:
+            message === "USERNAME_ALREADY_EXISTS"
+              ? "Username already exists."
+              : message === "INVALID_MOBILE_NUMBER"
+                ? "Enter a valid mobile number."
+                : message,
+        }
       );
     } finally {
       setPersonalSaving(false);
@@ -451,15 +439,19 @@ export default function SettingsPage() {
         newPassword: passwordForm.newPassword,
       });
       setPasswordForm(defaultPasswordForm);
-      setPasswordFeedback("Password updated successfully.");
+      setPasswordFeedback({ tone: "success", text: "Password updated successfully." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to change password.";
       setPasswordFeedback(
-        message === "CURRENT_PASSWORD_INCORRECT"
-          ? "Current password is incorrect."
-          : message === "NEW_PASSWORD_TOO_SHORT"
-            ? "New password must be at least 8 characters."
-            : message
+        {
+          tone: "error",
+          text:
+            message === "CURRENT_PASSWORD_INCORRECT"
+              ? "Current password is incorrect."
+              : message === "NEW_PASSWORD_TOO_SHORT"
+                ? "New password must be at least 8 characters."
+                : message,
+        }
       );
     } finally {
       setPasswordSaving(false);
@@ -469,7 +461,7 @@ export default function SettingsPage() {
   const handleToggleTwoFactor = async () => {
     setSecurityFeedback(null);
     if (twoFactorEnabled) {
-      setSecurityFeedback("Enter your current Google Authenticator code below to disable two-factor authentication.");
+      setSecurityFeedback({ tone: "info", text: "Enter your current Google Authenticator code below to disable two-factor authentication." });
       return;
     }
     setTwoFactorBusy(true);
@@ -477,10 +469,10 @@ export default function SettingsPage() {
       const setup = await setupGoogleAuthenticator();
       setTwoFactorSetup(setup);
       setTwoFactorCode("");
-      setSecurityFeedback("Scan the QR code with Google Authenticator, then enter the 6-digit code to enable it.");
+      setSecurityFeedback({ tone: "info", text: "Scan the QR code with Google Authenticator, then enter the 6-digit code to enable it." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start Google Authenticator setup.";
-      setSecurityFeedback(message);
+      setSecurityFeedback({ tone: "error", text: message });
     } finally {
       setTwoFactorBusy(false);
     }
@@ -489,7 +481,7 @@ export default function SettingsPage() {
   const handleEnableGoogleAuth = async () => {
     setSecurityFeedback(null);
     if (!/^\d{6}$/.test(twoFactorCode.trim())) {
-      setSecurityFeedback("Enter the 6-digit code from Google Authenticator.");
+      setSecurityFeedback({ tone: "error", text: "Enter the 6-digit code from Google Authenticator." });
       return;
     }
 
@@ -500,10 +492,10 @@ export default function SettingsPage() {
       setGoogleAuthConfigured(true);
       setTwoFactorSetup(null);
       setTwoFactorCode("");
-      setSecurityFeedback("Google Authenticator enabled successfully.");
+      setSecurityFeedback({ tone: "success", text: "Google Authenticator enabled successfully." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to enable Google Authenticator.";
-      setSecurityFeedback(message === "INVALID_AUTHENTICATOR_CODE" ? "Invalid authenticator code." : message);
+      setSecurityFeedback({ tone: "error", text: message === "INVALID_AUTHENTICATOR_CODE" ? "Invalid authenticator code." : message });
     } finally {
       setTwoFactorBusy(false);
     }
@@ -512,7 +504,7 @@ export default function SettingsPage() {
   const handleDisableGoogleAuth = async () => {
     setSecurityFeedback(null);
     if (!/^\d{6}$/.test(twoFactorCode.trim())) {
-      setSecurityFeedback("Enter your current 6-digit authenticator code to disable two-factor authentication.");
+      setSecurityFeedback({ tone: "error", text: "Enter your current 6-digit authenticator code to disable two-factor authentication." });
       return;
     }
 
@@ -523,10 +515,10 @@ export default function SettingsPage() {
       setGoogleAuthConfigured(false);
       setTwoFactorSetup(null);
       setTwoFactorCode("");
-      setSecurityFeedback("Google Authenticator disabled successfully.");
+      setSecurityFeedback({ tone: "success", text: "Google Authenticator disabled successfully." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to disable Google Authenticator.";
-      setSecurityFeedback(message === "INVALID_AUTHENTICATOR_CODE" ? "Invalid authenticator code." : message);
+      setSecurityFeedback({ tone: "error", text: message === "INVALID_AUTHENTICATOR_CODE" ? "Invalid authenticator code." : message });
     } finally {
       setTwoFactorBusy(false);
     }
@@ -568,9 +560,9 @@ export default function SettingsPage() {
         navigate("/login", { replace: true });
         return;
       }
-      setDeleteFeedback("Unable to delete account. Please try again.");
+      setDeleteFeedback({ tone: "error", text: "Unable to delete account. Please try again." });
     } catch (error) {
-      setDeleteFeedback(error instanceof Error ? error.message : "Unable to delete account. Please try again.");
+      setDeleteFeedback({ tone: "error", text: error instanceof Error ? error.message : "Unable to delete account. Please try again." });
     } finally {
       setDeletePending(false);
       setDeleteDialogOpen(false);
@@ -814,7 +806,7 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
-        {personalFeedback && <div className={`text-[11px] ${personalFeedback.toLowerCase().includes("successfully") ? "text-emerald-300" : "text-rose-300"}`}>{personalFeedback}</div>}
+        <InlineFeedback feedback={personalFeedback} className="text-[11px]" />
         <Button size="sm" className="w-fit" onClick={() => void handleSavePersonalInfo()} disabled={personalSaving || profileLoading}>
           {personalSaving ? "Saving..." : "Save Personal Information"}
         </Button>
@@ -890,15 +882,7 @@ export default function SettingsPage() {
             </div>
           </div>
         ) : null}
-        {securityFeedback ? (
-          <div
-            className={`text-[11px] ${
-              securityFeedback.toLowerCase().includes("successfully") ? "text-emerald-300" : "text-rose-300"
-            }`}
-          >
-            {securityFeedback}
-          </div>
-        ) : null}
+        <InlineFeedback feedback={securityFeedback} className="text-[11px]" />
         {twoFactorEnabled && googleAuthConfigured ? (
           <div className="rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="mb-2 text-[12px] font-medium text-white">Disable Google Authenticator</div>
@@ -958,15 +942,7 @@ export default function SettingsPage() {
               />
             </Field>
           </div>
-          {passwordFeedback ? (
-            <div
-              className={`mt-2 text-[11px] ${
-                passwordFeedback.toLowerCase().includes("successfully") ? "text-emerald-300" : "text-rose-300"
-              }`}
-            >
-              {passwordFeedback}
-            </div>
-          ) : null}
+          <InlineFeedback feedback={passwordFeedback} className="mt-2 text-[11px]" />
           <div className="mt-3">
             <Button size="sm" className="w-fit" onClick={() => void handleChangePassword()} disabled={passwordSaving}>
               {passwordSaving ? "Updating..." : "Reset Password"}
@@ -1021,7 +997,7 @@ export default function SettingsPage() {
           <p className="mt-2 text-[12px] leading-5 text-[rgba(255,226,230,0.82)]">
             Permanently remove your profile, balances, orders, trade history, and KYC data. This action cannot be undone.
           </p>
-          {deleteFeedback ? <div className="mt-3 text-[11px] text-[rgba(255,226,230,0.9)]">{deleteFeedback}</div> : null}
+          <InlineFeedback feedback={deleteFeedback} className="mt-3 text-[11px]" />
           <div className="mt-4">
             <Button variant="danger" size="sm" className="w-full sm:w-auto" onClick={() => setDeleteDialogOpen(true)} disabled={deletePending}>
               {deletePending ? "Deleting..." : "Delete my account"}
@@ -1053,7 +1029,7 @@ export default function SettingsPage() {
           <p className="text-[13px] text-[var(--text-secondary)]">
             This action cannot be undone. If you continue, you will be signed out immediately.
           </p>
-          {deleteFeedback ? <div className="text-xs text-[var(--danger)]">{deleteFeedback}</div> : null}
+          <InlineFeedback feedback={deleteFeedback} className="text-xs" />
         </div>
       </Dialog>
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { ADMIN_DASHBOARD_WS_PATH, API_BASE_URL } from "../../../app/apiRoutes";
 import {
   Area,
   AreaChart,
@@ -97,14 +98,17 @@ const formatRelativeTime = (value?: string) => {
 const buildAdminDashboardWsUrl = () => {
   if (typeof window === "undefined") return null;
   const token = window.localStorage.getItem("adminAccessToken");
-  const url = new URL(window.location.href);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/ws/admin/dashboard";
-  url.search = "";
-  if (token) {
+  if (!token) return null;
+  try {
+    const url = new URL(API_BASE_URL);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = `${url.pathname.replace(/\/?$/, "")}${ADMIN_DASHBOARD_WS_PATH}`;
+    url.search = "";
     url.searchParams.set("token", token);
+    return url.toString();
+  } catch {
+    return null;
   }
-  return url.toString();
 };
 
 function useAdminDashboardLiveFeed() {

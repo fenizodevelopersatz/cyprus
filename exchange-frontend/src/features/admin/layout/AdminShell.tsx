@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { ADMIN_DASHBOARD_WS_PATH, API_BASE_URL } from "../../../app/apiRoutes";
 import Button from "../../../ui/Button";
 import { useAdminAuth } from "../state/AdminAuthProvider";
 import { fetchAdminKycSidebarSummary, fetchAdminSettings } from "../api/admin.api";
@@ -14,6 +15,19 @@ type NavEntry = {
 };
 
 const ADMIN_KYC_LAST_READ_KEY = "admin:kyc:last-read-at";
+
+const buildAdminDashboardWsUrl = (token: string) => {
+  try {
+    const url = new URL(API_BASE_URL);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = `${url.pathname.replace(/\/?$/, "")}${ADMIN_DASHBOARD_WS_PATH}`;
+    url.search = "";
+    url.searchParams.set("token", token);
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
 
 const NAV_GROUPS: NavEntry[] = [
   { label: "Dashboard", to: "/admin", icon: "/icons/admin-dashboard.png" },
@@ -126,12 +140,8 @@ export default function AdminShell() {
   useEffect(() => {
     const token = window.localStorage.getItem("adminAccessToken");
     if (!token) return;
-
-    const url = new URL(window.location.href);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.pathname = "/ws/admin/dashboard";
-    url.search = "";
-    url.searchParams.set("token", token);
+    const url = buildAdminDashboardWsUrl(token);
+    if (!url) return;
 
     let closedByUser = false;
     let reconnectTimer: number | null = null;
@@ -139,7 +149,7 @@ export default function AdminShell() {
 
     const connect = () => {
       try {
-        socket = new WebSocket(url.toString());
+        socket = new WebSocket(url);
         socket.onmessage = () => {
           queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
         };

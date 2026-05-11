@@ -8,10 +8,10 @@ import { sendKycSubmissionEmail, sendKycApprovedEmail } from './mailService.js';
 import { getUserContact, toAbsoluteProfilePhotoUrl } from './userService.js';
 
 const STORAGE_ROOT = path.resolve('storage', 'kyc');
-const IDENTITY_TYPES = new Set(['passport', 'driverslicense', 'drivers_license', 'nationalid', 'national_id', 'identitycard', 'identity_card']);
+const IDENTITY_TYPES = new Set(['passport', 'driverslicense', 'drivers_license', 'nationalid', 'national_id', 'identitycard', 'identity_card', 'aadhaarcard', 'aadhaar_card', 'aadharcard', 'aadhar_card']);
 const PROOF_TYPES = new Set(['proof_of_address', 'proofaddress', 'utilitybill', 'utility_bill', 'bankstatement', 'bank_statement']);
 const ENHANCED_TYPES = new Set(['enhanced_verification', 'enhancedverification', 'video_verification', 'videoverification']);
-const REQUIRED_KYC_DOCUMENT_TYPES = ['passport', 'driversLicense', 'residence'];
+const REQUIRED_KYC_DOCUMENT_TYPES = ['passport', 'driversLicense', 'aadhaarCard', 'residence'];
 const REQUIRED_PROFILE_BASICS_FIELDS = [
   'first_name',
   'last_name',
@@ -90,10 +90,32 @@ function canonicalKycDocumentType(type) {
   if (!normalized) return '';
   if (normalized.includes('passport')) return 'passport';
   if (normalized.includes('driver')) return 'driversLicense';
+  if (normalized.includes('aadhaar') || normalized.includes('aadhar')) return 'aadhaarCard';
   if (normalized.includes('residence') || normalized.includes('proofofaddress') || normalized.includes('utilitybill') || normalized.includes('bankstatement')) {
     return 'residence';
   }
   return normalized;
+}
+
+async function getApprovedRequiredDocumentTypesForUser(userId) {
+  const rows = await db('kyc_documents')
+    .where({ user_id: userId })
+    .orderBy('updated_at', 'desc')
+    .orderBy('created_at', 'desc');
+
+  const latestApprovedByType = new Set();
+  const seenTypes = new Set();
+
+  for (const row of rows) {
+    const type = canonicalKycDocumentType(row.document_type);
+    if (!type || seenTypes.has(type)) continue;
+    seenTypes.add(type);
+    if (normalizeStatus(row.status) === 'APPROVED') {
+      latestApprovedByType.add(type);
+    }
+  }
+
+  return latestApprovedByType;
 }
 
 function groupLatestDocumentsByType(documents) {
@@ -656,19 +678,33 @@ export async function verifyKyc(adminId, targetUserId, approved = true, notes, {
       updated_at: new Date(),
     });
 
+  const approvedRequiredDocumentTypes = await getApprovedRequiredDocumentTypesForUser(targetUserId);
+  const hasAllRequiredDocumentsApproved = REQUIRED_KYC_DOCUMENT_TYPES.every((type) => approvedRequiredDocumentTypes.has(type));
+
   await db('users')
     .where({ id: targetUserId })
     .update({
-      kyc_verified: approved ? 1 : 0,
-      kyc_level: approved ? Math.max(1, user.kyc_level || 0) : user.kyc_level || 0,
+      kyc_verified: approved && hasAllRequiredDocumentsApproved ? 1 : 0,
+      kyc_level: approved && hasAllRequiredDocumentsApproved ? Math.max(1, user.kyc_level || 0) : user.kyc_level || 0,
       updated_at: new Date(),
     });
 
   await db('kyc_activity').insert({
     user_id: targetUserId,
     event: approved ? 'DOCUMENT_APPROVED' : 'DOCUMENT_REJECTED',
-    message: approved ? 'Documents approved by compliance' : 'Documents rejected by compliance',
-    metadata: JSON.stringify({ submissionId: latestRequest.submission_id, reviewerId: adminId, notes }),
+    message: approved
+      ? hasAllRequiredDocumentsApproved
+        ? 'All required KYC documents approved by compliance'
+        : 'Document approved by compliance; KYC remains pending required documents'
+      : 'Documents rejected by compliance',
+    metadata: JSON.stringify({
+      submissionId: latestRequest.submission_id,
+      reviewerId: adminId,
+      notes,
+      hasAllRequiredDocumentsApproved,
+      approvedRequiredDocumentTypes: Array.from(approvedRequiredDocumentTypes),
+      missingRequiredDocumentTypes: REQUIRED_KYC_DOCUMENT_TYPES.filter((type) => !approvedRequiredDocumentTypes.has(type)),
+    }),
     created_at: new Date(),
     updated_at: new Date(),
   });
@@ -680,7 +716,7 @@ export async function verifyKyc(adminId, targetUserId, approved = true, notes, {
     reviewedAt: new Date().toISOString(),
   });
 
-  if (approved) {
+  if (approved && hasAllRequiredDocumentsApproved) {
     try {
       const contact = await getUserContact(targetUserId);
       if (contact?.email) {

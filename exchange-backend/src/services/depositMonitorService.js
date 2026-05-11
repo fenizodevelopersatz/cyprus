@@ -370,6 +370,11 @@ async function runPollCycle() {
   }
 }
 
+export async function runDepositMonitorCycleNow() {
+  await runPollCycle();
+  return { completed: true, networks: NETWORK_CONFIGS.map((config) => config.network) };
+}
+
 export function startDepositMonitor() {
   let running = false;
   const tick = async () => {

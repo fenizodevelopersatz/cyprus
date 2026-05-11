@@ -1,4 +1,4 @@
-import { HDNodeWallet, JsonRpcProvider, formatUnits, parseUnits } from 'ethers';
+import { HDNodeWallet, JsonRpcProvider, formatUnits, isAddress, parseUnits } from 'ethers';
 import QRCode from 'qrcode';
 import { db, withTx } from '../db.js';
 import { cfg } from '../config.js';
@@ -88,6 +88,33 @@ function getWithdrawalSummaryAmount(row) {
   if (Number.isFinite(netAmount) && netAmount > 0) return netAmount;
   const amount = Number(row?.amount || 0);
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function normalizeWithdrawalFilterNetwork(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'tron' || normalized === 'trc20') return 'TRC20';
+  if (normalized === 'bsc' || normalized === 'bep20') return 'BEP20';
+  if (normalized === 'ethereum' || normalized === 'erc20' || normalized === 'eth') return 'ERC20';
+  return String(value || '').trim().toUpperCase();
+}
+
+function isValidWithdrawalAddressForChain(chain, address) {
+  const normalizedNetwork = normalizeFundingNetwork(chain);
+  const trimmed = String(address || '').trim();
+  if (!trimmed) return false;
+  if (normalizedNetwork === 'tron') return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(trimmed);
+  if (normalizedNetwork === 'ethereum' || normalizedNetwork === 'bsc') return isAddress(trimmed);
+  return false;
+}
+
+function isValidTxHashForChain(chain, txHash) {
+  const normalizedNetwork = normalizeFundingNetwork(chain);
+  const trimmed = String(txHash || '').trim();
+  if (!trimmed) return false;
+  if (normalizedNetwork === 'tron') return /^[a-fA-F0-9]{64}$/.test(trimmed);
+  if (normalizedNetwork === 'ethereum' || normalizedNetwork === 'bsc') return /^0x[a-fA-F0-9]{64}$/.test(trimmed);
+  return false;
 }
 
 async function getTableColumns(tableName, trx = db) {
@@ -319,6 +346,7 @@ export async function requestWithdrawal({ userId, asset, amount, to, chain, memo
   const assetConfig = await getSignalAssetByNetwork(requestedChain);
   if (!assetConfig || !assetConfig.isEnabled) throw new Error('NETWORK_NOT_SUPPORTED');
   const normalizedChain = assetConfig.network;
+  if (!isValidWithdrawalAddressForChain(normalizedChain, to)) throw new Error('INVALID_DESTINATION_ADDRESS');
   const withdrawalPolicy = await getWithdrawalPolicyContext(userId, amount);
 
   return withTx(async (trx) => {
@@ -627,7 +655,10 @@ export async function adminListWithdrawals({
   if (status) query.where('w.status', String(status).toLowerCase());
   if (Array.isArray(statuses) && statuses.length > 0) query.whereIn('w.status', statuses.map((value) => String(value).toLowerCase()));
   if (userId) query.where('w.user_id', Number(userId));
-  if (network) query.whereRaw('LOWER(COALESCE(w.chain, \'\')) = ?', [String(network).toLowerCase()]);
+  if (network) {
+    const normalizedNetwork = normalizeWithdrawalFilterNetwork(network);
+    query.whereRaw('UPPER(COALESCE(w.chain, \'\')) = ?', [normalizedNetwork]);
+  }
   if (fromDate) query.where('w.requested_at', '>=', new Date(`${fromDate}T00:00:00.000Z`));
   if (toDate) query.where('w.requested_at', '<=', new Date(`${toDate}T23:59:59.999Z`));
   if (eligibleOnly) {
@@ -726,6 +757,7 @@ export async function adminApproveWithdrawal({ withdrawalId, txHash, reviewerId 
   if (pendingRow.status !== 'pending') throw new Error('WITHDRAWAL_NOT_PENDING');
   const normalizedTxHash = String(txHash || '').trim();
   if (!normalizedTxHash) throw new Error('TX_HASH_REQUIRED');
+  if (!isValidTxHashForChain(pendingRow.chain, normalizedTxHash)) throw new Error('INVALID_TX_HASH');
 
   const pendingMeta = parseMeta(pendingRow.meta);
   const payoutAmountDecimal =

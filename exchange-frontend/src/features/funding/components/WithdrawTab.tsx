@@ -49,7 +49,7 @@ type Props = {
   onWithdrawDetailsChange: (value: string) => void;
   onSubmit: (event: React.FormEvent) => void;
   submitting: boolean;
-  message?: string | null;
+  message?: { tone: "success" | "error"; text: string } | null;
   history: WithdrawHistoryItem[];
   pagination: Pagination;
   onPageChange: (page: number) => void;
@@ -74,7 +74,7 @@ export function WithdrawTab(props: Props) {
     (a, b) => (mobileNetworkOrder[a.network] ?? 99) - (mobileNetworkOrder[b.network] ?? 99)
   );
   const needsKycNavigation =
-    props.message === "Complete KYC verification before submitting a withdrawal request.";
+    props.message?.text === "Complete KYC verification before submitting a withdrawal request.";
 
   const copyValue = async (value: string, key: string) => {
     if (!value || typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -157,10 +157,18 @@ export function WithdrawTab(props: Props) {
                 to="/app/kyc"
                 className="inline-flex rounded-[14px] border border-[rgba(246,70,93,0.28)] bg-[rgba(246,70,93,0.10)] px-4 py-3 text-sm font-medium text-[var(--danger)] transition hover:border-[rgba(246,70,93,0.45)] hover:bg-[rgba(246,70,93,0.14)]"
               >
-                {props.message}
+                {props.message.text}
               </Link>
             ) : (
-              <div className="text-sm text-[var(--text-secondary)]">{props.message}</div>
+              <div
+                className={`text-sm ${
+                  props.message.tone === "success"
+                    ? "text-[var(--success)]"
+                    : "text-[var(--danger)]"
+                }`}
+              >
+                {props.message.text}
+              </div>
             ))}
         </form>
         
@@ -179,7 +187,7 @@ export function WithdrawTab(props: Props) {
             {policyUser?.lockActive && <div>Remaining lock time: {policyUser.daysRemaining} day(s).</div>}
             {policyRules.adminFeePercent > 0 && <div>Admin fee: {policyRules.adminFeePercent}%</div>}
             {policyRules.earlyPenaltyPercent > 0 && <div>Early withdrawal penalty: {policyRules.earlyPenaltyPercent}%</div>}
-            {policyRules.rewardReductionEnabled && <div>Reward reduction: {policyRules.rewardReductionType || "Enabled"}</div>}
+            {/* {policyRules.rewardReductionEnabled && <div>Reward reduction: {policyRules.rewardReductionType || "Enabled"}</div>} */}
             {policyRules.withdrawalNote && <div>{policyRules.withdrawalNote}</div>}
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

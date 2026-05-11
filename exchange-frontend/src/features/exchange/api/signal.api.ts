@@ -18,6 +18,11 @@ const toNumber = (value: unknown, fallback = 0) => {
   const parsed = typeof value === "string" ? Number(value) : (value as number);
   return Number.isFinite(parsed) ? Number(parsed) : fallback;
 };
+const toOptionalNumber = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = typeof value === "string" ? Number(value) : (value as number);
+  return Number.isFinite(parsed) ? Number(parsed) : undefined;
+};
 const toMinutes = (value: string) => {
   const [hours, minutes] = String(value || "00:00").split(":").map((item) => Number(item));
   return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
@@ -297,17 +302,17 @@ const mapHistoryRow = (value: unknown, index: number): SignalHistoryRow => {
     signalToken: String(raw.signalToken ?? raw.signal_token ?? raw.token ?? auditJson.signal_token ?? "--"),
     previousBalance,
     walletBalanceBefore: toNumber(raw.walletBalanceBefore ?? raw.wallet_balance_before ?? auditJson.wallet_balance_before ?? previousBalance),
-    walletBalanceAfterBuy: toNumber(raw.walletBalanceAfterBuy ?? raw.wallet_balance_after_buy ?? auditJson.wallet_balance_after_buy),
-    walletBalanceBeforeSell: toNumber(raw.walletBalanceBeforeSell ?? raw.wallet_balance_before_sell ?? auditJson.wallet_balance_before_sell),
-    walletBalanceAfterSell: toNumber(raw.walletBalanceAfterSell ?? raw.wallet_balance_after_sell ?? auditJson.wallet_balance_after_sell),
+    walletBalanceAfterBuy: toOptionalNumber(raw.walletBalanceAfterBuy ?? raw.wallet_balance_after_buy ?? auditJson.wallet_balance_after_buy),
+    walletBalanceBeforeSell: toOptionalNumber(raw.walletBalanceBeforeSell ?? raw.wallet_balance_before_sell ?? auditJson.wallet_balance_before_sell),
+    walletBalanceAfterSell: toOptionalNumber(raw.walletBalanceAfterSell ?? raw.wallet_balance_after_sell ?? auditJson.wallet_balance_after_sell),
     investmentAmount,
     principalAmount: toNumber(raw.principalAmount ?? raw.principal_amount ?? auditJson.principal_amount ?? investmentAmount),
-    buyPrice: toNumber(raw.buyPrice ?? raw.buy_price ?? auditJson.buy_price),
-    sellPrice: toNumber(raw.sellPrice ?? raw.sell_price ?? auditJson.sell_price),
-    executedQty: toNumber(raw.executedQty ?? raw.executed_qty ?? auditJson.executed_qty),
+    buyPrice: toOptionalNumber(raw.buyPrice ?? raw.buy_price ?? auditJson.buy_price),
+    sellPrice: toOptionalNumber(raw.sellPrice ?? raw.sell_price ?? auditJson.sell_price),
+    executedQty: toOptionalNumber(raw.executedQty ?? raw.executed_qty ?? auditJson.executed_qty),
     profitAmount,
     totalEarned,
-    totalReturnUsdt: toNumber(raw.totalReturnUsdt ?? raw.total_return_usdt ?? auditJson.total_return_usdt),
+    totalReturnUsdt: toOptionalNumber(raw.totalReturnUsdt ?? raw.total_return_usdt ?? auditJson.total_return_usdt),
     newBalance,
     tradeStatus: String(raw.tradeStatus ?? raw.trade_status ?? raw.status ?? "OPEN"),
     orderStatus: String(raw.orderStatus ?? raw.order_status ?? "FILLED"),

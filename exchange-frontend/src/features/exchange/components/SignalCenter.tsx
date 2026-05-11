@@ -48,10 +48,56 @@ const resolveSignalRowStatus = (row: SignalHistoryRow) => {
 const getSignalReturnAmount = (row: SignalHistoryRow) =>
   resolveSignalRowStatus(row) === "CLOSED" ? row.totalReturnUsdt ?? row.totalEarned : null;
 
+const getSignalInvestmentAmount = (row: SignalHistoryRow) => {
+  if (row.investmentAmount > 0) {
+    return row.investmentAmount;
+  }
+  const percent = Number(row.auditJson?.investment_percent ?? 0);
+  if (percent > 0 && row.previousBalance > 0) {
+    return row.previousBalance * (percent / 100);
+  }
+  if (row.previousBalance > 0) {
+    return row.previousBalance * 0.01;
+  }
+  return row.investmentAmount;
+};
+
+const getSignalProfitAmount = (row: SignalHistoryRow) => {
+  if (resolveSignalRowStatus(row) === "CLOSED" && row.profitAmount > 0) {
+    return row.profitAmount;
+  }
+  const percent = Number(row.auditJson?.profit_percent ?? 0);
+  if (percent > 0 && row.previousBalance > 0) {
+    const investmentBasis = getSignalInvestmentAmount(row);
+    return resolveSignalRowStatus(row) === "CLOSED" ? investmentBasis * (percent / 100) : null;
+  }
+  if (row.previousBalance > 0) {
+    const investmentBasis = getSignalInvestmentAmount(row);
+    return resolveSignalRowStatus(row) === "CLOSED" ? investmentBasis * 0.0065 : null;
+  }
+  return resolveSignalRowStatus(row) === "CLOSED" ? row.profitAmount : null;
+};
+
 const getSignalBalanceValue = (row: SignalHistoryRow) =>
   resolveSignalRowStatus(row) === "CLOSED"
     ? row.walletBalanceAfterSell ?? row.newBalance
-    : row.walletBalanceAfterBuy ?? row.newBalance;
+    : row.walletBalanceAfterBuy ?? row.previousBalance - getSignalInvestmentAmount(row);
+
+const getLatestSignalBalance = (rows: SignalHistoryRow[], fallbackBalance: number) => {
+  if (rows.length === 0) return fallbackBalance;
+  const latestRow = [...rows].sort((a, b) => {
+    const aTime = new Date(a.sellCreatedAt ?? a.buyCreatedAt ?? a.appliedAt).getTime();
+    const bTime = new Date(b.sellCreatedAt ?? b.buyCreatedAt ?? b.appliedAt).getTime();
+    return bTime - aTime;
+  })[0];
+  return getSignalBalanceValue(latestRow);
+};
+
+const getSignalRowSlot = (row: SignalHistoryRow, slots: SignalWalletSummary["availableSlots"]) => {
+  const normalizedKey = String(row.slotKey ?? "").trim();
+  if (!normalizedKey) return null;
+  return slots.find((slot) => String(slot.key).trim() === normalizedKey) ?? null;
+};
 
 const parseApiError = (error: unknown, fallback: string) => {
   if (!error || typeof error !== "object") return fallback;
@@ -106,6 +152,7 @@ type SignalCenterProps = {
 };
 
 const SIGNAL_INTENT_EVENT = "exchange:signal-intent";
+const OPEN_SIGNAL_REFRESH_MS = 5000;
 
 export default function SignalCenter({ marketSocketStatus = "idle", compact = false, compactSection = "all" }: SignalCenterProps) {
   void marketSocketStatus;
@@ -145,32 +192,54 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
     setActiveSlot(getActiveSlot(new Date(), summary.availableSlots));
   }, []);
 
-  const loadSignalData = useCallback(async () => {
-    setLoading(true);
-    setHistoryLoading(true);
-    try {
-      const [summary, history, ledger] = await Promise.all([
-        fetchSignalWalletSummary(),
-        fetchSignalHistory(),
-        fetchWalletLedger(),
-      ]);
-      syncDerivedState(summary);
-      startTransition(() => {
-        setSignalHistory(history);
-        setWalletLedger(ledger);
-      });
-      clearSubmitFeedback();
-    } catch (error) {
-      setSubmitFeedback({ tone: "error", text: parseApiError(error, "Unable to load signal data right now.") });
-    } finally {
-      setLoading(false);
-      setHistoryLoading(false);
-    }
-  }, [syncDerivedState]);
+  const refreshSignalData = useCallback(
+    async (options?: { keepLoadingState?: boolean }) => {
+      const keepLoadingState = options?.keepLoadingState ?? false;
+      if (keepLoadingState) {
+        setLoading(true);
+        setHistoryLoading(true);
+      }
+
+      try {
+        const [summary, history, ledger] = await Promise.all([
+          fetchSignalWalletSummary(),
+          fetchSignalHistory(),
+          fetchWalletLedger(),
+        ]);
+        syncDerivedState(summary);
+        startTransition(() => {
+          setSignalHistory(history);
+          setWalletLedger(ledger);
+        });
+        clearSubmitFeedback();
+      } catch (error) {
+        if (keepLoadingState) {
+          setSubmitFeedback({ tone: "error", text: parseApiError(error, "Unable to load signal data right now.") });
+        }
+      } finally {
+        if (keepLoadingState) {
+          setLoading(false);
+          setHistoryLoading(false);
+        }
+      }
+    },
+    [clearSubmitFeedback, setSubmitFeedback, syncDerivedState]
+  );
 
   useEffect(() => {
+    let active = true;
+
+    const loadSignalData = async () => {
+      await refreshSignalData({ keepLoadingState: true });
+      if (!active) return;
+    };
+
     void loadSignalData();
-  }, [loadSignalData]);
+
+    return () => {
+      active = false;
+    };
+  }, [refreshSignalData]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -325,7 +394,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         total_earned: tradeResult.profitAmount,
         total_return_usdt: tradeResult.totalEarned,
         buy_price: pendingIntent?.price,
-        new_balance: latestSummary.currentBalance - tradeResult.investmentAmount,
+        new_balance: tradeResult.newBalance,
         signal_token: signalCodeInput.trim(),
         slot_key: eligibility.activeSlot.key,
         slot_time: eligibility.activeSlot.slotTime,
@@ -349,38 +418,122 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       setPendingIntent(null);
       setSubmitFeedback({ tone: "success", text: "Buy executed. Wallet debited now; auto-sell will close this trade after the signal window." });
 
-      const [refreshedSummary, refreshedHistory, refreshedLedger] = await Promise.all([
-        fetchSignalWalletSummary(),
-        fetchSignalHistory(),
-        fetchWalletLedger().catch(() => walletLedger),
-      ]);
-      syncDerivedState(refreshedSummary);
-      startTransition(() => {
-        setSignalHistory(refreshedHistory);
-        setWalletLedger(refreshedLedger);
-      });
+      await refreshSignalData();
     } catch (error) {
       setSubmitFeedback({ tone: "error", text: parseApiError(error, "You are not allowed for the current trade.") });
     } finally {
       setSubmitLoading(false);
     }
-  }, [pendingIntent, signalCodeInput, syncDerivedState, walletLedger]);
+  }, [pendingIntent, refreshSignalData, signalCodeInput]);
 
   const validationFeedback = useMemo(() => {
     if (!hasSubmitted) return null;
     return submitFeedback;
   }, [hasSubmitted, submitFeedback]);
 
+  const effectiveCurrentBalance = useMemo(
+    () => getLatestSignalBalance(signalHistory, walletSummary.currentBalance),
+    [signalHistory, walletSummary.currentBalance]
+  );
+
+  const latestOpenSignalId = useMemo(() => {
+    const openRows = signalHistory.filter((row) => resolveSignalRowStatus(row) === "OPEN");
+    if (openRows.length === 0) return null;
+    const latestOpenRow = [...openRows].sort((a, b) => {
+      const aTime = new Date(a.buyCreatedAt || a.appliedAt).getTime();
+      const bTime = new Date(b.buyCreatedAt || b.appliedAt).getTime();
+      return bTime - aTime;
+    })[0];
+    return latestOpenRow?.id ?? null;
+  }, [signalHistory]);
+  const hasOpenSignals = latestOpenSignalId !== null;
+  const latestOpenSignal = useMemo(
+    () => signalHistory.find((row) => row.id === latestOpenSignalId) ?? null,
+    [latestOpenSignalId, signalHistory]
+  );
+  const openSignalSlot = useMemo(
+    () => (latestOpenSignal ? getSignalRowSlot(latestOpenSignal, walletSummary.availableSlots) : null),
+    [latestOpenSignal, walletSummary.availableSlots]
+  );
+  const displayActiveSlot = openSignalSlot ?? activeSlot;
+  const openSignalSlotEndAt = useMemo(() => {
+    if (!openSignalSlot) return null;
+    const end = new Date(clockNow);
+    end.setHours(Math.floor(openSignalSlot.endMinutes / 60), openSignalSlot.endMinutes % 60, 0, 0);
+    return end;
+  }, [clockNow, openSignalSlot]);
+  const openSignalRefreshTargetAt = useMemo(() => {
+    if (latestOpenSignal?.expiresAt) {
+      const expiresAt = new Date(latestOpenSignal.expiresAt);
+      if (!Number.isNaN(expiresAt.getTime())) {
+        return expiresAt;
+      }
+    }
+    return openSignalSlotEndAt;
+  }, [latestOpenSignal?.expiresAt, openSignalSlotEndAt]);
+
+  const mainWalletBalanceBasis = useMemo(() => {
+    if (walletSummary.mainWalletBalance > 0) return walletSummary.mainWalletBalance;
+    if (walletSummary.currentBalance > 0) return walletSummary.currentBalance;
+    return effectiveCurrentBalance;
+  }, [effectiveCurrentBalance, walletSummary.currentBalance, walletSummary.mainWalletBalance]);
+
   const tradePreview = useMemo(
     () =>
-      calculateTradeResult(walletSummary.currentBalance, {
+      calculateTradeResult(mainWalletBalanceBasis, {
         investmentPercent: walletSummary.investmentPerTradePercent,
         profitPercent: walletSummary.dailyPercentPerTrade,
       }),
-    [walletSummary.currentBalance, walletSummary.dailyPercentPerTrade, walletSummary.investmentPerTradePercent]
+    [mainWalletBalanceBasis, walletSummary.dailyPercentPerTrade, walletSummary.investmentPerTradePercent]
+  );
+
+  const getDisplayInvestmentAmount = useCallback(
+    (row: SignalHistoryRow) =>
+      resolveSignalRowStatus(row) === "OPEN" && row.id === latestOpenSignalId
+        ? tradePreview.investmentAmount
+        : getSignalInvestmentAmount(row),
+    [latestOpenSignalId, tradePreview.investmentAmount]
+  );
+
+  const getDisplayWalletBalance = useCallback(
+    (row: SignalHistoryRow) =>
+      resolveSignalRowStatus(row) === "OPEN" && row.id === latestOpenSignalId
+        ? mainWalletBalanceBasis - tradePreview.investmentAmount
+        : getSignalBalanceValue(row),
+    [latestOpenSignalId, mainWalletBalanceBasis, tradePreview.investmentAmount]
   );
 
   const canSubmitSignal = Boolean(activeSlot && !loading && !submitLoading && remainingSignals > 0);
+
+  useEffect(() => {
+    if (!hasOpenSignals) return;
+
+    const intervalId = window.setInterval(() => {
+      void refreshSignalData();
+    }, OPEN_SIGNAL_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasOpenSignals, refreshSignalData]);
+
+  useEffect(() => {
+    if (!hasOpenSignals || !latestOpenSignalId || !openSignalRefreshTargetAt) return;
+
+    const delayMs = openSignalRefreshTargetAt.getTime() - clockNow.getTime();
+    if (delayMs <= 0) {
+      void refreshSignalData();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshSignalData();
+    }, delayMs + 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [clockNow, hasOpenSignals, latestOpenSignalId, openSignalRefreshTargetAt, refreshSignalData]);
 
   const signalEntryCard = (
     <div className="exchange-card exchange-card-strong p-5">
@@ -487,22 +640,24 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
                     <td className="px-4 py-3 text-xs">
                       {timeFormatter.format(new Date(row.buyCreatedAt || row.appliedAt))}
                       {" / "}
-                      {row.sellCreatedAt ? timeFormatter.format(new Date(row.sellCreatedAt)) : "Open"}
+                      {row.sellCreatedAt ? timeFormatter.format(new Date(row.sellCreatedAt)) : "--"}
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {row.buyPrice ? currencyFormatter.format(row.buyPrice) : "--"}
                       {" / "}
-                      {row.sellPrice ? currencyFormatter.format(row.sellPrice) : "Pending"}
+                      {resolveSignalRowStatus(row) === "CLOSED" && row.sellPrice ? currencyFormatter.format(row.sellPrice) : "--"}
                     </td>
                     <td className="px-4 py-3">{row.executedQty ? row.executedQty.toFixed(8) : "--"}</td>
                     <td className="px-4 py-3 font-mono text-xs">{row.signalToken}</td>
-                    <td className="px-4 py-3">{currencyFormatter.format(row.investmentAmount)}</td>
+                    <td className="px-4 py-3">{currencyFormatter.format(getDisplayInvestmentAmount(row))}</td>
                     <td className="px-4 py-3">100x</td>
-                    <td className="px-4 py-3">{currencyFormatter.format(row.profitAmount)}</td>
+                    <td className="px-4 py-3">
+                      {getSignalProfitAmount(row) === null ? "--" : currencyFormatter.format(getSignalProfitAmount(row) ?? 0)}
+                    </td>
                     <td className="px-4 py-3">
                       {getSignalReturnAmount(row) === null ? "--" : currencyFormatter.format(getSignalReturnAmount(row) ?? 0)}
                     </td>
-                    <td className="px-4 py-3">{currencyFormatter.format(getSignalBalanceValue(row) ?? 0)}</td>
+                    <td className="px-4 py-3">{currencyFormatter.format(getDisplayWalletBalance(row) ?? 0)}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-3 py-1 text-xs ${resolveSignalRowStatus(row) === "CLOSED" ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-100"}`}>
                         {resolveSignalRowStatus(row)}
@@ -530,10 +685,10 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
               row.slotLabel || row.slotKey,
               row.signalToken,
               currencyFormatter.format(row.previousBalance),
-              currencyFormatter.format(row.investmentAmount),
-              currencyFormatter.format(row.profitAmount),
-              currencyFormatter.format(row.totalEarned),
-              currencyFormatter.format(row.newBalance),
+              currencyFormatter.format(getDisplayInvestmentAmount(row)),
+              getSignalProfitAmount(row) === null ? "--" : currencyFormatter.format(getSignalProfitAmount(row) ?? 0),
+              getSignalReturnAmount(row) === null ? "--" : currencyFormatter.format(getSignalReturnAmount(row) ?? 0),
+              currencyFormatter.format(getDisplayWalletBalance(row)),
               row.status,
             ])}
             emptyMessage="No signal income history found yet."
@@ -642,9 +797,11 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         </div>
         <div className="rounded-2xl border border-[rgba(252,213,53,0.22)] bg-[rgba(252,213,53,0.12)] px-4 py-3 text-right text-sm">
           <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--accent-yellow)]">Current Active Time Slot</div>
-          <div className="mt-1 font-semibold text-white">{activeSlot ? `${activeSlot.start} to ${activeSlot.end}` : "Closed"}</div>
+          <div className="mt-1 font-semibold text-white">{displayActiveSlot ? `${displayActiveSlot.start} to ${displayActiveSlot.end}` : "Closed"}</div>
           <div className="mt-1 text-xs text-[var(--text-secondary)]">
-            {activeSlotCountdown ?? (nextSlot ? `Next window ${nextSlot.start} to ${nextSlot.end} in ${nextSlotCountdown}` : "Today's eligible slots are complete")}
+            {hasOpenSignals
+              ? "Open signal is still waiting for auto-sell settlement."
+              : activeSlotCountdown ?? (nextSlot ? `Next window ${nextSlot.start} to ${nextSlot.end} in ${nextSlotCountdown}` : "Today's eligible slots are complete")}
           </div>
           {/* <div className="mt-2 inline-flex rounded-full border border-white/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">
             Market Socket {marketSocketStatus}
@@ -676,7 +833,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
             <InfoLine label="Eligible slots" value={eligibleSlotLabel} />
             <InfoLine label="Required level" value={currentPackage ? String(currentPackage.requiredLevel) : "--"} />
             <InfoLine label="User level" value={String(walletSummary.userLevel)} />
-            <InfoLine label="Latest balance basis" value={currencyFormatter.format(walletSummary.currentBalance)} />
+            <InfoLine label="Latest balance basis" value={currencyFormatter.format(mainWalletBalanceBasis)} />
             <InfoLine label="Investment per trade %" value={`${walletSummary.investmentPerTradePercent}%`} />
             <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} />
             <InfoLine label="Signal validity" value={`${walletSummary.signalValidityMinutes} minutes`} />
@@ -688,7 +845,8 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
               <InfoLine label={`Investment ${walletSummary.investmentPerTradePercent}%`} value={currencyFormatter.format(tradePreview.investmentAmount)} />
               <InfoLine label={`Profit ${walletSummary.dailyPercentPerTrade}%`} value={currencyFormatter.format(tradePreview.profitAmount)} />
               <InfoLine label="Return On Auto Sell" value={currencyFormatter.format(tradePreview.totalEarned)} />
-              <InfoLine label="Wallet After Buy" value={currencyFormatter.format(walletSummary.currentBalance - tradePreview.investmentAmount)} />
+              <InfoLine label="Wallet After Buy" value={currencyFormatter.format(mainWalletBalanceBasis - tradePreview.investmentAmount)} />
+              <InfoLine label="Main Final Balance" value={currencyFormatter.format(tradePreview.newBalance)} />
             </div>
           </div>
         </div>

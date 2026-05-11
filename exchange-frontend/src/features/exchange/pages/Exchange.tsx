@@ -466,8 +466,8 @@ export default function Exchange() {
         <SignalCenter marketSocketStatus={wsStatus} compact compactSection="history" />
       </section>
 
-      <section className="hidden gap-4 lg:grid 2xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <section className="hidden gap-4 lg:grid xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(340px,400px)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
           <div className="exchange-card p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex gap-2">{(["BUY", "SELL"] as Side[]).map((option) => <ToggleButton key={option} active={side === option} label={option} onClick={() => setSide(option)} tone={option === "BUY" ? "success" : "danger"} />)}</div>
@@ -491,8 +491,7 @@ export default function Exchange() {
               </div>
               <div className="rounded-[14px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-3 py-3 text-xs text-[var(--text-secondary)]">
                 <DetailRow label="Notional" value={notional ? `${notionalFormatter.format(notional)} ${quoteAsset}` : "--"} />
-                <DetailRow label={`${quoteAsset} balance`} value={`${qtyFormatter.format(availableQuote)} ${quoteAsset}`} />
-                <DetailRow label={`${baseAsset} balance`} value={`${qtyFormatter.format(availableBase)} ${baseAsset}`} />
+                <DetailRow label="Wallet balance" value={`${qtyFormatter.format(availableQuote)} ${quoteAsset}`} />
                 {!meetsMinNotional && notional > 0 && minNotional > 0 && <div className="mt-2 text-[var(--danger)]">Minimum order size is {notionalFormatter.format(minNotional)} {quoteAsset}.</div>}
                 {sellBlocked && <div className="mt-2 text-[var(--danger)]">You have no available {baseAsset}.</div>}
               </div>
@@ -501,32 +500,19 @@ export default function Exchange() {
             </div>
           </div>
 
-          <Panel title="Your Recent Fills" subtitle={String(userTrades.length)}>
-            {userTrades.length === 0 ? <EmptyText>Place an order to populate this list.</EmptyText> : userTrades.map((trade) => (
-              <div key={trade.id} className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-3 py-2">
-                <div>
-                  <div className="font-semibold text-white">{trade.symbol}</div>
-                  <div className="text-[11px] text-[var(--text-muted)]">{new Date(trade.createdAt).toLocaleString()}</div>
-                </div>
-                <div className="text-right">
-                  <div className={trade.side === "BUY" ? "font-semibold text-[var(--success)]" : "font-semibold text-[var(--danger)]"}>{trade.side} {qtyFormatter.format(trade.qty)}</div>
-                  <div className="text-[var(--text-secondary)]">{priceFormatter.format(trade.price)}</div>
-                </div>
-              </div>
-            ))}
-          </Panel>
+          <SignalCenter marketSocketStatus={wsStatus} compact compactSection="entry" />
         </div>
 
-        <aside className="grid gap-4">
+        <aside className="min-w-0 grid gap-4">
           <Panel title="Market Depth" subtitle={symbol || "BTCUSDT"} strong>
             <div className="flex gap-2 rounded-[12px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)] p-1">
               <MarketTabButton active={marketPanelTab === "orderbook"} label="Order Book" onClick={() => setMarketPanelTab("orderbook")} />
-              <MarketTabButton active={marketPanelTab === "trades"} label="Recent Trades" onClick={() => setMarketPanelTab("trades")} />
+              <MarketTabButton active={marketPanelTab === "trades"} label="Trades" onClick={() => setMarketPanelTab("trades")} />
             </div>
             {marketPanelTab === "orderbook" ? (
               <>
-                <div className="desktop-data-table max-h-[520px] overflow-auto rounded-[12px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)]">
-                  <table className="data-table min-w-[460px]">
+                <div className="desktop-data-table min-w-0 max-h-[520px] overflow-x-auto overflow-y-auto rounded-[12px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)]">
+                  <table className="data-table min-w-[540px]">
                     <thead>
                       <tr><th>Ask price</th><th className="text-right">Size</th><th className="text-right">Total</th><th>Bid price</th><th className="text-right">Size</th><th className="text-right">Total</th></tr>
                     </thead>

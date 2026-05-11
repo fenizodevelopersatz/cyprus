@@ -110,9 +110,9 @@ export function calculateTradeResult(
   rules: TradeCalculationRules = { investmentPercent: 1, profitPercent: 0.65 }
 ): TradeCalculationResult {
   const investmentAmount = roundCurrency(currentBalance * (rules.investmentPercent / 100));
-  const profitAmount = roundCurrency(currentBalance * (rules.profitPercent / 100));
+  const profitAmount = roundCurrency(investmentAmount * (rules.profitPercent / 100));
   const totalEarned = roundCurrency(investmentAmount + profitAmount);
-  const newBalance = roundCurrency(currentBalance + totalEarned);
+  const newBalance = roundCurrency(currentBalance + profitAmount);
 
   return {
     investmentAmount,

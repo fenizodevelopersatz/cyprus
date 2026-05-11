@@ -38,6 +38,7 @@ export type KycStatusResponse = {
   userId: number;
   overallStatus: KycStepStatus;
   tier: number;
+  dateOfBirth?: string | null;
   steps: KycStep[];
   documents: KycDocument[];
   notes?: string | null;
@@ -73,6 +74,7 @@ export type SubmitDocumentsPayload = {
   primary: File;
   secondary?: File | null;
   notes?: string;
+  dateOfBirth?: string | null;
 };
 
 export type SubmitDocumentsResponse = {
@@ -86,6 +88,7 @@ export const submitKycDocuments = async ({
   primary,
   secondary,
   notes,
+  dateOfBirth,
 }: SubmitDocumentsPayload): Promise<SubmitDocumentsResponse> => {
   const formData = new FormData();
   formData.append("documentType", documentType);
@@ -95,6 +98,9 @@ export const submitKycDocuments = async ({
   }
   if (notes) {
     formData.append("notes", notes);
+  }
+  if (dateOfBirth) {
+    formData.append("dateOfBirth", dateOfBirth);
   }
 
   const response = await api.post(KYC_ENDPOINTS.documents, formData, {

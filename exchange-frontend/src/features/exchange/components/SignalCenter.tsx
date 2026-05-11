@@ -471,6 +471,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
                   <th className="px-4 py-3">Qty</th>
                   <th className="px-4 py-3">Signal Token</th>
                   <th className="px-4 py-3">Investment Amount</th>
+                  <th className="px-4 py-3">Leverage</th>
                   <th className="px-4 py-3">Profit Amount</th>
                   <th className="px-4 py-3">Return Amount</th>
                   <th className="px-4 py-3">Wallet Balance</th>
@@ -496,6 +497,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
                     <td className="px-4 py-3">{row.executedQty ? row.executedQty.toFixed(8) : "--"}</td>
                     <td className="px-4 py-3 font-mono text-xs">{row.signalToken}</td>
                     <td className="px-4 py-3">{currencyFormatter.format(row.investmentAmount)}</td>
+                    <td className="px-4 py-3">100x</td>
                     <td className="px-4 py-3">{currencyFormatter.format(row.profitAmount)}</td>
                     <td className="px-4 py-3">
                       {getSignalReturnAmount(row) === null ? "--" : currencyFormatter.format(getSignalReturnAmount(row) ?? 0)}

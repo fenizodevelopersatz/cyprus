@@ -15,6 +15,7 @@ import {
 
 const ALLOWED_KYC_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 const ALLOWED_KYC_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
+const MAX_KYC_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 function isAllowedKycFile(file) {
   if (!file) return false;
@@ -25,7 +26,7 @@ function isAllowedKycFile(file) {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_KYC_IMAGE_SIZE_BYTES },
   fileFilter: (_req, file, cb) => {
     if (isAllowedKycFile(file)) return cb(null, true);
     const error = new Error('ONLY_JPG_JPEG_PNG_ALLOWED');
@@ -151,7 +152,7 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      const { documentType, notes } = req.body || {};
+      const { documentType, notes, dateOfBirth } = req.body || {};
       const files = req.files || {};
       const primary = Array.isArray(files.primary) ? files.primary[0] : null;
       const secondary = Array.isArray(files.secondary) ? files.secondary[0] : null;
@@ -160,12 +161,13 @@ router.post(
         primary,
         secondary,
         notes,
+        dateOfBirth,
       });
       ok(res, response, 201);
     } catch (err) {
       const message = err.message || 'Unable to submit documents';
       const status =
-        ['DOCUMENT_TYPE_REQUIRED', 'PRIMARY_DOCUMENT_REQUIRED', 'ONLY_JPG_JPEG_PNG_ALLOWED'].includes(err.message)
+        ['DOCUMENT_TYPE_REQUIRED', 'PRIMARY_DOCUMENT_REQUIRED', 'SECONDARY_DOCUMENT_REQUIRED', 'ONLY_JPG_JPEG_PNG_ALLOWED', 'INVALID_IMAGE_FILE'].includes(err.message)
           ? 400
           : err.code === 'LIMIT_FILE_SIZE'
             ? 400
@@ -173,6 +175,10 @@ router.post(
       const responseMessage =
         err.message === 'ONLY_JPG_JPEG_PNG_ALLOWED'
           ? 'Only JPG, JPEG, and PNG images are allowed.'
+          : err.message === 'SECONDARY_DOCUMENT_REQUIRED'
+            ? 'Secondary image is required for this document type.'
+            : err.message === 'INVALID_IMAGE_FILE'
+              ? 'Uploaded image is invalid or empty.'
           : err.code === 'LIMIT_FILE_SIZE'
             ? 'Maximum file size is 10 MB.'
             : message;

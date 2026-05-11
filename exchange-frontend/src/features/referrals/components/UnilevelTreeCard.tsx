@@ -308,6 +308,7 @@ function TreeViewport({
 
 export default function UnilevelTreeCard({ tree, mode = "default" }: Props) {
   const rootNode = useMemo(() => toTree(tree.nodes, tree.rootUserId), [tree.nodes, tree.rootUserId]);
+  const memberCount = Math.max(0, Number(tree.totalNodes || 0) - 1);
   const dragStateRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -407,7 +408,7 @@ export default function UnilevelTreeCard({ tree, mode = "default" }: Props) {
           </div>
           <div className="space-y-2 text-right text-[10px]">
             <div className="rounded-full border border-white/10 bg-[rgba(252,213,53,0.1)] px-2.5 py-1 font-bold text-[var(--accent-yellow)]">
-              {tree.totalNodes} members
+              {memberCount} members
             </div>
             <div className="rounded-full border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 font-bold text-[var(--text-secondary)]">
               {tree.maxDepth} levels
@@ -512,7 +513,7 @@ export default function UnilevelTreeCard({ tree, mode = "default" }: Props) {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="rounded-full border border-white/10 bg-[rgba(252,213,53,0.1)] px-3 py-1.5 text-xs text-[var(--accent-yellow)]">
-                    {tree.totalNodes} members
+                    {memberCount} members
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-200">
                     {tree.maxDepth} levels deep
@@ -570,7 +571,7 @@ export default function UnilevelTreeCard({ tree, mode = "default" }: Props) {
   return (
     <>
       <section className="rounded-[28px] border border-white/10 bg-slate-950/70 p-6 shadow-[0_30px_90px_-55px_rgba(252,213,53,0.24)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="text-sm font-semibold text-white">Unilevel tree preview</div>
             <p className="mt-1 max-w-2xl text-sm text-slate-300/75">
@@ -578,7 +579,7 @@ export default function UnilevelTreeCard({ tree, mode = "default" }: Props) {
             </p>
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-slate-300/80">
-            <div className="rounded-full border border-white/10 bg-[rgba(252,213,53,0.1)] px-3 py-1.5 text-[var(--accent-yellow)]">{tree.totalNodes} members</div>
+            <div className="rounded-full border border-white/10 bg-[rgba(252,213,53,0.1)] px-3 py-1.5 text-[var(--accent-yellow)]">{memberCount} members</div>
             <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">{tree.maxDepth} levels deep</div>
             <div className="flex flex-wrap gap-2">
               {layoutOptions.map((option) => (

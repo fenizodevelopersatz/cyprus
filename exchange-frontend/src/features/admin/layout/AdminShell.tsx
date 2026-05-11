@@ -113,7 +113,7 @@ export default function AdminShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [siteName, setSiteName] = useState("CryptoSignal Exchange");
+  const [siteName, setSiteName] = useState("Primerica Exchange");
   const [siteLogoUrl, setSiteLogoUrl] = useState("/icons/logo-white.webp");
   const [kycLastReadAt, setKycLastReadAt] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -226,7 +226,7 @@ export default function AdminShell() {
     let cancelled = false;
 
     const applyBranding = (settings?: { siteName?: string; siteLogoUrl?: string }) => {
-      setSiteName(settings?.siteName?.trim() || "CryptoSignal Exchange");
+      setSiteName(settings?.siteName?.trim() || "Primerica Exchange");
       setSiteLogoUrl(settings?.siteLogoUrl?.trim() || "/icons/logo-white.webp");
     };
 

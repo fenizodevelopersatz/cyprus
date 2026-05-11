@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { withAccessToken } from "../../../app/protectedAsset";
 import Button from "../../../ui/Button";
 import Dialog from "../../../ui/Dialog";
+import InlineFeedback from "../../../ui/InlineFeedback";
+import { useTimedFeedback } from "../../../hooks/useTimedFeedback";
 import { useAuth } from "../../auth/state/auth.store";
 import { useKycData } from "../hooks/useKycData";
 import type { KycDocument, KycStep, KycStepStatus } from "../api/kyc.api";
@@ -24,6 +26,7 @@ type DocumentOption = {
   hint: string;
   primaryLabel: string;
   secondaryLabel: string;
+  secondaryRequired?: boolean;
 };
 
 type PreviewAsset = {
@@ -54,9 +57,10 @@ const documentOptions: DocumentOption[] = [
   {
     id: "aadhaarCard",
     label: "Aadhaar Card",
-    hint: "Upload the Aadhaar front and the supporting back or address side if available.",
+    hint: "Upload the Aadhaar front and back images.",
     primaryLabel: "Aadhaar front",
-    secondaryLabel: "Aadhaar back or support file",
+    secondaryLabel: "Aadhaar back",
+    secondaryRequired: true,
   },
   {
     id: "residence",
@@ -104,6 +108,14 @@ function getPendingDocumentTypeCount(documents: KycDocument[] = []) {
   ).size;
 }
 
+function getUploadedDocumentTypeCount(documents: KycDocument[] = []) {
+  return new Set(
+    documents
+      .map((doc) => normalizeDocumentTypeKey(doc.type))
+      .filter(Boolean)
+  ).size;
+}
+
 function mapProgressSteps(
   backendSteps: KycStep[] | undefined,
   overallStatus?: string,
@@ -119,15 +131,17 @@ function mapProgressSteps(
   const hasUploadedDocuments = uploadedDocuments.length > 0;
   const infoApproved = normalizeStatus(infoStep?.status) === "APPROVED";
   const approvedDocumentTypeCount = getApprovedDocumentTypeCount(uploadedDocuments);
+  const uploadedDocumentTypeCount = getUploadedDocumentTypeCount(uploadedDocuments);
   const hasApprovedIdentityDocument = approvedDocumentTypeCount > 0;
   const hasReviewingIdentityDocument = uploadedDocuments.some((doc) => {
     const status = normalizeStatus(doc.status);
     return status === "IN_REVIEW" || status === "PENDING" || status === "REJECTED";
   });
+  const hasUploadedAllRequiredDocuments = uploadedDocumentTypeCount >= requiredDocumentTypeCount;
   const hasCompletedAllRequiredDocuments = approvedDocumentTypeCount >= requiredDocumentTypeCount;
   const idStatus =
     normalizeStatus(idStep?.status) ??
-    (hasCompletedAllRequiredDocuments ? "APPROVED" : hasApprovedIdentityDocument || hasReviewingIdentityDocument ? "IN_REVIEW" : undefined) ??
+    (hasCompletedAllRequiredDocuments ? "APPROVED" : hasUploadedAllRequiredDocuments || hasApprovedIdentityDocument || hasReviewingIdentityDocument ? "IN_REVIEW" : undefined) ??
     normalizedOverall ??
     "PENDING";
   const faceStatus = hasCompletedAllRequiredDocuments ? normalizeStatus(faceStep?.status) ?? "APPROVED" : "PENDING";
@@ -137,9 +151,9 @@ function mapProgressSteps(
     ? "upcoming"
     : !hasUploadedDocuments
     ? "upcoming"
-    : hasCompletedAllRequiredDocuments
+      : hasCompletedAllRequiredDocuments
       ? "complete"
-      : idStatus === "IN_REVIEW" || idStatus === "REJECTED" || idStatus === "PENDING"
+      : hasUploadedAllRequiredDocuments || idStatus === "IN_REVIEW" || idStatus === "REJECTED" || idStatus === "PENDING"
         ? "current"
         : "upcoming";
   const faceState: StepStatus =
@@ -257,6 +271,11 @@ function isAllowedImageFile(file: File | null) {
   const hasAllowedMimeType = ALLOWED_IMAGE_MIME_TYPES.has(normalizedMimeType);
   const hasAllowedExtension = ALLOWED_IMAGE_EXTENSIONS.some((extension) => normalizedName.endsWith(extension));
   return hasAllowedMimeType || hasAllowedExtension;
+}
+
+function getFileSizeError(file: File | null) {
+  if (!file) return null;
+  return file.size > 10 * 1024 * 1024 ? "Maximum image size is 10 MB." : null;
 }
 
 function ProgressRail({ steps }: { steps: ProgressStep[] }) {
@@ -428,13 +447,13 @@ export default function KycCenter() {
   const { status, history, loading, error, submitDocuments } = useKycData();
 
   const [selectedDocument, setSelectedDocument] = useState(documentOptions[0].id);
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [note, setNote] = useState("");
   const [primaryFile, setPrimaryFile] = useState<File | null>(null);
   const [secondaryFile, setSecondaryFile] = useState<File | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<PreviewAsset | null>(null);
+  const { feedback: submitFeedback, setFeedback: setSubmitFeedback } = useTimedFeedback();
   const primaryInputRef = useRef<HTMLInputElement | null>(null);
   const secondaryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -463,6 +482,11 @@ export default function KycCenter() {
   );
   const hasPendingPrimaryFile = Boolean(primaryFile);
   const allowSubmissions = selectedDocumentAllowed && canSubmitDocuments && !hasCompletedAllRequiredDocuments && hasPendingPrimaryFile;
+  const showSubmitButton = selectedDocumentAllowed && canSubmitDocuments && !hasCompletedAllRequiredDocuments;
+
+  useEffect(() => {
+    setDateOfBirth(status?.dateOfBirth || "");
+  }, [status?.dateOfBirth]);
 
   const currentLevelTitle = fullyVerified ? "Verified" : normalizeStatus(overallStatus) === "IN_REVIEW" ? "In Review" : "Basic";
   const currentLevelNote = fullyVerified
@@ -482,7 +506,7 @@ export default function KycCenter() {
       : typeof rejectedHistory?.metadata === "object" && rejectedHistory?.metadata && "notes" in rejectedHistory.metadata
         ? String((rejectedHistory.metadata as Record<string, unknown>).notes || "").trim() || null
         : null;
-  const inReviewMessage = status?.uploadBlockedReason || statusMessage || "Documents are checked by compliance within 24 hours.";
+  const inReviewMessage = status?.uploadBlockedReason || "Documents are checked by compliance within 24 hours.";
 
   const primaryExistingDoc = useMemo(() => {
     const explicitPrimary = findDocumentByType(documents, selectedDocMeta?.id, false);
@@ -525,21 +549,55 @@ export default function KycCenter() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedDocMeta || !selectedDocumentAllowed || !canSubmitDocuments || hasCompletedAllRequiredDocuments) return;
-    setSubmitError(null);
-    setStatusMessage(null);
+    setSubmitFeedback(null);
 
     if (!primaryFile) {
-      setSubmitError(`Upload ${selectedDocMeta.primaryLabel.toLowerCase()} before submitting.`);
+      setSubmitFeedback({
+        tone: "error",
+        text: `Upload ${selectedDocMeta.primaryLabel.toLowerCase()} before submitting.`,
+      });
       return;
     }
 
     if (!isAllowedImageFile(primaryFile)) {
-      setSubmitError("Only JPG, JPEG, and PNG images are allowed.");
+      setSubmitFeedback({
+        tone: "error",
+        text: "Only JPG, JPEG, and PNG images are allowed.",
+      });
+      return;
+    }
+
+    const primarySizeError = getFileSizeError(primaryFile);
+    if (primarySizeError) {
+      setSubmitFeedback({
+        tone: "error",
+        text: primarySizeError,
+      });
+      return;
+    }
+
+    if (selectedDocMeta.secondaryRequired && !secondaryFile) {
+      setSubmitFeedback({
+        tone: "error",
+        text: `Upload ${selectedDocMeta.secondaryLabel.toLowerCase()} before submitting.`,
+      });
       return;
     }
 
     if (secondaryFile && !isAllowedImageFile(secondaryFile)) {
-      setSubmitError("Secondary file must be JPG, JPEG, or PNG.");
+      setSubmitFeedback({
+        tone: "error",
+        text: "Secondary file must be JPG, JPEG, or PNG.",
+      });
+      return;
+    }
+
+    const secondarySizeError = getFileSizeError(secondaryFile);
+    if (secondarySizeError) {
+      setSubmitFeedback({
+        tone: "error",
+        text: secondarySizeError,
+      });
       return;
     }
 
@@ -550,8 +608,12 @@ export default function KycCenter() {
         primary: primaryFile,
         secondary: secondaryFile ?? undefined,
         notes: note || undefined,
+        dateOfBirth: dateOfBirth || undefined,
       });
-      setStatusMessage(response.message ?? "Documents submitted. Compliance will review them shortly.");
+      setSubmitFeedback({
+        tone: "success",
+        text: response.message ?? "Documents submitted. Compliance will review them shortly.",
+      });
       setPrimaryFile(null);
       setSecondaryFile(null);
       setNote("");
@@ -562,7 +624,10 @@ export default function KycCenter() {
         err && typeof err === "object" && "message" in err
           ? (err as { message?: string }).message
           : "Unable to submit documents. Try again shortly.";
-      setSubmitError(fallback ?? "Unable to submit documents. Try again shortly.");
+      setSubmitFeedback({
+        tone: "error",
+        text: fallback ?? "Unable to submit documents. Try again shortly.",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -668,14 +733,25 @@ export default function KycCenter() {
               />
               <UploadSlot
                 title={selectedDocMeta?.secondaryLabel ?? "Secondary document"}
-                subtitle="Optional supporting file"
+                subtitle={selectedDocMeta?.secondaryRequired ? getUploadCardLabel(selectedDocMeta) : "Optional supporting file"}
                 file={secondaryFile}
                 existing={secondaryExistingDoc}
+                required={Boolean(selectedDocMeta?.secondaryRequired)}
                 inputRef={secondaryInputRef}
                 onChange={setSecondaryFile}
                 onPreview={openPreview}
               />
             </div>
+          </div>
+
+          <div className="rounded-[22px] border border-white/8 bg-[#12161a] p-4 sm:rounded-[28px] sm:p-5">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#cbb98b]">Date of birth</div>            
+            <input
+              type="date"
+              value={dateOfBirth}
+              onChange={(event) => setDateOfBirth(event.target.value)}
+              className="mt-3 w-full rounded-[18px] border border-slate-500/35 bg-[#1a1f23] px-4 py-3 text-[11px] text-white outline-none transition focus:border-slate-400/60 sm:mt-4 sm:rounded-[22px] sm:py-4 sm:text-[13px]"
+            />
           </div>
 
           <div className="rounded-[22px] border border-white/8 bg-[#12161a] p-4 sm:rounded-[28px] sm:p-5">
@@ -689,21 +765,18 @@ export default function KycCenter() {
             />
           </div>
 
-          {submitError ? (
-            <div className="rounded-[22px] border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-100 sm:text-sm">{submitError}</div>
-          ) : null}
-          {statusMessage ? (
-            <div className="rounded-[22px] border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-[13px] text-emerald-100 sm:text-sm">{statusMessage}</div>
-          ) : null}
+          <InlineFeedback feedback={submitFeedback} className="text-[13px] sm:text-sm" />
 
-          <Button
-            type="submit"
-            size="lg"
-            disabled={submitting || !allowSubmissions}
-            className="w-full rounded-[20px] border-0 bg-[linear-gradient(180deg,#ffe37a,#ffd84f)] py-3.5 text-[14px] font-extrabold text-[#151515] shadow-[0_14px_40px_rgba(255,216,79,0.26)] hover:brightness-105 sm:rounded-[24px] sm:py-4 sm:text-base"
-          >
-            {submitting ? "Submitting..." : allowSubmissions ? "Submit for Review" : "Select a new document to submit"}
-          </Button>
+          {showSubmitButton ? (
+            <Button
+              type="submit"
+              size="lg"
+              disabled={submitting || !allowSubmissions}
+              className="w-full rounded-[20px] border-0 bg-[linear-gradient(180deg,#ffe37a,#ffd84f)] py-3.5 text-[14px] font-extrabold text-[#151515] shadow-[0_14px_40px_rgba(255,216,79,0.26)] hover:brightness-105 sm:rounded-[24px] sm:py-4 sm:text-base"
+            >
+              {submitting ? "Submitting..." : "Submit for Review"}
+            </Button>
+          ) : null}
         </form>
 
         <aside className="min-w-0 space-y-4 sm:space-y-5">

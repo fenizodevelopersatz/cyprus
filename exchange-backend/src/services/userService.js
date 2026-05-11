@@ -300,7 +300,7 @@ export async function beginGoogleAuthenticatorSetup(userId) {
 
   await ensureUserProfile(userId);
 
-  const issuer = 'CryptoSignal Exchange';
+  const issuer = 'Primerica Exchange';
   const secret = generateBase32Secret(32);
   const otpauthUrl = buildOtpAuthUrl({
     issuer,

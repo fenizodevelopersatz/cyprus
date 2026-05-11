@@ -90,6 +90,8 @@ const getOneTimePromotionReward = (levelRank: number) => {
   return PROMOTION_REWARD_LADDER[normalizedRank - 1] ?? 0;
 };
 
+const getAchievementStarCount = (levelRank: number) => Math.max(0, Math.min(12, Number(levelRank) || 0));
+
 const formatMlmMoney = (amount: number) => `$${numberFormatter.format(amount)}`;
 
 const sumPromotionRewards = (promotionHistory?: Array<{ rewardAmount?: string | number | null }> | null) =>
@@ -139,6 +141,7 @@ export default function Dashboard() {
   const userLevelImage = resolveUserLevelImage(user?.currentLevelRank);
   const userDisplayName = getUserDisplayName(user);
   const currentLevelRank = Math.max(0, Number(user?.currentLevelRank ?? 0) || 0);
+  const achievementStarCount = getAchievementStarCount(mlmSnapshot.levelRank || currentLevelRank);
   const promotionReward = mlmSnapshot.promotionReward;
   const tradingProfit = useMemo(
     () =>
@@ -312,14 +315,14 @@ export default function Dashboard() {
         )}
 
         <section className="grid grid-cols-2 gap-3">
-          <MetricCard label="Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} compact />
-          <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} compact />
-          <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} compact />
+          <MetricCard label="Total Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} compact />
+          <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} valueClassName="text-[var(--success)]" compact />
+          <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} valueClassName="text-[var(--success)]" compact />
           <MetricCard label="Salary / 10 Days" value={formatMlmMoney(mlmSnapshot.tenDaySalary)} compact />
           <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} compact />
           <MetricCard label="Birthday Reward" value={formatMlmMoney(mlmSnapshot.birthdayReward)} compact />
-          <MetricCard label="Total Team Size" value={integerFormatter.format(mlmSnapshot.totalTeamSize)} compact />
-          <MetricCard label="Daily Signal" value={String(dailySignalCount)} compact />
+          <MetricCard label="Total Team Size" value={integerFormatter.format(mlmSnapshot.totalTeamSize)} valueClassName="text-[var(--success)]" compact />
+          <MetricCard label="Daily Signal" value={String(dailySignalCount)} valueClassName="text-[var(--success)]" compact />
           <MetricCard
             label="Top Mover"
             value={featuredTicker ? `${featuredTicker.symbol}` : "--"}
@@ -486,7 +489,7 @@ export default function Dashboard() {
             </button>
             <div>
               <div className="micro-label">Overview</div>
-              <div className="section-title mt-1"><small>welcome back, </small> <strong>{userDisplayName}</strong></div>
+              <div className="section-title mt-1"><small>welcome, </small> <strong>{userDisplayName}</strong></div>
               <div className="mt-1 text-xs text-[var(--text-secondary)]">
                 Wallet totals refresh automatically so every page stays aligned with your latest exchange balance.
               </div>
@@ -497,8 +500,8 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
-            <Button variant="secondary" size="sm" onClick={handleDashboardRefresh}>              
-            </Button>
+            {/* <Button variant="secondary" size="sm" onClick={handleDashboardRefresh}>              
+            </Button> */}
             <Button variant="secondary" size="sm" onClick={() => setAchievementOpen(true)}>
               Achieve
             </Button>
@@ -516,14 +519,14 @@ export default function Dashboard() {
       )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} />
-        <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} />
-        <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} />
+        <MetricCard label="Total Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} valueClassName="text-[var(--success)]" />
+        <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} valueClassName="text-[var(--success)]" />
+        <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} valueClassName="text-[var(--success)]" />
         <MetricCard label="Salary / 10 Days" value={formatMlmMoney(mlmSnapshot.tenDaySalary)} />
         <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} />
         <MetricCard label="Birthday Reward" value={formatMlmMoney(mlmSnapshot.birthdayReward)} />
-        <MetricCard label="Total Team Size" value={integerFormatter.format(mlmSnapshot.totalTeamSize)} />
-        <MetricCard label="Daily Signal" value={String(dailySignalCount)} />
+        <MetricCard label="Total Team Size" value={integerFormatter.format(mlmSnapshot.totalTeamSize)} valueClassName="text-[var(--success)]" />
+        <MetricCard label="Daily Signal" value={String(dailySignalCount)} valueClassName="text-[var(--success)]" />
         <MetricCard
           label="24h Top Mover"
           value={
@@ -791,11 +794,15 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="relative mx-auto mt-3 flex max-w-[180px] items-center justify-center gap-2 rounded-full bg-[linear-gradient(90deg,#22336f,#7a5f1d,#22336f)] px-4 py-1.5 text-[#ffe7a0] shadow-[0_10px_24px_rgba(0,0,0,0.35)]">
-              <span className="text-sm leading-none">★</span>
-              <span className="text-sm leading-none">★</span>
-              <span className="text-sm leading-none">★</span>
-            </div>
+            {achievementStarCount > 0 ? (
+              <div className="relative mx-auto mt-3 flex max-w-[220px] flex-wrap items-center justify-center gap-2 rounded-full bg-[linear-gradient(90deg,#22336f,#7a5f1d,#22336f)] px-4 py-1.5 text-[#ffe7a0] shadow-[0_10px_24px_rgba(0,0,0,0.35)]">
+                {Array.from({ length: achievementStarCount }).map((_, index) => (
+                  <span key={`achievement-star-top-${index}`} className="text-sm leading-none">
+                    {"\u2605"}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
             <div className="relative mt-5 text-[0.9rem] font-semibold uppercase tracking-[0.14em] text-[#f5dc90]">User Name</div>
             <div className="relative mt-2 rounded-2xl border border-[#8a6a1f] bg-[linear-gradient(90deg,rgba(26,38,88,0.78),rgba(45,61,130,0.58))] px-4 py-3 text-lg font-bold text-white">
@@ -819,24 +826,26 @@ export default function Dashboard() {
             </p>
 
             <div className="relative mt-4 text-xs uppercase tracking-[0.22em] text-[#a9965c]">
-              CryptoSignal Exchange Growth Journey
+              Primerica Exchange Growth Journey
             </div>
             <div className="relative mt-5 flex items-center justify-between gap-3 border-t border-[#6e5316]/70 pt-3">
               <div className="flex items-center gap-2 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-3 py-1.5">
                 <img
                   src={siteLogoUrl || DEFAULT_SITE_LOGO}
-                  alt="CryptoSignal Exchange"
+                  alt="Primerica Exchange"
                   className="h-5 w-auto max-w-[96px] object-contain"
                   onError={(event) => {
                     event.currentTarget.src = DEFAULT_SITE_LOGO;
                   }}
                 />
               </div>
-              <div className="flex items-center gap-1 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-3 py-1.5 text-[13px] leading-none text-[#f0d27a]">
-                <span>★</span>
-                <span>★</span>
-                <span>★</span>
-              </div>
+              {achievementStarCount > 0 ? (
+                <div className="flex max-w-[160px] flex-wrap items-center justify-end gap-1 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-3 py-1.5 text-[13px] leading-none text-[#f0d27a]">
+                  {Array.from({ length: achievementStarCount }).map((_, index) => (
+                    <span key={`achievement-star-bottom-${index}`}>{"\u2605"}</span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -913,17 +922,19 @@ function MetricCard({
   sublabel,
   compact = false,
   sublabelClassName,
+  valueClassName,
 }: {
   label: string;
   value: ReactNode;
   sublabel?: string;
   compact?: boolean;
   sublabelClassName?: string;
+  valueClassName?: string;
 }) {
   return (
     <div className="exchange-card p-4">
       <div className="micro-label">{label}</div>
-      <div className={`mt-2 font-bold text-white ${compact ? "text-[0.92rem] leading-5" : "text-[clamp(1.08rem,1rem+0.35vw,1.45rem)] leading-tight"}`}>{value}</div>
+      <div className={`mt-2 font-bold ${valueClassName ?? "text-white"} ${compact ? "text-[0.92rem] leading-5" : "text-[clamp(1.08rem,1rem+0.35vw,1.45rem)] leading-tight"}`}>{value}</div>
       {sublabel ? <div className={`mt-1 ${sublabelClassName ?? "text-[var(--text-muted)]"} ${compact ? "text-[11px]" : "text-xs"}`}>{sublabel}</div> : null}
     </div>
   );
@@ -945,7 +956,7 @@ function TrackedMarketsCard({ tickers, compact = false }: { tickers: Array<{ sym
             {trackedPairs.map((symbol) => (
               <div
                 key={symbol}
-                className={`flex items-center gap-2.5 rounded-xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-3 py-2 font-medium text-white ${compact ? "text-[11px]" : "text-xs"}`}
+                className={`flex items-center gap-2.5 rounded-xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-3 py-2 font-medium text-[var(--success)] ${compact ? "text-[11px]" : "text-xs"}`}
               >
                 <DashboardPairIcon symbol={symbol} compact={compact} />
                 <span>{symbol}</span>

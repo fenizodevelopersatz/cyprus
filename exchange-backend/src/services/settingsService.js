@@ -11,7 +11,7 @@ const SETTINGS_FILE = path.resolve(STORAGE_DIR, 'admin-settings.json');
 const SETTINGS_ASSET_DIR = path.resolve(STORAGE_DIR, 'site');
 
 const DEFAULT_SETTINGS = {
-  siteName: 'CryptoSignal Exchange',
+  siteName: 'Primerica Exchange',
   siteLogoUrl: '/icons/logo-white.webp',
   siteFaviconUrl: '/favicon.ico',
   maintenanceMode: false,

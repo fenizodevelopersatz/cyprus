@@ -449,7 +449,7 @@ export default function AdminSettingsPage() {
                     label="Site name"
                     value={form.siteName}
                     onChange={(val) => handleChange("siteName", val)}
-                    placeholder="CryptoSignal Exchange"
+                    placeholder="Primerica Exchange"
                   />
                   <div className="rounded-[24px] border border-white/10 bg-black/10 p-4">
                     <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Brand upload guide</div>

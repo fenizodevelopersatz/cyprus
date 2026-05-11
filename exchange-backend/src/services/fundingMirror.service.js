@@ -142,10 +142,24 @@ export async function syncWalletAddressesForUser(userId) {
     if (existing) {
       await db('wallet_addresses').where({ id: existing.id }).update(payload);
     } else {
-      await db('wallet_addresses').insert({
-        ...payload,
-        created_at: wallet.createdAt || new Date(),
-      });
+      try {
+        await db('wallet_addresses').insert({
+          ...payload,
+          created_at: wallet.createdAt || new Date(),
+        });
+      } catch (err) {
+        const isDuplicate =
+          err?.code === 'ER_DUP_ENTRY' ||
+          String(err?.message || '').includes('wallet_addresses_user_network_token_unique');
+        if (!isDuplicate) throw err;
+
+        const duplicateRow = await db('wallet_addresses')
+          .where({ user_id: userId, network, token: 'USDT' })
+          .first();
+        if (!duplicateRow) throw err;
+
+        await db('wallet_addresses').where({ id: duplicateRow.id }).update(payload);
+      }
     }
   }
 }

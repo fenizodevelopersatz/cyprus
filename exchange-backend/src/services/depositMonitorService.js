@@ -342,8 +342,19 @@ async function pollTronDeposits(config) {
   }
 }
 
-async function runPollCycle() {
-  for (const config of NETWORK_CONFIGS) {
+async function runPollCycle(targetNetwork = null) {
+  const normalizedTarget = String(targetNetwork || '').trim().toLowerCase();
+  const targetConfigs = normalizedTarget
+    ? NETWORK_CONFIGS.filter((config) => config.network === normalizedTarget)
+    : NETWORK_CONFIGS;
+
+  if (normalizedTarget && targetConfigs.length === 0) {
+    const err = new Error('INVALID_DEPOSIT_NETWORK');
+    err.status = 400;
+    throw err;
+  }
+
+  for (const config of targetConfigs) {
     const networkLogger = getNetworkLogger(config.network);
     if (!config.contractAddress) {
       networkLogger.warn(
@@ -370,9 +381,12 @@ async function runPollCycle() {
   }
 }
 
-export async function runDepositMonitorCycleNow() {
-  await runPollCycle();
-  return { completed: true, networks: NETWORK_CONFIGS.map((config) => config.network) };
+export async function runDepositMonitorCycleNow({ network } = {}) {
+  await runPollCycle(network);
+  return {
+    completed: true,
+    networks: network ? [String(network).trim().toLowerCase()] : NETWORK_CONFIGS.map((config) => config.network),
+  };
 }
 
 export function startDepositMonitor() {

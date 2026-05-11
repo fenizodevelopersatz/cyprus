@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CONTENT_ENDPOINTS } from "../../app/apiRoutes";
 
-export const DEFAULT_SITE_NAME = "CryptoSignal Exchange";
+export const DEFAULT_SITE_NAME = "Primerica Exchange";
 export const DEFAULT_SITE_LOGO = "/icons/logo.png";
 export const DEFAULT_SITE_FAVICON = "/favicon.ico";
 

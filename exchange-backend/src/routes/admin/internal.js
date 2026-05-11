@@ -6,6 +6,7 @@ import { rebuildUserEligibleLevelsDaily, processDailyRecurringBonusCron } from '
 import { runDepositMonitorCycleNow } from '../../services/depositMonitorService.js';
 import { evaluateAutoClosePositions } from '../../services/futuresService.js';
 import { closeExpiredSignalTrades } from '../../services/userSignalService.js';
+import { scanAllUserWalletLiveBalances } from '../../services/adminUserWalletBalanceScan.service.js';
 
 const router = express.Router();
 const guard = [requireAuth, requireRole('admin')];
@@ -42,11 +43,20 @@ const MANUAL_CRON_JOBS = {
   deposit_monitor: {
     key: 'deposit_monitor',
     label: 'Deposit Monitor Poll',
-    description: 'Run one deposit monitor polling cycle across configured networks.',
+    description: 'Run one deposit monitor polling cycle across all configured networks or a single selected network.',
     method: 'POST',
     path: '/admin/internal/cron-jobs/deposit_monitor/run',
-    samplePayload: {},
-    run: async () => runDepositMonitorCycleNow(),
+    samplePayload: { network: 'bsc' },
+    run: async (payload) => runDepositMonitorCycleNow({ network: payload?.network }),
+  },
+  user_wallet_live_balance_scan: {
+    key: 'user_wallet_live_balance_scan',
+    label: 'User Wallet Live Balance Scan',
+    description: 'Fetch current on-chain wallet balances for all users across all configured networks or a single selected network, with per-wallet logging.',
+    method: 'POST',
+    path: '/admin/internal/cron-jobs/user_wallet_live_balance_scan/run',
+    samplePayload: { network: 'tron' },
+    run: async (payload) => scanAllUserWalletLiveBalances({ network: payload?.network }),
   },
   futures_auto_close: {
     key: 'futures_auto_close',

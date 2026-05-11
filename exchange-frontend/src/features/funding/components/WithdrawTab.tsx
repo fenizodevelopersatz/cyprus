@@ -65,6 +65,7 @@ export function WithdrawTab(props: Props) {
   const preview = policy?.preview;
   const eligibilityWarnings = Array.isArray(policyUser?.eligibilityWarnings) ? policyUser.eligibilityWarnings : [];
   const kycPending = policyUser?.kycVerified === false;
+  const showSubmitButton = policyUser?.kycVerified === true;
   const mobileNetworkOrder: Record<string, number> = {
     tron: 0,
     bsc: 1,
@@ -148,9 +149,14 @@ export function WithdrawTab(props: Props) {
             placeholder="Write withdrawal details for admin review"
             className="min-h-28 w-full rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-[var(--bg-input)] px-4 py-3 text-sm text-white placeholder:text-[var(--text-muted)] focus:border-[var(--accent-yellow)] focus:outline-none focus:shadow-[0_0_0_3px_rgba(252,213,53,0.10)]"
           />
-          <Button type="submit" disabled={props.submitting || policyRules?.withdrawalEnabled === false || policyUser?.canRequestWithdrawal === false}>
-            {props.submitting ? "Submitting..." : "Submit Withdrawal"}
-          </Button>
+          {showSubmitButton ? (
+            <Button
+              type="submit"
+              disabled={props.submitting || policyRules?.withdrawalEnabled === false || policyUser?.canRequestWithdrawal === false}
+            >
+              {props.submitting ? "Submitting..." : "Submit Withdrawal"}
+            </Button>
+          ) : null}
           {props.message &&
             (needsKycNavigation ? (
               <Link

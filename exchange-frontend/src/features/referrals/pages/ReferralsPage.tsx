@@ -303,8 +303,7 @@ export default function ReferralsPage() {
   const hasHistory = history.length > 0;
   const totalInvitesMetric = metrics.find((item) => item.key === "totalInvites");
   const totalInvitesValue =
-    totalInvitesMetric?.formattedValue ??
-    String(mlm?.summary.teamTotalMembers ?? dashboard?.referrals?.length ?? 0);
+    String(mlm?.summary.teamTotalMembers ?? totalInvitesMetric?.formattedValue ?? dashboard?.referrals?.length ?? 0);
   const directInvitesValue = String(mlm?.summary.directTotalMembers ?? dashboard?.referrals?.length ?? 0);
   const bonusPayoutHistory = mlm?.bonusPayoutHistory ?? [];
   const mobileTreeNodes = useMemo(() => {

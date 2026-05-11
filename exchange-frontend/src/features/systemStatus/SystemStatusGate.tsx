@@ -97,7 +97,7 @@ function MaintenanceScreen({
   return (
     <FullScreenMessage
       title="We are under maintenance"
-      message={message || "CryptoSignal Exchange is currently undergoing scheduled maintenance. Please check back soon."}
+      message={message || "Primerica Exchange is currently undergoing scheduled maintenance. Please check back soon."}
       actionLabel="Retry status"
       onAction={onRetry}
     />

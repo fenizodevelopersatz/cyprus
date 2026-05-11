@@ -27,6 +27,10 @@ export default function AdminUserLookupPage() {
   const [searchInput, setSearchInput] = useState("");
   const [email, setEmail] = useState("");
   const [cronResponses, setCronResponses] = useState<Record<string, AdminManualCronRunResponse | null>>({});
+  const [networkSelections, setNetworkSelections] = useState<Record<string, "all" | "ethereum" | "bsc" | "tron">>({
+    deposit_monitor: "all",
+    user_wallet_live_balance_scan: "all",
+  });
 
   const query = useQuery({
     queryKey: ["admin", "hidden-user-lookup", email],
@@ -41,7 +45,14 @@ export default function AdminUserLookupPage() {
 
   const runCronMutation = useMutation({
     mutationFn: async (job: AdminManualCronJob) => {
-      const response = await runAdminManualCronJob(job.key, job.samplePayload);
+      const selectedNetwork = networkSelections[job.key] ?? "all";
+      const payload =
+        "network" in (job.samplePayload || {})
+          ? selectedNetwork === "all"
+            ? {}
+            : { network: selectedNetwork }
+          : job.samplePayload;
+      const response = await runAdminManualCronJob(job.key, payload);
       return { jobKey: job.key, response };
     },
     onSuccess: ({ jobKey, response }) => {
@@ -96,6 +107,14 @@ export default function AdminUserLookupPage() {
               const response = cronResponses[job.key];
               const fullUrl = `${baseOrigin}${job.path}`;
               const isRunning = runCronMutation.isPending && runningJobKey === job.key;
+              const selectedNetwork = networkSelections[job.key] ?? "all";
+              const supportsNetworkSelection = "network" in (job.samplePayload || {});
+              const visiblePayload =
+                supportsNetworkSelection
+                  ? selectedNetwork === "all"
+                    ? {}
+                    : { network: selectedNetwork }
+                  : job.samplePayload;
 
               return (
                 <article key={job.key} className="rounded-2xl border border-white/10 bg-[#0f1724]/80 p-4">
@@ -117,6 +136,27 @@ export default function AdminUserLookupPage() {
                   <p className="mt-3 text-sm leading-6 text-slate-300">{job.description}</p>
 
                   <div className="mt-4 space-y-3 text-xs">
+                    {supportsNetworkSelection ? (
+                      <div>
+                        <div className="mb-1 uppercase tracking-[0.18em] text-slate-500">Network</div>
+                        <select
+                          value={selectedNetwork}
+                          onChange={(event) =>
+                            setNetworkSelections((current) => ({
+                              ...current,
+                              [job.key]: event.target.value as "all" | "ethereum" | "bsc" | "tron",
+                            }))
+                          }
+                          className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-slate-200 outline-none"
+                        >
+                          <option value="all">All networks</option>
+                          <option value="ethereum">Ethereum</option>
+                          <option value="bsc">BSC</option>
+                          <option value="tron">TRON</option>
+                        </select>
+                      </div>
+                    ) : null}
+
                     <div>
                       <div className="mb-1 uppercase tracking-[0.18em] text-slate-500">URL</div>
                       <div className="break-all rounded-xl border border-white/10 bg-black/20 px-3 py-2 font-mono text-slate-200">
@@ -127,7 +167,7 @@ export default function AdminUserLookupPage() {
                     <div>
                       <div className="mb-1 uppercase tracking-[0.18em] text-slate-500">Payload</div>
                       <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-slate-200">
-                        {JSON.stringify(job.samplePayload, null, 2)}
+                        {JSON.stringify(visiblePayload, null, 2)}
                       </pre>
                     </div>
 

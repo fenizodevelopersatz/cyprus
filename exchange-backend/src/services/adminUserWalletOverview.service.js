@@ -7,7 +7,7 @@ import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 
 const ERC20_ABI = ['function balanceOf(address owner) view returns (uint256)'];
 
-const NETWORKS = [
+export const NETWORKS = [
   { key: 'ethereum', walletNetwork: 'ERC20', nativeAsset: 'ETH', nativeDecimals: 18 },
   { key: 'bsc', walletNetwork: 'BEP20', nativeAsset: 'BNB', nativeDecimals: 18 },
   { key: 'tron', walletNetwork: 'TRC20', nativeAsset: 'TRX', nativeDecimals: 6 },
@@ -49,7 +49,12 @@ async function fetchTronWalletBalances({ address, fullHost, contractAddress, tok
   };
 }
 
-async function fetchNetworkOverview(walletRow, meta) {
+export function getNetworkMetaByWalletNetwork(walletNetwork) {
+  const normalized = String(walletNetwork || '').trim().toUpperCase();
+  return NETWORKS.find((item) => item.walletNetwork === normalized) || null;
+}
+
+export async function fetchNetworkOverview(walletRow, meta) {
   const assetConfig = await getSignalAssetSecretByNetwork(meta.walletNetwork);
   const explorerUrl = walletRow.address ? await buildAddressExplorerUrl(meta.key, walletRow.address) : null;
 

@@ -84,7 +84,7 @@ router.get('/system-status', async (_req, res) => {
 router.get('/branding', async (_req, res) => {
   const settings = await getSettings();
   ok(res, {
-    siteName: settings.siteName || 'CryptoSignal Exchange',
+    siteName: settings.siteName || 'Primerica Exchange',
     siteLogoUrl: settings.siteLogoUrl || null,
     siteFaviconUrl: settings.siteFaviconUrl || null,
   });

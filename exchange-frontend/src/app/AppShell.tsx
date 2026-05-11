@@ -126,7 +126,7 @@ export default function AppShell() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [siteName, setSiteName] = useState("CryptoSignal Exchange");
+  const [siteName, setSiteName] = useState("Primerica Exchange");
   const [siteLogoUrl, setSiteLogoUrl] = useState("/icons/logo.png");
   const [sidebarLogoUrl, setSidebarLogoUrl] = useState("/icons/logo.png");
   const { totalUsdt } = useLiveWalletBalance();
@@ -191,7 +191,7 @@ export default function AppShell() {
   };
 
   const applySiteBranding = (settings?: { siteName?: string; siteLogoUrl?: string; siteFaviconUrl?: string }) => {
-    setSiteName(settings?.siteName?.trim() || "CryptoSignal Exchange");
+    setSiteName(settings?.siteName?.trim() || "Primerica Exchange");
     const nextLogo = settings?.siteLogoUrl?.trim() || "/icons/logo.png";
     const logoWithVersion = nextLogo.startsWith("/icons/")
       ? nextLogo

@@ -1,11 +1,12 @@
 import path from 'path';
 import { promises as fs } from 'fs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
 import { db } from '../db.js';
 import { cfg } from '../config.js';
 import { sendKycSubmissionEmail, sendKycApprovedEmail } from './mailService.js';
-import { getUserContact, toAbsoluteProfilePhotoUrl } from './userService.js';
+import { getUserContact, toAbsoluteProfilePhotoUrl, updateProfile } from './userService.js';
 
 const STORAGE_ROOT = path.resolve('storage', 'kyc');
 const IDENTITY_TYPES = new Set(['passport', 'driverslicense', 'drivers_license', 'nationalid', 'national_id', 'identitycard', 'identity_card', 'aadhaarcard', 'aadhaar_card', 'aadharcard', 'aadhar_card']);
@@ -43,6 +44,10 @@ const REQUEST_STATUS_FILTERS = {
   APPROVED: ['approved', 'APPROVED', 'verified', 'completed'],
   REJECTED: ['rejected', 'REJECTED', 'failed'],
 };
+
+const ALLOWED_KYC_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
+const ALLOWED_KYC_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
+const MAX_KYC_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export const kycAdminEmitter = new EventEmitter();
 
@@ -83,6 +88,34 @@ function parseDocumentsField(value) {
 
 function unique(values) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function getSafeImageExtension(file) {
+  const mimeType = String(file?.mimetype || '').trim().toLowerCase();
+  if (mimeType === 'image/png') return '.png';
+  if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') return '.jpg';
+  const extension = path.extname(String(file?.originalname || '')).toLowerCase();
+  return ALLOWED_KYC_EXTENSIONS.has(extension) ? extension : '';
+}
+
+function assertValidKycImageFile(file) {
+  if (!file) return;
+  const mimeType = String(file.mimetype || '').trim().toLowerCase();
+  const extension = path.extname(String(file.originalname || '')).toLowerCase();
+  if (!ALLOWED_KYC_MIME_TYPES.has(mimeType) && !ALLOWED_KYC_EXTENSIONS.has(extension)) {
+    throw new Error('ONLY_JPG_JPEG_PNG_ALLOWED');
+  }
+  if (!Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
+    throw new Error('INVALID_IMAGE_FILE');
+  }
+  if (Number(file.size || file.buffer.length || 0) > MAX_KYC_IMAGE_SIZE_BYTES) {
+    const err = new Error('LIMIT_FILE_SIZE');
+    err.code = 'LIMIT_FILE_SIZE';
+    throw err;
+  }
+  if (!getSafeImageExtension(file)) {
+    throw new Error('ONLY_JPG_JPEG_PNG_ALLOWED');
+  }
 }
 
 function canonicalKycDocumentType(type) {
@@ -322,6 +355,7 @@ export async function getKycStatus(userId) {
     userId,
     overallStatus,
     tier: user.kyc_level || 0,
+    dateOfBirth: profile?.date_of_birth || null,
     steps,
     documents,
     notes: latestRequest?.notes || null,
@@ -507,8 +541,9 @@ export async function reviewKycRequest(reviewerId, requestId, { approved = true,
 async function persistDocument(userId, submissionId, documentType, file, { notes, isSecondary }) {
   if (!file) return null;
   await ensureStorageDir();
-  const sanitizedName = file.originalname?.replace(/\s+/g, '_') || `${documentType}-${Date.now()}`;
-  const storedFilename = `${submissionId}-${isSecondary ? 'secondary' : 'primary'}-${sanitizedName}`;
+  assertValidKycImageFile(file);
+  const extension = getSafeImageExtension(file);
+  const storedFilename = `${crypto.randomUUID()}${extension}`;
   const outputPath = path.join(STORAGE_ROOT, storedFilename);
   await fs.writeFile(outputPath, file.buffer);
 
@@ -567,12 +602,13 @@ export async function getKycQueueSidebarSummary() {
   };
 }
 
-export async function submitKycDocuments(userId, { documentType, primary, secondary, notes }) {
+export async function submitKycDocuments(userId, { documentType, primary, secondary, notes, dateOfBirth }) {
   if (!documentType) throw new Error('DOCUMENT_TYPE_REQUIRED');
   if (!primary) throw new Error('PRIMARY_DOCUMENT_REQUIRED');
 
   const status = await getKycStatus(userId);
   const normalizedDocumentType = normalizeDocType(documentType);
+  const requiresSecondaryDocument = canonicalKycDocumentType(documentType) === 'aadhaarCard';
   const allowedDocumentTypes = (status.allowedDocumentTypes || []).map((item) => normalizeDocType(item));
   if (!status.canSubmitDocuments) {
     throw new Error(status.uploadBlockedReason || 'KYC_UPLOAD_BLOCKED');
@@ -580,6 +616,14 @@ export async function submitKycDocuments(userId, { documentType, primary, second
   if (!allowedDocumentTypes.includes(normalizedDocumentType)) {
     throw new Error('DOCUMENT_TYPE_NOT_ALLOWED_FOR_REUPLOAD');
   }
+  if (requiresSecondaryDocument && !secondary) {
+    throw new Error('SECONDARY_DOCUMENT_REQUIRED');
+  }
+  if (dateOfBirth !== undefined && dateOfBirth !== null && String(dateOfBirth).trim()) {
+    await updateProfile(userId, { date_of_birth: dateOfBirth });
+  }
+  assertValidKycImageFile(primary);
+  assertValidKycImageFile(secondary);
 
   const submissionId = uuidv4();
   const filesMetadata = [];

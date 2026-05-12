@@ -36,13 +36,15 @@ async function fetchTronWalletBalances({ address, fullHost, contractAddress, tok
   if (typeof tronWeb.setAddress === 'function') {
     tronWeb.setAddress(address);
   }
-
+  
   const [nativeRaw, contract] = await Promise.all([
     tronWeb.trx.getBalance(address),
     tronWeb.contract().at(contractAddress),
   ]);
+
   const tokenRaw = await contract.balanceOf(address).call();
 
+  console.log('fetchTronWalletBalances-75->', { address, nativeRaw, contractAddress, tokenDecimals, tokenRaw, fullHost });
   return {
     nativeBalance: formatUnits(BigInt(nativeRaw || 0), 6),
     tokenBalance: formatUnits(BigInt(tokenRaw?.toString?.() || tokenRaw || 0), tokenDecimals),
@@ -108,6 +110,7 @@ export async function fetchNetworkOverview(walletRow, meta) {
       error: null,
     };
   } catch (error) {
+    // console.error('fetchNetworkOverview-43-error', { error, walletRow, meta });
     return {
       network: meta.key,
       walletNetwork: meta.walletNetwork,

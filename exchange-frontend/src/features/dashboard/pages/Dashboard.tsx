@@ -101,6 +101,12 @@ const sumPromotionRewards = (promotionHistory?: Array<{ rewardAmount?: string | 
     return sum + (Number.isFinite(amount) ? amount : 0);
   }, 0);
 
+const sumRecurringBonusRewards = (bonusPayoutHistory?: Array<{ payoutAmount?: string | number | null }> | null) =>
+  (bonusPayoutHistory ?? []).reduce((sum, item) => {
+    const amount = Number(item?.payoutAmount ?? 0);
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
+
 type DashboardMlmSnapshot = {
   levelCode: string;
   levelRank: number;
@@ -231,6 +237,7 @@ export default function Dashboard() {
 
         const reward = matchedByRank?.promotionRewardUsdt ?? matchedByCode?.promotionRewardUsdt ?? getOneTimePromotionReward(currentLevelRank);
         const promotionHistoryTotal = sumPromotionRewards(dashboard.mlm.promotionHistory);
+        const recurringBonusHistoryTotal = sumRecurringBonusRewards(dashboard.mlm.bonusPayoutHistory);
         const incomeTotals = incomeHistory.items.reduce(
           (acc, item) => {
             const amount = Number(item.amount || 0);
@@ -249,7 +256,7 @@ export default function Dashboard() {
           levelRank: Number(dashboard.mlm.currentLevelRank) || currentLevelRank,
           totalTeamSize: Number(dashboard.mlm.summary?.teamTotalMembers) || 0,
           referralReward: incomeTotals.referralReward,
-          tenDaySalary: incomeTotals.tenDaySalary,
+          tenDaySalary: recurringBonusHistoryTotal || incomeTotals.tenDaySalary,
           promotionReward: incomeTotals.promotionReward || promotionHistoryTotal || Number(reward) || 0,
           birthdayReward: incomeTotals.birthdayReward,
           lastUpdatedAt:

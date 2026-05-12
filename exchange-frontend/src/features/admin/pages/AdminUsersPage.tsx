@@ -89,6 +89,14 @@ const getUserAvatarLabel = (user: AdminUser) => {
 const hasAdminRole = (user: AdminUser) =>
   Array.isArray(user.roles) && user.roles.some((role) => String(role || "").trim().toLowerCase() === "admin");
 
+const getTelegramStatusTone = (status?: string | null) => {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "approved") return "bg-emerald-500/20 text-emerald-200";
+  if (normalized === "rejected") return "bg-rose-500/20 text-rose-200";
+  if (normalized === "pending") return "bg-amber-500/20 text-amber-200";
+  return "bg-slate-500/20 text-slate-200";
+};
+
 export default function AdminUsersPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -878,6 +886,9 @@ export default function AdminUsersPage() {
                       <span className={`rounded-full px-3 py-1 ${selectedUser.status === "active" ? "bg-emerald-500/20 text-emerald-200" : "bg-amber-500/20 text-amber-200"}`}>
                         {selectedUser.status ?? "unknown"}
                       </span>
+                      <span className={`rounded-full px-3 py-1 ${getTelegramStatusTone(selectedUser.telegramAccessStatus)}`}>
+                        Telegram {selectedUser.telegramAccessStatus ?? "not_submitted"}
+                      </span>
                       {(selectedUser.roles ?? []).map((role) => (
                         <span key={role} className="rounded-full bg-indigo-500/15 px-3 py-1 text-indigo-100">
                           {role}
@@ -896,6 +907,14 @@ export default function AdminUsersPage() {
                       <div>
                         <div className="uppercase tracking-[0.22em]">Current eligible level</div>
                         <div className="mt-1 text-sm text-slate-200">{selectedUser.currentEligibleLevelCode ?? "-"}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-[0.22em]">Telegram username</div>
+                        <div className="mt-1 text-sm text-slate-200">{selectedUser.telegramUsername ?? "-"}</div>
+                      </div>
+                      <div>
+                        <div className="uppercase tracking-[0.22em]">Telegram access</div>
+                        <div className="mt-1 text-sm text-slate-200">{selectedUser.telegramAccessStatus ?? "not_submitted"}</div>
                       </div>
                       <div>
                         <div className="uppercase tracking-[0.22em]">Highest achieved level</div>

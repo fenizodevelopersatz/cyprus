@@ -170,9 +170,14 @@ export default function ReferralsPage() {
     () => (mlm?.promotionHistory ?? []).reduce((sum, item) => sum + Number(item.rewardAmount || 0), 0),
     [mlm?.promotionHistory]
   );
+  const recurringBonusHistory = mlm?.recurringBonusHistory ?? [];
   const recurringBonusTotal = useMemo(
-    () => (mlm?.bonusPayoutHistory ?? []).reduce((sum, item) => sum + Number(item.payoutAmount || 0), 0),
-    [mlm?.bonusPayoutHistory]
+    () => {
+      const payoutHistoryTotal = (mlm?.bonusPayoutHistory ?? []).reduce((sum, item) => sum + Number(item.payoutAmount || 0), 0);
+      if (payoutHistoryTotal > 0) return payoutHistoryTotal;
+      return recurringBonusHistory.reduce((sum, item) => sum + Number(item.bonusAmount || 0), 0);
+    },
+    [mlm?.bonusPayoutHistory, recurringBonusHistory]
   );
   const nextLevelCode = useMemo(() => {
     if (!levelCodeOrder.length) return "Lv1";
@@ -305,7 +310,7 @@ export default function ReferralsPage() {
   const totalInvitesValue =
     String(mlm?.summary.teamTotalMembers ?? totalInvitesMetric?.formattedValue ?? dashboard?.referrals?.length ?? 0);
   const directInvitesValue = String(mlm?.summary.directTotalMembers ?? dashboard?.referrals?.length ?? 0);
-  const bonusPayoutHistory = mlm?.bonusPayoutHistory ?? [];
+  const bonusPayoutHistory = mlm?.bonusPayoutHistory?.length ? mlm.bonusPayoutHistory : recurringBonusHistory;
   const mobileTreeNodes = useMemo(() => {
     const nodes = mlm?.tree.nodes ?? [];
     if (!nodes.length) return [];

@@ -203,6 +203,32 @@ function buildReferenceDetails(row) {
   return row.reference_id ? String(row.reference_id) : '-';
 }
 
+function filterOrdersAuditRows(rows, { incomeType, search, fromDate, toDate }) {
+  return rows.filter((row) => {
+    if (incomeType && row.incomeType !== incomeType) return false;
+    if (search) {
+      const haystack = [
+        row.txn_id,
+        row.order_id,
+        row.orderRefId,
+        row.signal_token,
+        row.batch_token,
+        row.sourceUser,
+        row.referenceDetails,
+        row.level,
+        row.reference_id,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+    if (fromDate && new Date(row.timestamp) < new Date(fromDate)) return false;
+    if (toDate && new Date(row.timestamp) > new Date(toDate)) return false;
+    return true;
+  });
+}
+
 async function loadOrdersAuditRows(userId) {
   const [
     hasUserSignalTxnId,
@@ -555,9 +581,26 @@ r.get('/wallet-history/ledger', requireAuth, async (req, res) => {
   }
 });
 
-r.get('/orders-audit/summary', requireAuth, async (req, res) => {
+r.get(
+  '/orders-audit/summary',
+  requireAuth,
+  v.celebrate({
+    [v.Segments.QUERY]: v.Joi.object({
+      incomeType: v.Joi.string().trim().optional(),
+      search: v.Joi.string().trim().allow('').optional(),
+      fromDate: v.Joi.string().trim().allow('').optional(),
+      toDate: v.Joi.string().trim().allow('').optional(),
+    }).unknown(false),
+  }),
+  async (req, res) => {
   try {
-    const rows = await loadOrdersAuditRows(req.user.id);
+    const search = normalizeText(req.query.search);
+    const incomeType = normalizeText(req.query.incomeType);
+    const fromDate = parseDateBound(req.query.fromDate);
+    const toDate = parseDateBound(req.query.toDate, true);
+
+    let rows = await loadOrdersAuditRows(req.user.id);
+    rows = filterOrdersAuditRows(rows, { incomeType, search, fromDate, toDate });
     const summary = rows.reduce(
       (acc, row) => {
         if (row.incomeType === 'signal_income') {
@@ -615,27 +658,7 @@ r.get(
       const toDate = parseDateBound(req.query.toDate, true);
 
       let rows = await loadOrdersAuditRows(req.user.id);
-      rows = rows.filter((row) => {
-        if (incomeType && row.incomeType !== incomeType) return false;
-        if (search) {
-          const haystack = [
-            row.txn_id,
-            row.order_id,
-            row.signal_token,
-            row.sourceUser,
-            row.referenceDetails,
-            row.level,
-            row.reference_id,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          if (!haystack.includes(search)) return false;
-        }
-        if (fromDate && new Date(row.timestamp) < new Date(fromDate)) return false;
-        if (toDate && new Date(row.timestamp) > new Date(toDate)) return false;
-        return true;
-      });
+      rows = filterOrdersAuditRows(rows, { incomeType, search, fromDate, toDate });
 
       const total = rows.length;
       const items = rows.slice((page - 1) * limit, (page - 1) * limit + limit);

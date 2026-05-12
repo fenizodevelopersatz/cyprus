@@ -11,6 +11,7 @@ import { DEFAULT_NEWS, DEFAULT_PROMOTIONS } from "../constants";
 import TradingViewChart from "../../exchange/components/TradingViewChart";
 import { getUserProfile } from "../../settings/api/account.api";
 import { fetchReferralDashboard, fetchReferralIncomeHistory } from "../../referrals/api/referrals.api";
+import { submitTelegramAccessRequest } from "../api/dashboard.api";
 
 const numberFormatter = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const quantityFormatter = new Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 });
@@ -119,6 +120,10 @@ export default function Dashboard() {
   const [achievementOpen, setAchievementOpen] = useState(false);
   const [levelPreviewOpen, setLevelPreviewOpen] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
+  const [telegramUsernameInput, setTelegramUsernameInput] = useState("");
+  const [telegramSubmitting, setTelegramSubmitting] = useState(false);
+  const [telegramSubmitError, setTelegramSubmitError] = useState<string | null>(null);
   const [mlmSnapshot, setMlmSnapshot] = useState<DashboardMlmSnapshot>({
     levelCode: "Lv0",
     levelRank: 0,
@@ -161,6 +166,10 @@ export default function Dashboard() {
       .toUpperCase();
   }, [userDisplayName, user?.email]);
   const telegramAccess = summary?.telegramAccess;
+  const telegramApprovalStatus = String(telegramAccess?.approvalStatus || "not_submitted").toLowerCase();
+  const telegramApproved = telegramApprovalStatus === "approved";
+  const telegramPending = telegramApprovalStatus === "pending";
+  const telegramRejected = telegramApprovalStatus === "rejected";
   const dailySignalCount = telegramAccess?.matchedPackageTier?.signalsPerDay ?? 0;
   const tickerSource = tickers.length > 0 ? tickers : movers;
   const sortableTickers = tickerSource.slice().sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
@@ -276,6 +285,32 @@ export default function Dashboard() {
     setMlmSnapshot((prev) => ({ ...prev, lastUpdatedAt: new Date().toISOString() }));
   };
 
+  const handleTelegramAccessClick = async () => {
+    if (!telegramAccess?.telegramChannelUrl) return;
+    if (telegramApproved) {
+      window.open(telegramAccess.telegramChannelUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (telegramPending) return;
+    setTelegramSubmitError(null);
+    setTelegramUsernameInput((telegramAccess?.telegramUsername || "").replace(/^@/, ""));
+    setTelegramDialogOpen(true);
+  };
+
+  const handleTelegramSubmit = async () => {
+    setTelegramSubmitting(true);
+    setTelegramSubmitError(null);
+    try {
+      await submitTelegramAccessRequest({ telegramUsername: telegramUsernameInput.trim() });
+      setTelegramDialogOpen(false);
+      refetch();
+    } catch (error) {
+      setTelegramSubmitError(error instanceof Error ? error.message : "Unable to submit Telegram information.");
+    } finally {
+      setTelegramSubmitting(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-5 overflow-x-hidden">
       <MarketTickerStrip tickers={marqueeItems} />
@@ -352,14 +387,25 @@ export default function Dashboard() {
                 </div>
               </div>
               {telegramAccess.telegramChannelUrl ? (
-                <a
-                  href={telegramAccess.telegramChannelUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex w-full items-center justify-center rounded-[10px] bg-[var(--accent-yellow)] px-4 py-2.5 text-[12px] font-semibold text-[#111] transition hover:bg-[var(--accent-yellow-hover)] sm:w-auto"
-                >
-                  Open Telegram Channel
-                </a>
+                <>
+                  <Button
+                    type="button"
+                    onClick={() => void handleTelegramAccessClick()}
+                    disabled={telegramPending}
+                    className="w-full sm:w-auto"
+                  >
+                    {telegramApproved ? "Open Telegram Channel" : telegramPending ? "Approval Pending" : "Join Telegram Channel"}
+                  </Button>
+                  {!telegramApproved && telegramAccess.registeredEmail ? (
+                    <div className="text-[11px] text-[var(--text-muted)]">
+                      {telegramPending
+                        ? `Submitted ${telegramAccess.telegramUsername || ""} for manual approval.`
+                        : telegramRejected
+                        ? `Rejected${telegramAccess.rejectNote ? `: ${telegramAccess.rejectNote}` : ""}.`
+                        : "One-time info collection is required before manual approval."}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </section>
@@ -496,6 +542,8 @@ export default function Dashboard() {
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
                 <span className="rounded-full border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-2.5 py-1 text-white">Level {mlmSnapshot.levelRank}</span>
                 <span>{mlmLastUpdatedLabel}</span>
+                {telegramApproved ? <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">Telegram Approved</span> : null}
+                {telegramPending ? <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-amber-200">Telegram Pending</span> : null}
               </div>
             </div>
           </div>
@@ -563,9 +611,20 @@ export default function Dashboard() {
             <div className="flex flex-col items-start gap-3 sm:items-end">
               <EligibilityBadge eligible={Boolean(telegramAccess.isEligible)} />
               {telegramAccess.telegramChannelUrl ? (
-                <a href={telegramAccess.telegramChannelUrl} target="_blank" rel="noopener noreferrer" className="inline-flex w-full items-center justify-center rounded-[10px] bg-[var(--accent-yellow)] px-4 py-2 text-sm font-semibold text-[#111] transition hover:bg-[var(--accent-yellow-hover)] sm:w-auto">
-                  Open Telegram Channel
-                </a>
+                <>
+                  <Button type="button" onClick={() => void handleTelegramAccessClick()} disabled={telegramPending}>
+                    {telegramApproved ? "Open Telegram Channel" : telegramPending ? "Approval Pending" : "Join Telegram Channel"}
+                  </Button>
+                  {!telegramApproved ? (
+                    <div className="text-xs text-[var(--text-muted)]">
+                      {telegramPending
+                        ? `Submitted ${telegramAccess.telegramUsername || ""} for manual approval.`
+                        : telegramRejected
+                        ? `Rejected${telegramAccess.rejectNote ? `: ${telegramAccess.rejectNote}` : ""}.`
+                        : "Submit your Telegram username once for admin approval."}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </div>
@@ -768,6 +827,48 @@ export default function Dashboard() {
         )}
       </section>
       </div>
+
+      <Dialog
+        open={telegramDialogOpen}
+        onClose={() => {
+          if (telegramSubmitting) return;
+          setTelegramDialogOpen(false);
+        }}
+        title="Telegram Info Collection"
+        panelClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-secondary)]">
+            Submit your Telegram username and registered email once. Admin will review it manually, and after approval you will not see this collection popup again.
+          </p>
+          <div className="rounded-2xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">Registered Email</div>
+            <div className="mt-2 text-sm font-medium text-white">{telegramAccess?.registeredEmail || user?.email || "--"}</div>
+          </div>
+          <label className="block">
+            <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">Telegram Username</div>
+            <input
+              value={telegramUsernameInput}
+              onChange={(event) => setTelegramUsernameInput(event.target.value.replace(/\s+/g, ""))}
+              placeholder="@username"
+              className="w-full rounded-2xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-4 py-3 text-sm text-white focus:border-[var(--accent-yellow)] focus:outline-none"
+            />
+          </label>
+          {telegramSubmitError ? (
+            <div className="rounded-2xl border border-[rgba(246,70,93,0.25)] bg-[rgba(246,70,93,0.12)] px-4 py-3 text-sm text-[var(--danger)]">
+              {telegramSubmitError}
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setTelegramDialogOpen(false)} disabled={telegramSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleTelegramSubmit()} disabled={telegramSubmitting || telegramUsernameInput.trim().length === 0}>
+              {telegramSubmitting ? "Submitting..." : "Submit for Approval"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog
         open={achievementOpen}

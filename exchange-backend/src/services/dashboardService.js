@@ -6,6 +6,9 @@ import { getCandleSeries, getTopMoversSnapshot } from './binanceSync.js';
 import { getControlSettings } from './adminControlService.js';
 
 const OPEN_ORDER_STATUSES = ['NEW', 'PARTIALLY_FILLED'];
+let telegramAccessSchemaPromise = null;
+let telegramAccessHistorySchemaPromise = null;
+let userProfilesTimestampColumnsPromise = null;
 
 function parseCount(row) {
   if (!row) return 0;
@@ -28,9 +31,212 @@ function normalizeMaxAmount(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function deriveTelegramAccessStatus(profile) {
+  const explicitStatus = String(profile?.telegram_access_status || '').trim().toLowerCase();
+  if (explicitStatus) return explicitStatus;
+
+  const hasTelegramUsername = Boolean(String(profile?.telegram_username || '').trim());
+  const hasRequestedAt = Boolean(profile?.telegram_access_requested_at);
+  const hasApprovedAt = Boolean(profile?.telegram_access_approved_at);
+
+  if (hasApprovedAt) return 'approved';
+  if (hasTelegramUsername || hasRequestedAt) return 'pending';
+  return 'not_submitted';
+}
+
+export async function ensureTelegramAccessSchema() {
+  if (!telegramAccessSchemaPromise) {
+    telegramAccessSchemaPromise = (async () => {
+      const hasProfiles = await db.schema.hasTable('user_profiles');
+      if (!hasProfiles) return;
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_username'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.string('telegram_username', 255).nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_status'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.string('telegram_access_status', 32).nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_requested_at'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.timestamp('telegram_access_requested_at').nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_approved_at'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.timestamp('telegram_access_approved_at').nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_approved_by'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.bigInteger('telegram_access_approved_by').nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_rejected_at'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.timestamp('telegram_access_rejected_at').nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_rejected_by'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.bigInteger('telegram_access_rejected_by').nullable();
+        });
+      }
+      if (!(await db.schema.hasColumn('user_profiles', 'telegram_access_reject_note'))) {
+        await db.schema.alterTable('user_profiles', (table) => {
+          table.string('telegram_access_reject_note', 500).nullable();
+        });
+      }
+    })().catch((error) => {
+      telegramAccessSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  await telegramAccessSchemaPromise;
+}
+
+export async function ensureTelegramAccessHistorySchema() {
+  if (!telegramAccessHistorySchemaPromise) {
+    telegramAccessHistorySchemaPromise = (async () => {
+      const tableName = 'user_telegram_access_history';
+      if (!(await db.schema.hasTable(tableName))) {
+        await db.schema.createTable(tableName, (table) => {
+          table.bigIncrements('id').primary();
+          table.bigInteger('user_id').notNullable().index();
+          table.string('telegram_username', 255).nullable();
+          table.string('action', 32).notNullable();
+          table.string('status', 32).nullable();
+          table.string('note', 500).nullable();
+          table.bigInteger('acted_by').nullable();
+          table.timestamp('created_at').notNullable().defaultTo(db.fn.now());
+        });
+      }
+    })().catch((error) => {
+      telegramAccessHistorySchemaPromise = null;
+      throw error;
+    });
+  }
+
+  await telegramAccessHistorySchemaPromise;
+}
+
+async function appendTelegramAccessHistory({
+  userId,
+  telegramUsername,
+  action,
+  status,
+  note = null,
+  actedBy = null,
+  createdAt = null,
+}) {
+  await ensureTelegramAccessHistorySchema();
+  await db('user_telegram_access_history').insert({
+    user_id: userId,
+    telegram_username: telegramUsername || null,
+    action,
+    status: status || null,
+    note: note || null,
+    acted_by: actedBy,
+    created_at: createdAt || new Date(),
+  });
+}
+
+export async function seedTelegramHistoryFromProfile(userId, profile) {
+  await ensureTelegramAccessHistorySchema();
+  const username = String(profile?.telegram_username || '').trim();
+  if (!username) return;
+
+  const existing = await db('user_telegram_access_history')
+    .where({ user_id: userId })
+    .orderBy('id', 'asc')
+    .first();
+
+  if (existing) return;
+
+  await appendTelegramAccessHistory({
+    userId,
+    telegramUsername: username,
+    action: 'legacy_import',
+    status: deriveTelegramAccessStatus(profile),
+    note: profile?.telegram_access_reject_note || null,
+    actedBy: profile?.telegram_access_approved_by || profile?.telegram_access_rejected_by || null,
+    createdAt:
+      profile?.telegram_access_requested_at ||
+      profile?.telegram_access_approved_at ||
+      profile?.telegram_access_rejected_at ||
+      new Date(),
+  });
+}
+
+export async function listTelegramAccessHistory(userIds) {
+  await ensureTelegramAccessHistorySchema();
+  const ids = Array.from(new Set((userIds || []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+  if (!ids.length) return new Map();
+
+  const rows = await db('user_telegram_access_history')
+    .whereIn('user_id', ids)
+    .orderBy('created_at', 'desc')
+    .orderBy('id', 'desc');
+
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = Number(row.user_id);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push({
+      id: row.id,
+      telegramUsername: row.telegram_username || null,
+      action: row.action,
+      status: row.status || null,
+      note: row.note || null,
+      actedBy: row.acted_by || null,
+      createdAt: row.created_at || null,
+    });
+  }
+  return grouped;
+}
+
+async function getUserProfilesTimestampColumns() {
+  if (!userProfilesTimestampColumnsPromise) {
+    userProfilesTimestampColumnsPromise = (async () => {
+      const hasProfiles = await db.schema.hasTable('user_profiles');
+      if (!hasProfiles) {
+        return { hasCreatedAt: false, hasUpdatedAt: false };
+      }
+      const [hasCreatedAt, hasUpdatedAt] = await Promise.all([
+        db.schema.hasColumn('user_profiles', 'created_at'),
+        db.schema.hasColumn('user_profiles', 'updated_at'),
+      ]);
+      return { hasCreatedAt, hasUpdatedAt };
+    })().catch((error) => {
+      userProfilesTimestampColumnsPromise = null;
+      throw error;
+    });
+  }
+
+  return userProfilesTimestampColumnsPromise;
+}
+
 export async function getUserTelegramAccess(userId) {
+  await ensureTelegramAccessSchema();
   const [user, controlSettings] = await Promise.all([
-    db('users').select('id', 'main_wallet_balance').where({ id: userId }).first(),
+    db('users as u')
+      .leftJoin('user_profiles as p', 'p.user_id', 'u.id')
+      .select(
+        'u.id',
+        'u.email',
+        'u.main_wallet_balance',
+        'p.telegram_username',
+        'p.telegram_access_status',
+        'p.telegram_access_requested_at',
+        'p.telegram_access_approved_at',
+        'p.telegram_access_rejected_at',
+        'p.telegram_access_reject_note'
+      )
+      .where({ 'u.id': userId })
+      .first(),
     getControlSettings(),
   ]);
 
@@ -40,6 +246,13 @@ export async function getUserTelegramAccess(userId) {
       isEligible: false,
       matchedPackageTier: null,
       telegramChannelUrl: null,
+      telegramUsername: user?.telegram_username || null,
+      approvalStatus: deriveTelegramAccessStatus(user),
+      requestedAt: user?.telegram_access_requested_at || null,
+      approvedAt: user?.telegram_access_approved_at || null,
+      rejectedAt: user?.telegram_access_rejected_at || null,
+      rejectNote: user?.telegram_access_reject_note || null,
+      registeredEmail: user?.email || null,
     };
   }
 
@@ -59,6 +272,13 @@ export async function getUserTelegramAccess(userId) {
       isEligible: false,
       matchedPackageTier: null,
       telegramChannelUrl: null,
+      telegramUsername: user.telegram_username || null,
+      approvalStatus: deriveTelegramAccessStatus(user),
+      requestedAt: user.telegram_access_requested_at || null,
+      approvedAt: user.telegram_access_approved_at || null,
+      rejectedAt: user.telegram_access_rejected_at || null,
+      rejectNote: user.telegram_access_reject_note || null,
+      registeredEmail: user.email || null,
     };
   }
 
@@ -72,7 +292,141 @@ export async function getUserTelegramAccess(userId) {
       signalsPerDay: toNumber(matchedPackageTier.signalsPerDay),
     },
     telegramChannelUrl,
+    telegramUsername: user.telegram_username || null,
+    approvalStatus: deriveTelegramAccessStatus(user),
+    requestedAt: user.telegram_access_requested_at || null,
+    approvedAt: user.telegram_access_approved_at || null,
+    rejectedAt: user.telegram_access_rejected_at || null,
+    rejectNote: user.telegram_access_reject_note || null,
+    registeredEmail: user.email || null,
   };
+}
+
+export async function submitUserTelegramAccessRequest(userId, telegramUsername) {
+  await ensureTelegramAccessSchema();
+  const normalizedUsername = String(telegramUsername || '').trim().replace(/^@+/, '');
+  if (!normalizedUsername) {
+    const error = new Error('Telegram username is required.');
+    error.status = 400;
+    throw error;
+  }
+
+  const user = await db('users').select('id').where({ id: userId }).first();
+  if (!user) {
+    const error = new Error('USER_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const existing = await db('user_profiles').where({ user_id: userId }).first();
+  const now = new Date();
+  const { hasCreatedAt, hasUpdatedAt } = await getUserProfilesTimestampColumns();
+  const payload = {
+    telegram_username: `@${normalizedUsername}`,
+    telegram_access_status: existing?.telegram_access_status === 'approved' ? 'approved' : 'pending',
+    telegram_access_requested_at: now,
+    telegram_access_rejected_at: null,
+    telegram_access_rejected_by: null,
+    telegram_access_reject_note: null,
+  };
+  if (hasUpdatedAt) payload.updated_at = now;
+
+  if (existing) {
+    await db('user_profiles').where({ user_id: userId }).update(payload);
+  } else {
+    const insertPayload = {
+      user_id: userId,
+      ...payload,
+    };
+    if (hasCreatedAt) insertPayload.created_at = now;
+    await db('user_profiles').insert(insertPayload);
+  }
+
+  await appendTelegramAccessHistory({
+    userId,
+    telegramUsername: `@${normalizedUsername}`,
+    action: 'submitted',
+    status: 'pending',
+    createdAt: now,
+  });
+
+  return getUserTelegramAccess(userId);
+}
+
+export async function approveUserTelegramAccess(adminUserId, userId) {
+  await ensureTelegramAccessSchema();
+  const existing = await db('user_profiles').where({ user_id: userId }).first();
+  if (!existing) {
+    const error = new Error('TELEGRAM_ACCESS_REQUEST_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const now = new Date();
+  const { hasUpdatedAt } = await getUserProfilesTimestampColumns();
+  const updatePayload = {
+    telegram_access_status: 'approved',
+    telegram_access_requested_at: existing.telegram_access_requested_at || now,
+    telegram_access_approved_at: now,
+    telegram_access_approved_by: adminUserId,
+    telegram_access_rejected_at: null,
+    telegram_access_rejected_by: null,
+    telegram_access_reject_note: null,
+  };
+  if (hasUpdatedAt) updatePayload.updated_at = now;
+  await db('user_profiles')
+    .where({ user_id: userId })
+    .update(updatePayload);
+
+  await appendTelegramAccessHistory({
+    userId,
+    telegramUsername: existing.telegram_username || null,
+    action: 'approved',
+    status: 'approved',
+    actedBy: adminUserId,
+    createdAt: now,
+  });
+
+  return getUserTelegramAccess(userId);
+}
+
+export async function rejectUserTelegramAccess(adminUserId, userId, note) {
+  await ensureTelegramAccessSchema();
+  const existing = await db('user_profiles').where({ user_id: userId }).first();
+  if (!existing) {
+    const error = new Error('TELEGRAM_ACCESS_REQUEST_NOT_FOUND');
+    error.status = 404;
+    throw error;
+  }
+
+  const now = new Date();
+  const { hasUpdatedAt } = await getUserProfilesTimestampColumns();
+  const normalizedNote = String(note || '').trim().slice(0, 500);
+  const updatePayload = {
+    telegram_access_status: 'rejected',
+    telegram_access_requested_at: existing.telegram_access_requested_at || now,
+    telegram_access_approved_at: null,
+    telegram_access_approved_by: null,
+    telegram_access_rejected_at: now,
+    telegram_access_rejected_by: adminUserId,
+    telegram_access_reject_note: normalizedNote || null,
+  };
+  if (hasUpdatedAt) updatePayload.updated_at = now;
+  await db('user_profiles')
+    .where({ user_id: userId })
+    .update(updatePayload);
+
+  await appendTelegramAccessHistory({
+    userId,
+    telegramUsername: existing.telegram_username || null,
+    action: 'rejected',
+    status: 'rejected',
+    note: normalizedNote || null,
+    actedBy: adminUserId,
+    createdAt: now,
+  });
+
+  return getUserTelegramAccess(userId);
 }
 
 async function lockedBalances(userId) {

@@ -194,12 +194,18 @@ import {
   getTopMovers,
   marketPulse,
   getTopMoversDetailed,
+  submitUserTelegramAccessRequest,
 } from '../services/dashboardService.js';
 
 const router = express.Router();
 
 router.get('/summary', requireAuth, async (req, res) => {
   ok(res, await getWalletSummary(req.user.id));
+});
+
+router.post('/telegram-access/request', requireAuth, async (req, res) => {
+  const telegramUsername = String(req.body?.telegramUsername ?? req.body?.telegram_username ?? '').trim();
+  ok(res, await submitUserTelegramAccessRequest(req.user.id, telegramUsername));
 });
 
 router.get('/positions', requireAuth, async (req, res) => {

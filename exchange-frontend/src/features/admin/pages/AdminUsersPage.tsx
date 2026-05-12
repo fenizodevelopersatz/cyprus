@@ -1,10 +1,12 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import Button from "../../../ui/Button";
 import Dialog from "../../../ui/Dialog";
 import {
   adminAdjustBalance,
+  approveAdminUserTelegramAccess,
   fetchAdminBalances,
   fetchAdminIncomeLedger,
   type AdminIncomeLedgerRow,
@@ -13,6 +15,7 @@ import {
   fetchAdminUserWalletWithdrawals,
   fetchAdminUsers,
   patchAdminUserStatus,
+  rejectAdminUserTelegramAccess,
   type AdminDepositRecord,
   type AdminUser,
   type AdminWithdrawal,
@@ -32,7 +35,7 @@ const generateWalletOrderId = (action: "deposit" | "withdraw") => {
   return `${action === "deposit" ? "deposit" : "withdraw"}:${randomPart}`;
 };
 
-const statusOptions = [
+const baseStatusOptions = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
   { label: "Inactive", value: "inactive" },
@@ -80,11 +83,20 @@ const hasAdminRole = (user: AdminUser) =>
   Array.isArray(user.roles) && user.roles.some((role) => String(role || "").trim().toLowerCase() === "admin");
 
 export default function AdminUsersPage() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const telegramOnlyView = searchParams.get("view") === "telegram";
+  const statusOptions = telegramOnlyView
+    ? baseStatusOptions.filter((option) => option.value !== "deleted")
+    : baseStatusOptions;
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "all", page: 1, pageSize: 25 });
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [walletModalUser, setWalletModalUser] = useState<AdminUser | null>(null);
   const [walletActionTab, setWalletActionTab] = useState<"deposit" | "withdraw">("deposit");
+  const [telegramRejectUser, setTelegramRejectUser] = useState<AdminUser | null>(null);
+  const [telegramRejectNote, setTelegramRejectNote] = useState("");
+  const [telegramActionFeedback, setTelegramActionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [walletForm, setWalletForm] = useState({
     asset: "USDT",
     amount: "",
@@ -94,13 +106,14 @@ export default function AdminUsersPage() {
   const [transactionPage, setTransactionPage] = useState(1);
   const queryClient = useQueryClient();
   const userQuery = useQuery<AdminUsersResponse>({
-    queryKey: ["admin", "users", filters],
+    queryKey: ["admin", "users", telegramOnlyView ? "telegram" : "all", filters],
     queryFn: () =>
       fetchAdminUsers({
         search: filters.search || undefined,
         status: filters.status === "all" ? undefined : filters.status,
         page: filters.page,
         limit: filters.pageSize,
+        telegramOnly: telegramOnlyView,
       }),
   });
 
@@ -146,6 +159,34 @@ export default function AdminUsersPage() {
       patchAdminUserStatus(id, next),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+  const approveTelegramMutation = useMutation({
+    mutationFn: ({ id }: { id: string | number }) => approveAdminUserTelegramAccess(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      setTelegramActionFeedback({ tone: "success", message: "Telegram access approved successfully." });
+    },
+    onError: (error) => {
+      setTelegramActionFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to approve Telegram access.",
+      });
+    },
+  });
+  const rejectTelegramMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string | number; note?: string }) => rejectAdminUserTelegramAccess(id, { note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      setTelegramRejectUser(null);
+      setTelegramRejectNote("");
+      setTelegramActionFeedback({ tone: "success", message: "Telegram access rejected successfully." });
+    },
+    onError: (error) => {
+      setTelegramActionFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to reject Telegram access.",
+      });
     },
   });
 
@@ -331,7 +372,7 @@ export default function AdminUsersPage() {
       <header className="flex flex-wrap items-center gap-4">
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-slate-400">Users</div>
-          <h2 className="text-2xl font-semibold text-white">Directory & controls</h2>
+          <h2 className="text-2xl font-semibold text-white">{telegramOnlyView ? "Telegram users" : "Directory & controls"}</h2>
         </div>
         <form onSubmit={submitSearch} className="ml-auto flex gap-2">
           <input
@@ -347,6 +388,18 @@ export default function AdminUsersPage() {
       </header>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        {telegramOnlyView && telegramActionFeedback ? (
+          <div
+            className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${
+              telegramActionFeedback.tone === "success"
+                ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                : "border-rose-400/20 bg-rose-500/10 text-rose-100"
+            }`}
+          >
+            {telegramActionFeedback.message}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-3 pb-4">
           {statusOptions.map((option) => (
             <button
@@ -367,16 +420,23 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
+        {telegramOnlyView ? (
+          <div className="pb-4 text-xs text-slate-400">
+            Review only submitted Telegram requests here. Approve to grant access, or reject to dismiss the request.
+          </div>
+        ) : null}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-[0.2em] text-slate-400">
               <tr>
                 <th className="pb-2">ID</th>
                 <th className="pb-2">Email</th>
-                <th className="pb-2">Eligible Level</th>
-                <th className="pb-2">Roles</th>
+                {!telegramOnlyView ? <th className="pb-2">Eligible Level</th> : null}
+                {!telegramOnlyView ? <th className="pb-2">Roles</th> : null}
+                <th className="pb-2">Telegram</th>
                 <th className="pb-2">Registered</th>
-                <th className="pb-2">KYC</th>
+                {!telegramOnlyView ? <th className="pb-2">KYC</th> : null}
                 <th className="pb-2">Status</th>
                 <th className="pb-2 text-right">Actions</th>
               </tr>
@@ -384,7 +444,7 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-white/5">
               {items.map((user) => (
                 <tr
-                  key={user.id}
+                  key={telegramOnlyView ? `${user.id}-${user.telegramHistoryEntryId ?? user.telegramUsername ?? "telegram"}` : String(user.id)}
                   className={`cursor-pointer transition hover:bg-white/5 ${
                     selectedUser?.id === user.id ? "bg-emerald-500/5" : ""
                   }`}
@@ -413,34 +473,62 @@ export default function AdminUsersPage() {
                       </div>
                     </div>
                   </td>
+                  {!telegramOnlyView ? (
+                    <td className="py-2 text-xs">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-white">{user.currentEligibleLevelCode ?? "-"}</span>
+                        <span className="text-slate-400">
+                          Prev: {user.previousAchievedLevelCode ?? "-"}
+                          {user.fallbackHappened ? " | Fallback" : ""}
+                        </span>
+                      </div>
+                    </td>
+                  ) : null}
+                  {!telegramOnlyView ? (
+                    <td className="py-2 text-xs text-slate-300">
+                        {user.roles?.map((r: string) => (
+                          <span key={r} className="mr-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.2em]">
+                            {r}
+                          </span>
+                        ))}
+                      </td>
+                  ) : null}
                   <td className="py-2 text-xs">
                     <div className="flex flex-col gap-1">
-                      <span className="text-white">{user.currentEligibleLevelCode ?? "-"}</span>
-                      <span className="text-slate-400">
-                        Prev: {user.previousAchievedLevelCode ?? "-"}
-                        {user.fallbackHappened ? " | Fallback" : ""}
+                      <span className="text-white">{user.telegramUsername || "-"}</span>
+                      <span className="text-slate-400">{user.telegramAccessStatus || "not_submitted"}</span>
+                      <span className="text-slate-500">
+                        Requested: {user.telegramAccessRequestedAt ? new Date(user.telegramAccessRequestedAt).toLocaleString() : "-"}
                       </span>
+                      {user.telegramAccessApprovedAt ? (
+                        <span className="text-slate-500">
+                          Approved: {new Date(user.telegramAccessApprovedAt).toLocaleString()}
+                        </span>
+                      ) : null}
+                      {user.telegramAccessRejectedAt ? (
+                        <span className="text-slate-500">
+                          Rejected: {new Date(user.telegramAccessRejectedAt).toLocaleString()}
+                        </span>
+                      ) : null}
+                      {user.telegramAccessRejectNote ? (
+                        <span className="text-rose-200/80">Note: {user.telegramAccessRejectNote}</span>
+                      ) : null}
                     </div>
                   </td>
-                    <td className="py-2 text-xs text-slate-300">
-                      {user.roles?.map((r: string) => (
-                        <span key={r} className="mr-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.2em]">
-                          {r}
-                        </span>
-                      ))}
-                    </td>
                   <td className="py-2 text-slate-300 text-xs">
                     {user.createdAt ? new Date(user.createdAt).toLocaleString() : "-"}
                   </td>
-                  <td className="py-2 text-xs">
-                    <span
-                      className={`rounded-full px-3 py-0.5 uppercase tracking-[0.2em] ${
-                        user.kycVerified ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-500/20 text-slate-200"
-                      }`}
-                    >
-                      {user.kycVerified ? "Verified" : "Unverified"}
-                    </span>
-                  </td>
+                  {!telegramOnlyView ? (
+                    <td className="py-2 text-xs">
+                      <span
+                        className={`rounded-full px-3 py-0.5 uppercase tracking-[0.2em] ${
+                          user.kycVerified ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-500/20 text-slate-200"
+                        }`}
+                      >
+                        {user.kycVerified ? "Verified" : "Unverified"}
+                      </span>
+                    </td>
+                  ) : null}
                   <td className="py-2 text-xs">
                     <span
                       className={`rounded-full px-3 py-0.5 uppercase tracking-[0.2em] ${
@@ -452,38 +540,75 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="py-2 text-right">
                     <div className="flex justify-end gap-2">
-                      <Button
-                        size="xs"
-                        variant="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setWalletActionTab("deposit");
-                          setWalletForm({ asset: "USDT", amount: "", orderId: "", memo: "" });
-                          setWalletModalUser(user);
-                        }}
-                      >
-                        Wallet
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant={user.status === "active" ? "danger" : "primary"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStatusMutation.mutate({
-                            id: user.id,
-                            next: user.status === "active" ? "inactive" : "active",
-                          });
-                        }}
-                      >
-                        {user.status === "active" ? "Deactivate" : "Activate"}
-                      </Button>
+                      {!telegramOnlyView ? (
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setWalletActionTab("deposit");
+                            setWalletForm({ asset: "USDT", amount: "", orderId: "", memo: "" });
+                            setWalletModalUser(user);
+                          }}
+                        >
+                          Wallet
+                        </Button>
+                      ) : null}
+                      {telegramOnlyView ? (
+                        <>
+                          {user.telegramIsCurrentRecord ? (
+                            <>
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                disabled={user.telegramAccessStatus !== "pending" || approveTelegramMutation.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  approveTelegramMutation.mutate({ id: user.id });
+                                }}
+                              >
+                                {user.telegramAccessStatus === "approved" ? "Approved" : "Approve"}
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="danger"
+                                disabled={rejectTelegramMutation.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTelegramRejectUser(user);
+                                  setTelegramRejectNote(user.telegramAccessRejectNote || "");
+                                }}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-slate-500">-</span>
+                          )}
+                        </>
+                      ) : null}
+                      {!telegramOnlyView ? (
+                        <Button
+                          size="xs"
+                          variant={user.status === "active" ? "danger" : "primary"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStatusMutation.mutate({
+                              id: user.id,
+                              next: user.status === "active" ? "inactive" : "active",
+                            });
+                          }}
+                        >
+                          {user.status === "active" ? "Deactivate" : "Activate"}
+                        </Button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
               ))}
               {!userQuery.isFetching && items.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-400">
+                  <td colSpan={telegramOnlyView ? 6 : 9} className="py-6 text-center text-slate-400">
                     No user role records found.
                   </td>
                 </tr>
@@ -513,6 +638,58 @@ export default function AdminUsersPage() {
       <div className={panelCls}>
         <div className="text-sm text-slate-300/80">Click any user row to open a wide popup with the full profile, balance summary, and transaction history.</div>
       </div>
+
+      <Dialog
+        open={Boolean(telegramRejectUser)}
+        onClose={() => {
+          if (rejectTelegramMutation.isPending) return;
+          setTelegramRejectUser(null);
+          setTelegramRejectNote("");
+        }}
+        title="Reject Telegram Request"
+        panelClassName="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-300">
+            Reject this Telegram access request for <span className="font-medium text-white">{telegramRejectUser?.email}</span>?
+          </p>
+          <p className="text-xs text-amber-200/80">
+            This will mark the request as rejected. The user can later resubmit a new Telegram username for review.
+          </p>
+          <label className="block">
+            <div className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-400">Short Note</div>
+            <textarea
+              value={telegramRejectNote}
+              onChange={(event) => setTelegramRejectNote(event.target.value.slice(0, 500))}
+              rows={3}
+              placeholder="Reason for rejection"
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:border-rose-400/60 focus:outline-none"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setTelegramRejectUser(null);
+                setTelegramRejectNote("");
+              }}
+              disabled={rejectTelegramMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (!telegramRejectUser) return;
+                rejectTelegramMutation.mutate({ id: telegramRejectUser.id, note: telegramRejectNote.trim() || undefined });
+              }}
+              disabled={rejectTelegramMutation.isPending}
+            >
+              {rejectTelegramMutation.isPending ? "Rejecting..." : "OK"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog
         open={Boolean(walletModalUser)}

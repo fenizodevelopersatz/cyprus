@@ -26,8 +26,14 @@ export default function OrdersPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const summaryQuery = useQuery({
-    queryKey: ["user", "orders-audit-summary"],
-    queryFn: fetchOrdersAuditSummary,
+    queryKey: ["user", "orders-audit-summary", { incomeType: filters.incomeType, fromDate: filters.fromDate, toDate: filters.toDate, search }],
+    queryFn: () =>
+      fetchOrdersAuditSummary({
+        incomeType: filters.incomeType || undefined,
+        search: search || undefined,
+        fromDate: filters.fromDate || undefined,
+        toDate: filters.toDate || undefined,
+      }),
   });
 
   const listQuery = useQuery({
@@ -124,7 +130,17 @@ export default function OrdersPage() {
               ))}
             </select>
             <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={handleSearch}>Search</Button>
-            <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={() => void summaryQuery.refetch()}>Refresh</Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="text-[11px] sm:text-[13px]"
+              onClick={() => {
+                void summaryQuery.refetch();
+                void listQuery.refetch();
+              }}
+            >
+              Refresh
+            </Button>
             <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={reset}>Reset</Button>
           </div>
         </div>
@@ -179,13 +195,21 @@ export default function OrdersPage() {
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <span className="break-all text-[10px] text-slate-300 sm:text-[11px]">{String(row.orderRefId ?? row.order_id ?? "-")}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="break-all text-[10px] text-slate-200 sm:text-[11px]">
+                        {String(row.signal_token ?? row.batch_token ?? row.orderRefId ?? row.order_id ?? "-")}
+                      </span>
+                      {buildReferenceCaption(row) ? (
+                        <span className="break-all text-[9px] text-slate-500 sm:text-[10px]">{buildReferenceCaption(row)}</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-col gap-1">
                       <span className={getActivityTypeClassName(row.incomeType)}>
                         {labelMap[row.incomeType] ?? row.incomeType}
                       </span>
+                      <span className="text-[9px] text-slate-500 sm:text-[10px]">{buildActivityMeta(row)}</span>
                     </div>
                   </td>
                   <td className="px-3 py-3">{renderAmountCell(row.amount)}</td>
@@ -243,6 +267,57 @@ function getActivityTypeClassName(incomeType: string) {
     return "text-[10px] font-semibold uppercase tracking-[0.14em] text-white sm:text-[11px]";
   }
   return "text-[10px] text-white sm:text-[11px]";
+}
+
+function buildActivityMeta(row: {
+  incomeType: string;
+  symbol?: string | null;
+  asset?: string | null;
+  remark?: string | null;
+  sourceUserName?: string | null;
+  sourceUserEmail?: string | null;
+}) {
+  const parts: string[] = [];
+
+  if (row.incomeType === "signal_income") parts.push("Trade");
+  if (row.incomeType === "level_promotion_reward") parts.push("Promotion");
+  if (row.incomeType === "direct_sponsor_commission" || row.incomeType === "joined_commission") parts.push("Referral");
+  if (row.incomeType === "level_bonus_10day") parts.push("Level cycle");
+  if (row.incomeType === "admin_adjustment_credit" || row.incomeType === "admin_adjustment_debit") parts.push("Admin wallet");
+
+  if (row.symbol) parts.push(row.symbol);
+  if (row.asset && !parts.includes(row.asset)) parts.push(row.asset);
+  if (row.remark) parts.push(row.remark);
+
+  return parts.filter(Boolean).join(" | ") || "-";
+}
+
+function buildReferenceCaption(row: {
+  signal_token?: string | null;
+  batch_token?: string | null;
+  orderRefId?: string | number | null;
+  order_id?: string | null;
+  referenceDetails?: string | null;
+}) {
+  const detail = String(row.referenceDetails || "").trim();
+  if (!detail) return "";
+
+  const primaryValue = String(row.signal_token ?? row.batch_token ?? row.orderRefId ?? row.order_id ?? "").trim();
+  if (!primaryValue) return detail;
+
+  const cleaned = detail
+    .replace(new RegExp(`\\b${escapeRegExp(primaryValue)}\\b`, "ig"), "")
+    .replace(/\s+\|\s+/g, " | ")
+    .replace(/\|\s*\|/g, "|")
+    .replace(/^\s*\|\s*|\s*\|\s*$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return cleaned === primaryValue ? "" : cleaned;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function renderAmountCell(amount: number) {

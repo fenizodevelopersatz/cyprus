@@ -27,6 +27,13 @@ export type DashboardSummary = {
       signalsPerDay: number;
     } | null;
     telegramChannelUrl: string | null;
+    telegramUsername?: string | null;
+    approvalStatus?: "not_submitted" | "pending" | "approved" | "rejected" | string;
+    requestedAt?: string | null;
+    approvedAt?: string | null;
+    rejectedAt?: string | null;
+    rejectNote?: string | null;
+    registeredEmail?: string | null;
   };
 };
 
@@ -203,6 +210,11 @@ const normaliseHistoryCollection = (payload: unknown): DashboardHistoryPoint[] =
 export const fetchDashboardSummary = async (): Promise<DashboardSummary> => {
   const response = await api.get(DASHBOARD_ENDPOINTS.summary);
   return unwrap<DashboardSummary>(response.data);
+};
+
+export const submitTelegramAccessRequest = async (payload: { telegramUsername: string }) => {
+  const response = await api.post(DASHBOARD_ENDPOINTS.telegramAccessRequest, payload);
+  return unwrap<DashboardSummary["telegramAccess"]>(response.data);
 };
 
 export const fetchDashboardPositions = async (): Promise<DashboardPosition[]> => {

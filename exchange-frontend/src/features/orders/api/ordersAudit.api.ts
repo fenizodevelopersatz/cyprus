@@ -36,6 +36,9 @@ export type OrdersAuditRow = {
   status: string;
   signal_token?: string | null;
   batch_token?: string | null;
+  symbol?: string | null;
+  asset?: string | null;
+  remark?: string | null;
 };
 
 export type Paginated<T> = {
@@ -64,11 +67,24 @@ function mapRow(rawValue: unknown): OrdersAuditRow {
     status: String(raw.status ?? "SUCCESS"),
     signal_token: raw.signal_token ? String(raw.signal_token) : null,
     batch_token: raw.batch_token ? String(raw.batch_token) : null,
+    symbol: raw.symbol ? String(raw.symbol) : null,
+    asset: raw.asset ? String(raw.asset) : null,
+    remark: raw.remark ? String(raw.remark) : null,
   };
 }
 
-export async function fetchOrdersAuditSummary(): Promise<OrdersAuditSummary> {
-  const { data } = await api.get(API_ROUTES.user.ordersAuditSummary);
+export async function fetchOrdersAuditSummary(params?: {
+  incomeType?: string;
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+}): Promise<OrdersAuditSummary> {
+  const qs = new URLSearchParams();
+  if (params?.incomeType) qs.set("incomeType", params.incomeType);
+  if (params?.search) qs.set("search", params.search);
+  if (params?.fromDate) qs.set("fromDate", params.fromDate);
+  if (params?.toDate) qs.set("toDate", params.toDate);
+  const { data } = await api.get(`${API_ROUTES.user.ordersAuditSummary}${qs.toString() ? `?${qs.toString()}` : ""}`);
   const raw = asRecord(unwrap(data));
   return {
     totalSignalIncome: Number(raw.totalSignalIncome ?? 0),

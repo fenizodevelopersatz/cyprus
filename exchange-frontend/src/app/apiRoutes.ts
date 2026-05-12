@@ -43,6 +43,7 @@ export const API_ROUTES = {
   },
   dashboard: {
     summary: "/api/dashboard/summary",
+    telegramAccessRequest: "/api/dashboard/telegram-access/request",
     positions: "/api/dashboard/positions",
     orders: "/api/dashboard/orders",
     tickers: "/api/dashboard/tickers",
@@ -192,6 +193,7 @@ export const CONTENT_ENDPOINTS = {
 
 export const DASHBOARD_ENDPOINTS = {
   summary: toAbsolute(API_ROUTES.dashboard.summary),
+  telegramAccessRequest: toAbsolute(API_ROUTES.dashboard.telegramAccessRequest),
   positions: toAbsolute(API_ROUTES.dashboard.positions),
   orders: toAbsolute(API_ROUTES.dashboard.orders),
   tickers: toAbsolute(API_ROUTES.dashboard.tickers),
@@ -384,12 +386,13 @@ export const ADMIN_ENDPOINTS = {
   services: toAbsolute("/admin/services"),
   websocketStatus: toAbsolute("/admin/websocket-status"),
   users: {
-    list: (params?: { search?: string; limit?: number; page?: number; status?: string }) => {
+    list: (params?: { search?: string; limit?: number; page?: number; status?: string; telegramOnly?: boolean }) => {
       const qs = new URLSearchParams();
       if (params?.search) qs.set("search", params.search);
       if (params?.limit) qs.set("limit", String(params.limit));
       if (params?.page) qs.set("page", String(params.page));
       if (params?.status) qs.set("status", params.status);
+      if (params?.telegramOnly) qs.set("telegramOnly", "true");
       const q = qs.toString() ? `?${qs.toString()}` : "";
       return toAbsolute(`/admin/users${q}`);
     },
@@ -398,6 +401,8 @@ export const ADMIN_ENDPOINTS = {
     depositAddresses: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/deposit-addresses`),
     adjustments: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/adjust`),
     updateStatus: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/status`),
+    approveTelegramAccess: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/telegram-access/approve`),
+    rejectTelegramAccess: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/telegram-access/reject`),
   },
   internal: {
     cronJobs: toAbsolute("/admin/internal/cron-jobs"),

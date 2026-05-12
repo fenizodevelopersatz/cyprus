@@ -70,6 +70,23 @@ export type AdminUser = {
   qualifiedAt?: string | null;
   lastCheckedAt?: string | null;
   nextBonusDueAt?: string | null;
+  telegramUsername?: string | null;
+  telegramAccessStatus?: string | null;
+  telegramAccessRequestedAt?: string | null;
+  telegramAccessApprovedAt?: string | null;
+  telegramAccessRejectedAt?: string | null;
+  telegramAccessRejectNote?: string | null;
+  telegramHistoryEntryId?: string | number | null;
+  telegramIsCurrentRecord?: boolean;
+  telegramHistory?: Array<{
+    id: string | number;
+    telegramUsername?: string | null;
+    action?: string | null;
+    status?: string | null;
+    note?: string | null;
+    actedBy?: string | number | null;
+    createdAt?: string | null;
+  }>;
 };
 
 export type AdminManualCronJob = {
@@ -1126,6 +1143,7 @@ export async function fetchAdminUsers(params?: {
   limit?: number;
   page?: number;
   status?: string;
+  telegramOnly?: boolean;
 }) {
   const { data } = await api.get(ADMIN_ENDPOINTS.users.list(params));
   return unwrap<{
@@ -1147,6 +1165,16 @@ export async function runAdminManualCronJob(jobKey: string, payload?: Record<str
 export async function patchAdminUserStatus(userId: string | number, status: "active" | "inactive") {
   const { data } = await api.patch(ADMIN_ENDPOINTS.users.updateStatus(userId), { status });
   return unwrap<{ id: string | number; status: string }>(data);
+}
+
+export async function approveAdminUserTelegramAccess(userId: string | number) {
+  const { data } = await api.post(ADMIN_ENDPOINTS.users.approveTelegramAccess(userId));
+  return unwrap<{ approvalStatus?: string; approvedAt?: string | null }>(data);
+}
+
+export async function rejectAdminUserTelegramAccess(userId: string | number, payload?: { note?: string }) {
+  const { data } = await api.post(ADMIN_ENDPOINTS.users.rejectTelegramAccess(userId), payload ?? {});
+  return unwrap<{ approvalStatus?: string; approvedAt?: string | null }>(data);
 }
 
 export async function fetchAdminFuturesContracts(): Promise<FuturesContractAdmin[]> {

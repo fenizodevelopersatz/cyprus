@@ -29,9 +29,27 @@ const buildAdminDashboardWsUrl = (token: string) => {
   }
 };
 
+const isNavTargetActive = (current: { pathname: string; search: string }, target?: string) => {
+  if (!target) return false;
+
+  try {
+    const url = new URL(target, "https://admin.local");
+    return current.pathname === url.pathname && current.search === url.search;
+  } catch {
+    return current.pathname === target;
+  }
+};
+
 const NAV_GROUPS: NavEntry[] = [
   { label: "Dashboard", to: "/admin", icon: "/icons/admin-dashboard.png" },
-  { label: "User Management", to: "/admin/users", icon: "/icons/admin-user.png" },
+  {
+    label: "User Management",
+    icon: "/icons/admin-user.png",
+    children: [
+      { label: "All Users", to: "/admin/users" },
+      { label: "Telegram Users", to: "/admin/users?view=telegram" },
+    ],
+  },
   // { label: "Orders Report", to: "/admin/orders-report", icon: "/icons/admin-order.png"},
   // { label: "Staking Ops", to: "/admin/staking", icon: "/icons/admin-staking.png" },
   // { label: "SIP Ops", to: "/admin/sip", icon: "/icons/admin-staking.png" },
@@ -428,34 +446,37 @@ export default function AdminShell() {
                             {child.label}
                           </div>
                         ) : (
-                          <NavLink
-                            key={`${entry.label}-${child.label}-${child.to ?? "link"}`}
-                            to={child.to || "#"}
-                            onClick={closeMobileNav}
-                            className={({ isActive }) =>
-                              `flex items-center gap-2 rounded-xl px-3 py-2 ${
-                                isActive
-                                  ? "bg-emerald-500/20 text-white"
-                                  : "text-slate-300 hover:text-white"
-                              }`
-                            }
-                          >
-                            <span className="text-xs text-white/60">*</span>
-                            <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                              <span className="truncate">{child.label}</span>
-                              {child.to === "/admin/kyc" ? (
-                                <span
-                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                    hasUnreadKyc
-                                      ? "bg-amber-400/20 text-amber-100"
-                                      : "bg-white/10 text-slate-300"
-                                  }`}
-                                >
-                                  {hasUnreadKyc ? unreadKycCount : kycSummaryQuery.data?.pendingCount ?? 0}
+                          (() => {
+                            const isActive = isNavTargetActive(location, child.to);
+                            return (
+                              <NavLink
+                                key={`${entry.label}-${child.label}-${child.to ?? "link"}`}
+                                to={child.to || "#"}
+                                onClick={closeMobileNav}
+                                className={`flex items-center gap-2 rounded-xl px-3 py-2 ${
+                                  isActive
+                                    ? "bg-emerald-500/20 text-white"
+                                    : "text-slate-300 hover:text-white"
+                                }`}
+                              >
+                                <span className="text-xs text-white/60">*</span>
+                                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                                  <span className="truncate">{child.label}</span>
+                                  {child.to === "/admin/kyc" ? (
+                                    <span
+                                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                        hasUnreadKyc
+                                          ? "bg-amber-400/20 text-amber-100"
+                                          : "bg-white/10 text-slate-300"
+                                      }`}
+                                    >
+                                      {hasUnreadKyc ? unreadKycCount : kycSummaryQuery.data?.pendingCount ?? 0}
+                                    </span>
+                                  ) : null}
                                 </span>
-                              ) : null}
-                            </span>
-                          </NavLink>
+                              </NavLink>
+                            );
+                          })()
                         )
                       )}
                     </div>

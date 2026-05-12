@@ -278,6 +278,83 @@ function getFileSizeError(file: File | null) {
   return file.size > 10 * 1024 * 1024 ? "Maximum image size is 10 MB." : null;
 }
 
+function formatDobForDisplay(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return `${day}-${month}-${year}`;
+  }
+
+  const dayFirstMatch = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dayFirstMatch) {
+    return raw;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const year = parsed.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+function formatDobForPicker(value?: string | null) {
+  const raw = value.trim();
+  if (!raw) return "";
+
+  const match = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (match) {
+    const [, dayText, monthText, yearText] = match;
+    return `${yearText}-${monthText}-${dayText}`;
+  }
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return raw;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const year = parsed.getFullYear();
+  return `${year}-${month}-${day}`;
+}
+
+function formatDobForSubmit(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, yearText, monthText, dayText] = isoMatch;
+    return `${dayText}-${monthText}-${yearText}`;
+  }
+
+  const match = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return "";
+
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  if (month < 1 || month > 12 || day < 1 || year < 1900) return "";
+
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  )
+    ? raw
+    : "";
+}
+
 function ProgressRail({ steps }: { steps: ProgressStep[] }) {
   return (
     <div className="rounded-[24px] border border-[#2c2a1e] bg-[linear-gradient(180deg,#111417,#0b0d10)] px-3 py-4 shadow-[0_22px_70px_-48px_rgba(255,214,61,0.35)] sm:rounded-[28px] sm:px-6 sm:py-5">
@@ -485,7 +562,7 @@ export default function KycCenter() {
   const showSubmitButton = selectedDocumentAllowed && canSubmitDocuments && !hasCompletedAllRequiredDocuments;
 
   useEffect(() => {
-    setDateOfBirth(status?.dateOfBirth || "");
+    setDateOfBirth(formatDobForPicker(status?.dateOfBirth || ""));
   }, [status?.dateOfBirth]);
 
   const currentLevelTitle = fullyVerified ? "Verified" : normalizeStatus(overallStatus) === "IN_REVIEW" ? "In Review" : "Basic";
@@ -601,6 +678,15 @@ export default function KycCenter() {
       return;
     }
 
+    const formattedDateOfBirth = formatDobForSubmit(dateOfBirth);
+    if (dateOfBirth && !formattedDateOfBirth) {
+      setSubmitFeedback({
+        tone: "error",
+        text: "Select a valid date of birth.",
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       const response = await submitDocuments({
@@ -608,7 +694,7 @@ export default function KycCenter() {
         primary: primaryFile,
         secondary: secondaryFile ?? undefined,
         notes: note || undefined,
-        dateOfBirth: dateOfBirth || undefined,
+        dateOfBirth: formattedDateOfBirth || undefined,
       });
       setSubmitFeedback({
         tone: "success",
@@ -745,13 +831,14 @@ export default function KycCenter() {
           </div>
 
           <div className="rounded-[22px] border border-white/8 bg-[#12161a] p-4 sm:rounded-[28px] sm:p-5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#cbb98b]">Date of birth</div>            
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#cbb98b]">Date of birth</div>
             <input
               type="date"
               value={dateOfBirth}
               onChange={(event) => setDateOfBirth(event.target.value)}
               className="mt-3 w-full rounded-[18px] border border-slate-500/35 bg-[#1a1f23] px-4 py-3 text-[11px] text-white outline-none transition focus:border-slate-400/60 sm:mt-4 sm:rounded-[22px] sm:py-4 sm:text-[13px]"
             />
+            <div className="mt-2 text-[11px] text-slate-400">The selected date will be saved and shown as DD-MM-YYYY.</div>
           </div>
 
           <div className="rounded-[22px] border border-white/8 bg-[#12161a] p-4 sm:rounded-[28px] sm:p-5">
@@ -785,10 +872,7 @@ export default function KycCenter() {
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#cbb98b]">Verification Status</div>
                 <div className="truncate whitespace-nowrap text-[1rem] font-bold text-white sm:text-[1.35rem]">{formatStatusLabel(overallStatus)}</div>
-              </div>
-              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${badgeTone(overallStatus)}`}>
-                Tier {status?.tier ?? 1}
-              </span>
+              </div>              
             </div>
             <div className="mt-4 space-y-3">
               {progressSteps.map((step) => (

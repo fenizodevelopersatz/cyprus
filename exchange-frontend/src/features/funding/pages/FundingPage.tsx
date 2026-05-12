@@ -61,6 +61,7 @@ export default function FundingPage() {
   const [levelPreviewOpen, setLevelPreviewOpen] = useState(false);
   const [defaultWithdrawAddresses, setDefaultWithdrawAddresses] = useState<DefaultWithdrawAddresses>({});
   const withdrawAmountNumber = Number(withdrawAmount || 0);
+  const withdrawWalletBalanceNumber = Number(funding.summary?.withdrawWalletBalance || 0);
   const userLevelImage = getLevelImageSrc(user?.currentLevelCode, user?.currentLevelRank);
   const userLevelLabel = getLevelLabel(user?.currentLevelCode, user?.currentLevelRank);
 
@@ -184,6 +185,42 @@ export default function FundingPage() {
     setWithdrawMessage(null);
   };
 
+  const handleWithdrawAmountChange = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized) {
+      setWithdrawAmount("");
+      return;
+    }
+
+    const withoutCommas = normalized.replace(/,/g, "");
+    const digitsAndDotsOnly = withoutCommas.replace(/[^0-9.]/g, "");
+    const firstDotIndex = digitsAndDotsOnly.indexOf(".");
+    const sanitized =
+      firstDotIndex === -1
+        ? digitsAndDotsOnly
+        : `${digitsAndDotsOnly.slice(0, firstDotIndex + 1)}${digitsAndDotsOnly.slice(firstDotIndex + 1).replace(/\./g, "")}`;
+
+    if (!sanitized) {
+      setWithdrawAmount("");
+      return;
+    }
+
+    if (sanitized === ".") {
+      setWithdrawAmount("0.");
+      return;
+    }
+
+    const numericValue = Number(sanitized);
+    if (!Number.isFinite(numericValue)) {
+      setWithdrawAmount("");
+      return;
+    }
+
+    const cappedValue = Math.min(numericValue, Math.max(0, withdrawWalletBalanceNumber));
+    const shouldPreserveTrailingDot = sanitized.endsWith(".") && numericValue === cappedValue;
+    setWithdrawAmount(shouldPreserveTrailingDot ? `${sanitized.slice(0, -1)}.` : String(cappedValue));
+  };
+
   async function handleWithdrawalSubmit(event: React.FormEvent) {
     event.preventDefault();
     setWithdrawMessage(null);
@@ -194,6 +231,15 @@ export default function FundingPage() {
       return setWithdrawMessage({ tone: "error", text: getAddressValidationMessage(funding.selectedNetwork) });
     }
     if (!Number.isFinite(amount) || amount <= 0) return setWithdrawMessage({ tone: "error", text: "Enter a valid amount." });
+    if (amount > Math.max(0, withdrawWalletBalanceNumber)) {
+      return setWithdrawMessage({
+        tone: "error",
+        text: `Maximum eligible withdrawal amount is ${Math.max(0, withdrawWalletBalanceNumber).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 3,
+        })} USDT.`,
+      });
+    }
     if (liveWithdrawalPolicy && !liveWithdrawalPolicy.user.activeUser) {
       return setWithdrawMessage({ tone: "error", text: "Withdrawal is allowed only for active users." });
     }
@@ -286,6 +332,8 @@ export default function FundingPage() {
       ) : (
         <WithdrawTab
           availableBalance={funding.summary.mainWalletBalance}
+          withdrawWalletBalance={funding.summary.withdrawWalletBalance}
+          withdrawWalletBreakdown={funding.summary.withdrawWalletBreakdown}
           withdrawalPolicy={liveWithdrawalPolicy}
           networks={funding.summary.depositAddresses.map((item) => ({ network: item.network, label: item.label }))}
           selectedNetwork={funding.selectedNetwork}
@@ -297,7 +345,7 @@ export default function FundingPage() {
             setWithdrawAddressTouched(true);
             setWithdrawAddress(value);
           }}
-          onWithdrawAmountChange={setWithdrawAmount}
+          onWithdrawAmountChange={handleWithdrawAmountChange}
           onWithdrawDetailsChange={setWithdrawDetails}
           onSubmit={handleWithdrawalSubmit}
           submitting={funding.submittingWithdrawal}

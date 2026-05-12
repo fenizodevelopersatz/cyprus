@@ -42,6 +42,13 @@ export type FundingSummary = {
     breakdown: Record<string, string>;
   };
   mainWalletBalance: string;
+  withdrawWalletBalance: string;
+  withdrawWalletBreakdown: {
+    directDepositTotal: string;
+    tradeProfitTotal: string;
+    tenDaySalaryTotal: string;
+    activeWithdrawalTotal: string;
+  };
   adminAdjustmentBalance: string;
   withdrawalPolicy?: {
     policy: {
@@ -135,6 +142,13 @@ function mapSummary(payload: unknown): FundingSummary {
       breakdown: asRecord(balanceRaw.breakdown) as Record<string, string>,
     },
     mainWalletBalance: String(raw.mainWalletBalance ?? raw.main_wallet_balance ?? balanceRaw.total ?? "0"),
+    withdrawWalletBalance: String(raw.withdrawWalletBalance ?? raw.withdraw_wallet_balance ?? raw.mainWalletBalance ?? raw.main_wallet_balance ?? "0"),
+    withdrawWalletBreakdown: {
+      directDepositTotal: String(asRecord(raw.withdrawWalletBreakdown).directDepositTotal ?? "0"),
+      tradeProfitTotal: String(asRecord(raw.withdrawWalletBreakdown).tradeProfitTotal ?? "0"),
+      tenDaySalaryTotal: String(asRecord(raw.withdrawWalletBreakdown).tenDaySalaryTotal ?? "0"),
+      activeWithdrawalTotal: String(asRecord(raw.withdrawWalletBreakdown).activeWithdrawalTotal ?? "0"),
+    },
     adminAdjustmentBalance: String(raw.adminAdjustmentBalance ?? "0"),
     withdrawalPolicy: raw.withdrawalPolicy
       ? {

@@ -42,6 +42,13 @@ const baseStatusOptions = [
   { label: "Deleted", value: "deleted" },
 ];
 
+const telegramStatusOptions = [
+  { label: "All", value: "all" },
+  { label: "Pending", value: "pending" },
+  { label: "Approved", value: "approved" },
+  { label: "Rejected", value: "rejected" },
+];
+
 type AdminUsersResponse = Awaited<ReturnType<typeof fetchAdminUsers>>;
 
 const normalizeBalances = (value: unknown): AdminBalances[] => {
@@ -86,9 +93,7 @@ export default function AdminUsersPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const telegramOnlyView = searchParams.get("view") === "telegram";
-  const statusOptions = telegramOnlyView
-    ? baseStatusOptions.filter((option) => option.value !== "deleted")
-    : baseStatusOptions;
+  const statusOptions = telegramOnlyView ? telegramStatusOptions : baseStatusOptions;
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "all", page: 1, pageSize: 25 });
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -110,14 +115,22 @@ export default function AdminUsersPage() {
     queryFn: () =>
       fetchAdminUsers({
         search: filters.search || undefined,
-        status: filters.status === "all" ? undefined : filters.status,
+        status:
+          filters.status === "all" || (telegramOnlyView && ["pending", "approved", "rejected"].includes(filters.status))
+            ? undefined
+            : filters.status,
         page: filters.page,
         limit: filters.pageSize,
         telegramOnly: telegramOnlyView,
       }),
   });
 
-  const items = (userQuery.data?.items ?? []).filter((user) => !hasAdminRole(user));
+  const items = (userQuery.data?.items ?? [])
+    .filter((user) => !hasAdminRole(user))
+    .filter((user) => {
+      if (!telegramOnlyView || filters.status === "all") return true;
+      return String(user.telegramAccessStatus || "").trim().toLowerCase() === filters.status;
+    });
   const meta = userQuery.data?.meta;
 
   const overviewQuery = useQuery({

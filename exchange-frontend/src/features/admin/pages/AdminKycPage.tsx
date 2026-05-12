@@ -42,6 +42,30 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleString();
 };
 
+const formatDateOnly = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "N/A";
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return `${day}-${month}-${year}`;
+  }
+
+  const dayFirstMatch = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dayFirstMatch) {
+    return raw;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const year = parsed.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
 const buildErrorMessage = (error: unknown) => {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
@@ -61,9 +85,9 @@ const buildErrorMessage = (error: unknown) => {
 };
 
 const TIER_HINTS: Record<number, { label: string; description: string }> = {
-  0: { label: "Tier 0 • Basic", description: "Email verified, daily withdrawal limit 500 USDT." },
-  1: { label: "Tier 1 • Identity", description: "Government ID verified, limit 50,000 USDT per day." },
-  2: { label: "Tier 2 • Proof of address", description: "Utility bill or bank statement, limit 250,000 USDT per day." },
+  0: { label: "Tier 0 • Basic", description: "" },
+  1: { label: "Tier 1 • Identity", description: "" },
+  2: { label: "Tier 2 • Proof of address", description: "" },
   3: { label: "Tier 3 • Enhanced", description: "Enhanced due diligence, institutional accounts." },
 };
 
@@ -385,6 +409,7 @@ function DetailPanel({
         <InfoRow label="Email" value={request.user?.email ?? "N/A"} />
         <InfoRow label="Country" value={request.user?.country ?? "N/A"} />
         <InfoRow label="KYC level" value={request.user?.kycLevel != null ? String(request.user.kycLevel) : "N/A"} />
+        <InfoRow label="Date of birth" value={formatDateOnly(request.dateOfBirth)} />
         <InfoRow label="Submission ID" value={request.submissionId} />
         <InfoRow label="Submitted" value={formatDate(request.createdAt)} />
         <InfoRow label="Reviewed at" value={formatDate(request.reviewedAt)} />

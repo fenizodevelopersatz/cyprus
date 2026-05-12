@@ -16,7 +16,7 @@
   "rewardReductionEnabled": true,
   "rewardReductionType": "",
   "minimumWithdrawalAmount": 10,
-  "maximumWithdrawalAmount": 100,
+  "maximumWithdrawalAmount": 0,
   "withdrawalNote": "Site Policy by admin",
   "isWithdrawalEnabled": true,
   "defaultSwapMarket": "BTCUSDT",

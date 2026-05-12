@@ -8,6 +8,13 @@ import { FundingNetworkIcon } from "./FundingNetworkIcon";
 
 type Props = {
   availableBalance: string;
+  withdrawWalletBalance: string;
+  withdrawWalletBreakdown: {
+    directDepositTotal: string;
+    tradeProfitTotal: string;
+    tenDaySalaryTotal: string;
+    activeWithdrawalTotal: string;
+  };
   withdrawalPolicy?: {
     policy: {
       withdrawalEnabled: boolean;
@@ -63,6 +70,7 @@ export function WithdrawTab(props: Props) {
   const policyRules = policy?.policy;
   const policyUser = policy?.user;
   const preview = policy?.preview;
+  const maxWithdrawableAmount = Math.max(0, Number(props.withdrawWalletBalance || 0));
   const eligibilityWarnings = Array.isArray(policyUser?.eligibilityWarnings) ? policyUser.eligibilityWarnings : [];
   const kycPending = policyUser?.kycVerified === false;
   const showSubmitButton = policyUser?.kycVerified === true;
@@ -86,8 +94,8 @@ export function WithdrawTab(props: Props) {
 
   return (
     <div className="space-y-6">
-      <section className="space-y-3 lg:max-w-[760px]">
-        <div className="exchange-card p-5 sm:border-0 sm:bg-transparent sm:p-1 sm:shadow-none lg:max-w-[760px]">
+      <section className="grid gap-4 xl:grid-cols-2">
+        <div className="exchange-card p-5 sm:border-0 sm:bg-transparent sm:p-1 sm:shadow-none">
           <div className="flex items-center gap-3">
             <FundingNetworkIcon network="wallet" />
             <div>
@@ -103,7 +111,30 @@ export function WithdrawTab(props: Props) {
           <div className="mt-2 text-[0.72rem] text-[var(--text-muted)] sm:text-[0.78rem] lg:text-[0.76rem]">
             {`~ $${Number(props.availableBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
           </div>
-          <div className="mt-5 hidden h-px bg-[rgba(255,255,255,0.05)] sm:block" />
+        </div>
+
+        <div className="exchange-card p-5">
+          <div className="flex items-center gap-3">
+            <FundingNetworkIcon network="wallet" />
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--text-muted)] sm:text-[13px] sm:tracking-[0.16em] lg:text-[12px]">Withdraw Wallet Balance</div>
+            </div>
+          </div>
+          <div className="mt-3 flex items-end gap-2">
+            <div className="text-[clamp(1.45rem,1.25rem+0.45vw,2.1rem)] font-black leading-none text-white lg:text-[clamp(1.6rem,1.35rem+0.35vw,2.05rem)]">
+              {Number(props.withdrawWalletBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+            </div>
+            <div className="pb-0.5 text-[0.82rem] font-extrabold uppercase text-[var(--accent-yellow)] lg:text-[0.85rem]">USDT</div>
+          </div>
+          <div className="mt-2 text-[0.72rem] text-[var(--text-muted)] sm:text-[0.78rem] lg:text-[0.76rem]">
+            {`~ $${Number(props.withdrawWalletBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
+          </div>
+          {/* <div className="mt-4 rounded-[18px] border border-[var(--border-soft)] bg-[rgba(255,255,255,0.03)] px-4 py-3 text-[11px] text-[var(--text-secondary)]">
+            <div>Direct deposit: {formatFundingUsd(props.withdrawWalletBreakdown.directDepositTotal)}</div>
+            <div>Trade profit: {formatFundingUsd(props.withdrawWalletBreakdown.tradeProfitTotal)}</div>
+            <div>10-day salary: {formatFundingUsd(props.withdrawWalletBreakdown.tenDaySalaryTotal)}</div>
+            <div>Less withdrawals: {formatFundingUsd(props.withdrawWalletBreakdown.activeWithdrawalTotal)}</div>
+          </div> */}
         </div>
       </section>
 
@@ -139,7 +170,22 @@ export function WithdrawTab(props: Props) {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Input value={props.withdrawAddress} onChange={(e) => props.onWithdrawAddressChange(e.target.value)} placeholder="Destination address" className="h-12" />
-            <Input value={props.withdrawAmount} onChange={(e) => props.onWithdrawAmountChange(e.target.value)} placeholder="Amount" className="h-12" />
+            <div className="space-y-2">
+              <Input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={props.withdrawAmount}
+                onChange={(e) => props.onWithdrawAmountChange(e.target.value)}
+                placeholder="Amount"
+                className="h-12"
+              />
+              <div className="text-xs text-[var(--text-muted)]">
+                Maximum eligible amount: {maxWithdrawableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })} USDT
+              </div>
+            </div>
           </div>
           <textarea
             value={props.withdrawDetails}

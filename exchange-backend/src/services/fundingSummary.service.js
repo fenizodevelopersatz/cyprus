@@ -39,11 +39,26 @@ function formatCurrencyString(value) {
   return Number.isFinite(numeric) ? numeric.toFixed(2) : '0.00';
 }
 
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export async function getFundingSummary(userId) {
   await syncWalletAddressesForUser(userId);
   await syncDepositTransactionsForUser(userId);
 
-  const [walletAddresses, assets, creditedRows, mainWalletBalanceBig, withdrawalPolicy, adminAdjustmentRows] = await Promise.all([
+  const [
+    walletAddresses,
+    assets,
+    creditedRows,
+    mainWalletBalanceBig,
+    withdrawalPolicy,
+    adminAdjustmentRows,
+    signalIncomeRow,
+    tenDaySalaryRow,
+    withdrawalRows,
+  ] = await Promise.all([
     db('wallet_addresses').where({ user_id: userId, token: 'USDT', is_active: 1 }).orderBy('id', 'asc'),
     listSignalAssets({ includeDisabled: false, asset: 'USDT' }),
     db('deposit_transactions')
@@ -61,6 +76,19 @@ export async function getFundingSummary(userId) {
       .where({ user_id: userId, status: 'SUCCESS' })
       .whereIn('type', ['admin_adjustment_credit', 'admin_adjustment_debit'])
       .select('type', 'credit', 'debit'),
+    db('user_signal_logs')
+      .where({ user_id: userId })
+      .where('trade_status', 'CLOSED')
+      .sum({ total: 'profit_amount' })
+      .first(),
+    db('mlm_income_history')
+      .where({ user_id: userId, status: 'SUCCESS', income_type: 'level_bonus_10day' })
+      .sum({ total: 'amount' })
+      .first(),
+    db('withdrawals')
+      .where({ user_id: userId })
+      .whereNotIn('status', ['rejected', 'failed'])
+      .select('amount'),
   ]);
   const userBalanceValue = formatUnits(mainWalletBalanceBig, 18);
 
@@ -110,6 +138,12 @@ export async function getFundingSummary(userId) {
     if (row.type === 'admin_adjustment_debit') return sum - debit;
     return sum;
   }, 0n);
+
+  const directDepositTotal = creditedRows.reduce((sum, row) => sum + toNumber(row.amount_decimal), 0);
+  const tradeProfitTotal = toNumber(signalIncomeRow?.total);
+  const tenDaySalaryTotal = toNumber(tenDaySalaryRow?.total);
+  const activeWithdrawalTotal = withdrawalRows.reduce((sum, row) => sum + toNumber(row.amount), 0);
+  const withdrawWalletBalance = Math.max(0, directDepositTotal + tradeProfitTotal + tenDaySalaryTotal - activeWithdrawalTotal);
 
   const balance = {
     token: 'USDT',
@@ -161,6 +195,13 @@ export async function getFundingSummary(userId) {
     balance,
     mainWalletBalance: formatCurrencyString(userBalanceValue),
     main_wallet_balance: formatCurrencyString(userBalanceValue),
+    withdrawWalletBalance: formatCurrencyString(withdrawWalletBalance),
+    withdrawWalletBreakdown: {
+      directDepositTotal: formatCurrencyString(directDepositTotal),
+      tradeProfitTotal: formatCurrencyString(tradeProfitTotal),
+      tenDaySalaryTotal: formatCurrencyString(tenDaySalaryTotal),
+      activeWithdrawalTotal: formatCurrencyString(activeWithdrawalTotal),
+    },
     adminAdjustmentBalance: formatCurrencyString(formatUnits(adminAdjustmentBalanceBig, 18)),
     withdrawalPolicy,
     depositAddresses,

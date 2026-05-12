@@ -37,8 +37,33 @@ function normalizeString(value, maxLength) {
 function normalizeDate(value) {
   if (value === undefined) return undefined;
   if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new Error('INVALID_DATE_OF_BIRTH');
+  const raw = String(value).trim();
+  let date = null;
+
+  const dayFirstMatch = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (dayFirstMatch) {
+    const [, dayText, monthText, yearText] = dayFirstMatch;
+    const day = Number(dayText);
+    const month = Number(monthText);
+    const year = Number(yearText);
+    const next = new Date(Date.UTC(year, month - 1, day));
+    if (
+      next.getUTCFullYear() === year &&
+      next.getUTCMonth() === month - 1 &&
+      next.getUTCDate() === day
+    ) {
+      date = next;
+    }
+  }
+
+  if (!date) {
+    const next = new Date(raw);
+    if (!Number.isNaN(next.getTime())) {
+      date = next;
+    }
+  }
+
+  if (!date || Number.isNaN(date.getTime())) throw new Error('INVALID_DATE_OF_BIRTH');
   return date.toISOString().slice(0, 10);
 }
 

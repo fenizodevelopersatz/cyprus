@@ -1019,6 +1019,7 @@ export type AdminKycActivity = {
 };
 
 export type AdminKycRequestDetail = AdminKycRequest & {
+  dateOfBirth?: string | null;
   documents: AdminKycDocument[];
   activity: AdminKycActivity[];
 };

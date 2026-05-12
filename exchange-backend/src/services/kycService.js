@@ -206,6 +206,7 @@ function mapKycRequestRow(row) {
     reviewedAt: row.reviewed_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    dateOfBirth: row.date_of_birth || null,
     documentCount: documents.length,
     user: {
       id: row.user_id,
@@ -473,7 +474,8 @@ export async function listKycRequests({ status, search, page = 1, pageSize = 25 
       'u.country',
       'u.kyc_level',
       'p.display_name',
-      'p.profile_photo'
+      'p.profile_photo',
+      'p.date_of_birth'
     );
 
   return {
@@ -502,7 +504,8 @@ export async function getKycRequestDetail(requestId) {
       'u.country',
       'u.kyc_level',
       'p.display_name',
-      'p.profile_photo'
+      'p.profile_photo',
+      'p.date_of_birth'
     )
     .first();
   if (!row) {

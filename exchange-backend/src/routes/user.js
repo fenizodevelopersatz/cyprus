@@ -507,10 +507,8 @@ r.delete('/account', requireAuth, async (req, res) => {
 
 r.get('/wallet-summary', requireAuth, async (req, res) => {
   try {
-    const [signalSummary, walletSummary] = await Promise.all([
-      getUserSignalWalletSummary(req.user.id),
-      getUserWalletSummary(req.user.id),
-    ]);
+    const walletSummary = await getUserWalletSummary(req.user.id);
+    const signalSummary = await getUserSignalWalletSummary(req.user.id, new Date(), { walletSummary });
     const summary = {
       ...signalSummary,
       main_wallet_balance: toMoneyString(walletSummary.mainWalletBalance),

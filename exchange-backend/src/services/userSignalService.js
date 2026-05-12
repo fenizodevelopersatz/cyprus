@@ -7,6 +7,7 @@ import { getFundingSummary } from './fundingSummary.service.js';
 import {
   applyWalletDebitRecord,
   applyWalletCreditRecord,
+  getMainWalletBalanceBig,
   getUserWalletSummary,
 } from './walletAccountingService.js';
 import { buildOrderId } from './txnIdService.js';
@@ -328,9 +329,8 @@ function detectEligiblePackage(balance, userLevel, packages) {
 
 async function getCurrentWalletBalance(userId, trx = db) {
   try {
-    const fundingSummary = await getFundingSummary(userId);
-    const total = toNumber(fundingSummary?.balance?.total, 0);
-    return roundAmount(total);
+    const balanceBig = await getMainWalletBalanceBig(userId, trx);
+    return roundAmount(Number(formatUnits(balanceBig, DECIMALS)));
   } catch {
     const balanceBig = await getAccountBalance({ userId, namespace: 'spot:available', asset: DEFAULT_ASSET }, trx);
     return roundAmount(Number(formatUnits(balanceBig, DECIMALS)));
@@ -466,10 +466,11 @@ async function getBatchForTokenAndSlot({ token, slotKey, now = new Date(), trx =
   return row;
 }
 
-export async function getUserSignalWalletSummary(userId, now = new Date()) {
+export async function getUserSignalWalletSummary(userId, now = new Date(), options = {}) {
   await ensureUserSignalSchema();
+  const preloadedWalletSummary = options?.walletSummary ?? null;
   const [walletSummary, userLevel, todayUsedSignals, packageModule, tradingRules] = await Promise.all([
-    getUserWalletSummary(userId),
+    preloadedWalletSummary ? Promise.resolve(preloadedWalletSummary) : getUserWalletSummary(userId),
     getUserLevel(userId),
     getTodayUsedSignals(userId, db, now),
     getSignalPackageModule(),
@@ -607,7 +608,7 @@ export async function applyUserSignal({ userId, token, slotKey, auditJson }, now
       throw badRequest('INSUFFICIENT_MAIN_WALLET_BALANCE');
     }
 
-    const profitAmountBig = applyPercentBig(investmentAmountBig, tradingRules.dailyPercentPerTrade);
+    const profitAmountBig = applyPercentBig(walletBeforeBuyBig, tradingRules.dailyPercentPerTrade);
     const totalReturnBig = investmentAmountBig + profitAmountBig;
     const walletBeforeBuy = amountBigToNumber(walletBeforeBuyBig);
     const investmentAmount = amountBigToNumber(investmentAmountBig);
@@ -617,7 +618,7 @@ export async function applyUserSignal({ userId, token, slotKey, auditJson }, now
     if (!Number.isFinite(executedQty) || executedQty <= 0) {
       throw badRequest('EXECUTED_QTY_INVALID');
     }
-    const simulatedSellPrice = roundAmount(totalReturn / executedQty);
+    const simulatedSellPrice = roundAmount(livePrice + (livePrice * Number(tradingRules.dailyPercentPerTrade)) / 100);
 
     const walletDebit = await applyWalletDebitRecord(
       {

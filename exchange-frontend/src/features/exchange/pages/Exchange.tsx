@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
 import Marquee from "../../../ui/Marquee";
+import { subscribeToWalletRealtime } from "../../../app/walletRealtime";
 import SignalCenter from "../components/SignalCenter";
+import { fetchSignalWalletSummary } from "../api/signal.api";
 import TradingViewChart from "../components/TradingViewChart";
 import { useExchangeData } from "../hooks/useExchangeData";
 import { useMarketsBoard } from "../../markets/hooks/useMarketsBoard";
@@ -74,6 +76,7 @@ export default function Exchange() {
   const [pricePulse, setPricePulse] = useState<"up" | "down" | null>(null);
   const [marketPanelTab, setMarketPanelTab] = useState<"orderbook" | "trades">("orderbook");
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; title: string; message: string } | null>(null);
+  const [walletTotalBalance, setWalletTotalBalance] = useState(0);
   const previousPriceRef = useRef<number | null>(null);
   const pricePulseTimeoutRef = useRef<number | undefined>(undefined);
 
@@ -123,6 +126,33 @@ export default function Exchange() {
     const formatted = liveTicker.last.toFixed(pricePrecision);
     if (type === "MARKET" || followMarketPrice) setPriceInput((current) => (current === formatted ? current : formatted));
   }, [liveTicker, pricePrecision, type, followMarketPrice]);
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const summary = await fetchSignalWalletSummary();
+        if (cancelled) return;
+        setWalletTotalBalance(summary.mainWalletBalance || summary.currentBalance || summary.availableBalance || 0);
+      } catch {
+        if (!cancelled) setWalletTotalBalance(0);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    const unsubscribe = subscribeToWalletRealtime((summary) => {
+      const nextBalance = Number(summary.mainWalletBalance ?? summary.main_wallet_balance ?? summary.balance?.total ?? 0);
+      if (Number.isFinite(nextBalance)) {
+        setWalletTotalBalance(nextBalance);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
   useEffect(() => { if (type === "MARKET") setFollowMarketPrice(true); }, [type]);
   useEffect(() => { setFollowMarketPrice(true); }, [symbol]);
   useEffect(() => {
@@ -161,6 +191,7 @@ export default function Exchange() {
 
   const availableQuote = wallets.find((wallet) => wallet.asset === quoteAsset)?.free ?? 0;
   const availableBase = wallets.find((wallet) => wallet.asset === baseAsset)?.free ?? 0;
+  const totalWalletBalanceLabel = `${walletTotalBalance.toFixed(5)} USDT`;
   const qtyValue = parseFloat(qtyInput) || 0;
   const limitPriceValue = parseFloat(priceInput) || 0;
   const marketPrice = liveTicker?.last ?? limitPriceValue;
@@ -284,7 +315,7 @@ export default function Exchange() {
 
             <div className="w-[112px] shrink-0 text-right">
               <div className="text-[8px] uppercase tracking-[0.16em] text-[var(--text-muted)]">Balance</div>
-              <div className="mt-0.5 text-[1rem] font-extrabold leading-none text-white">{`$${availableQuote.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</div>
+              <div className="mt-0.5 text-[1rem] font-extrabold leading-none text-white">{`$${walletTotalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</div>
               <div className="mt-3 space-y-2">
                 <MobilePriceInfo label="24h High" value={liveTicker ? `$${priceFormatter.format(liveTicker.high)}` : "--"} />
                 <MobilePriceInfo label="24h Low" value={liveTicker ? `$${priceFormatter.format(liveTicker.low)}` : "--"} />
@@ -491,7 +522,7 @@ export default function Exchange() {
               </div>
               <div className="rounded-[14px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-3 py-3 text-xs text-[var(--text-secondary)]">
                 <DetailRow label="Notional" value={notional ? `${notionalFormatter.format(notional)} ${quoteAsset}` : "--"} />
-                <DetailRow label="Wallet balance" value={`${qtyFormatter.format(availableQuote)} ${quoteAsset}`} />
+                <DetailRow label="Wallet balance" value={totalWalletBalanceLabel} />
                 {!meetsMinNotional && notional > 0 && minNotional > 0 && <div className="mt-2 text-[var(--danger)]">Minimum order size is {notionalFormatter.format(minNotional)} {quoteAsset}.</div>}
                 {sellBlocked && <div className="mt-2 text-[var(--danger)]">You have no available {baseAsset}.</div>}
               </div>
@@ -499,8 +530,6 @@ export default function Exchange() {
               <p className="text-[11px] text-[var(--text-muted)]">This trading desk is simulation-only. Orders route into the signal workflow below.</p>
             </div>
           </div>
-
-          <SignalCenter marketSocketStatus={wsStatus} compact compactSection="entry" />
         </div>
 
         <aside className="min-w-0 grid gap-4">

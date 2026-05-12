@@ -486,14 +486,7 @@ export async function getUserWalletSummary(userId, trx = db) {
   const totalDebits = debitRows.reduce((sum, row) => sum + toNumber(row.total), 0);
   const userBalanceValue = userRow?.main_wallet_balance ?? userRow?.wallet_main_balance ?? '0';
   const mainWalletBalance = toNumber(userBalanceValue);
-  const mainWalletBalanceBig = parseUnits(String(userBalanceValue || '0'), DECIMALS);
   const totalEarnings = signalIncomeTotal + mlmIncomeTotal;
-
-  await trx('users').where({ id: userId }).update({
-    ...('main_wallet_balance' in (userRow || {}) ? { main_wallet_balance: formatUnits(mainWalletBalanceBig, DECIMALS) } : {}),
-    ...('wallet_main_balance' in (userRow || {}) ? { wallet_main_balance: formatUnits(mainWalletBalanceBig, DECIMALS) } : {}),
-    updated_at: new Date(),
-  });
 
   return {
     mainWalletBalance,

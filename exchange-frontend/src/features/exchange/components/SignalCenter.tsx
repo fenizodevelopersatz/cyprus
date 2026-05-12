@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { subscribeToWalletRealtime } from "../../../app/walletRealtime";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
 import InlineFeedback from "../../../ui/InlineFeedback";
@@ -37,6 +38,16 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
 });
+
+const formatSignalCloseTime = (row: SignalHistoryRow) => {
+  if (row.sellCreatedAt) {
+    return timeFormatter.format(new Date(row.sellCreatedAt));
+  }
+  if (row.expiresAt) {
+    return timeFormatter.format(new Date(row.expiresAt));
+  }
+  return "--";
+};
 
 const resolveSignalRowStatus = (row: SignalHistoryRow) => {
   const rawTradeStatus = String(row.tradeStatus ?? row.status ?? "").trim().toUpperCase();
@@ -173,6 +184,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
   const [clockNow, setClockNow] = useState(() => new Date());
   const { feedback: submitFeedback, setFeedback: setSubmitFeedback, clearFeedback: clearSubmitFeedback } = useTimedFeedback();
   const signalInputRef = useRef<HTMLInputElement | null>(null);
+  const walletRealtimeRefreshTimeoutRef = useRef<number | null>(null);
   const syncDerivedState = useCallback((summary: SignalWalletSummary) => {
     const packageState = detectEligiblePackage(summary.currentBalance, summary.userLevel);
     const nextPackage = packageState.package;
@@ -238,6 +250,25 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
 
     return () => {
       active = false;
+    };
+  }, [refreshSignalData]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToWalletRealtime(() => {
+      if (walletRealtimeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(walletRealtimeRefreshTimeoutRef.current);
+      }
+
+      walletRealtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+        void refreshSignalData();
+      }, 150);
+    });
+
+    return () => {
+      unsubscribe();
+      if (walletRealtimeRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(walletRealtimeRefreshTimeoutRef.current);
+      }
     };
   }, [refreshSignalData]);
 
@@ -640,7 +671,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
                     <td className="px-4 py-3 text-xs">
                       {timeFormatter.format(new Date(row.buyCreatedAt || row.appliedAt))}
                       {" / "}
-                      {row.sellCreatedAt ? timeFormatter.format(new Date(row.sellCreatedAt)) : "--"}
+                      {formatSignalCloseTime(row)}
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {row.buyPrice ? currencyFormatter.format(row.buyPrice) : "--"}

@@ -39,6 +39,15 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
 const formatSignalCloseTime = (row: SignalHistoryRow) => {
   if (row.sellCreatedAt) {
     return timeFormatter.format(new Date(row.sellCreatedAt));
@@ -108,6 +117,12 @@ const getSignalRowSlot = (row: SignalHistoryRow, slots: SignalWalletSummary["ava
   const normalizedKey = String(row.slotKey ?? "").trim();
   if (!normalizedKey) return null;
   return slots.find((slot) => String(slot.key).trim() === normalizedKey) ?? null;
+};
+
+const formatDateTimeValue = (value?: string | Date | null) => {
+  if (!value) return "--";
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "--" : dateTimeFormatter.format(date);
 };
 
 const parseApiError = (error: unknown, fallback: string) => {
@@ -503,11 +518,21 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
     return openSignalSlotEndAt;
   }, [latestOpenSignal?.expiresAt, openSignalSlotEndAt]);
 
-  const mainWalletBalanceBasis = useMemo(() => {
+  const backendAutoCloseWindowEndAt = useMemo(() => {
+    if (!openSignalRefreshTargetAt) return null;
+    return new Date(openSignalRefreshTargetAt.getTime() + 60_000);
+  }, [openSignalRefreshTargetAt]);
+
+  const displayWalletBalance = useMemo(() => {
+    if (hasOpenSignals && effectiveCurrentBalance > 0) {
+      return effectiveCurrentBalance;
+    }
     if (walletSummary.mainWalletBalance > 0) return walletSummary.mainWalletBalance;
     if (walletSummary.currentBalance > 0) return walletSummary.currentBalance;
     return effectiveCurrentBalance;
-  }, [effectiveCurrentBalance, walletSummary.currentBalance, walletSummary.mainWalletBalance]);
+  }, [effectiveCurrentBalance, hasOpenSignals, walletSummary.currentBalance, walletSummary.mainWalletBalance]);
+
+  const mainWalletBalanceBasis = displayWalletBalance;
 
   const tradePreview = useMemo(
     () =>
@@ -841,7 +866,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <SummaryCard label="Main Wallet Balance" value={formatMoneyWithSymbol(walletSummary.mainWalletBalance)} />
+        <SummaryCard label="Main Wallet Balance" value={formatMoneyWithSymbol(displayWalletBalance)} />
         <SummaryCard label="Eligible Package" value={currentPackage ? `${currentPackage.name} · ${eligibleSlotLabel}` : "No package"} />
         {/* <SummaryCard label="Deposit Total" value={currencyFormatter.format(walletSummary.depositTotal)} /> */}
         <SummaryCard label="Signal Income Total" value={formatMoneyWithSymbol(walletSummary.signalIncomeTotal)} />
@@ -862,8 +887,8 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <InfoLine label="Package rule" value={currentPackage ? `${currentPackage.signalsPerDay} slot${currentPackage.signalsPerDay > 1 ? "s" : ""}/day` : "No trade allowed"} />
             <InfoLine label="Eligible slots" value={eligibleSlotLabel} />
-            <InfoLine label="Required level" value={currentPackage ? String(currentPackage.requiredLevel) : "--"} />
-            <InfoLine label="User level" value={String(walletSummary.userLevel)} />
+            <InfoLine label="Required MLM level" value={currentPackage ? String(currentPackage.requiredLevel) : "--"} />
+            <InfoLine label="Your MLM level" value={String(walletSummary.userLevel)} />
             <InfoLine label="Latest balance basis" value={currencyFormatter.format(mainWalletBalanceBasis)} />
             <InfoLine label="Investment per trade %" value={`${walletSummary.investmentPerTradePercent}%`} />
             <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} />
@@ -871,13 +896,15 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
           </div>
 
           <div className="mt-5 rounded-2xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] p-4 text-sm text-[var(--text-secondary)]">
-            <div className="font-medium text-white">Trade calculation preview</div>
+            <div className="font-medium text-white">Auto-close timing check</div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              <InfoLine label={`Investment ${walletSummary.investmentPerTradePercent}%`} value={currencyFormatter.format(tradePreview.investmentAmount)} />
-              <InfoLine label={`Profit ${walletSummary.dailyPercentPerTrade}%`} value={currencyFormatter.format(tradePreview.profitAmount)} />
-              <InfoLine label="Return On Auto Sell" value={currencyFormatter.format(tradePreview.totalEarned)} />
-              <InfoLine label="Wallet After Buy" value={currencyFormatter.format(mainWalletBalanceBasis - tradePreview.investmentAmount)} />
-              <InfoLine label="Main Final Balance" value={currencyFormatter.format(tradePreview.newBalance)} />
+              <InfoLine label="Frontend current time" value={formatDateTimeValue(clockNow)} />
+              <InfoLine label="Backend signal expires_at" value={formatDateTimeValue(openSignalRefreshTargetAt)} />
+              <InfoLine label="Backend worker check window" value={openSignalRefreshTargetAt ? `${formatDateTimeValue(openSignalRefreshTargetAt)} to ${formatDateTimeValue(backendAutoCloseWindowEndAt)}` : "--"} />
+              <InfoLine label="Backend actual close time" value={formatDateTimeValue(latestOpenSignal?.sellCreatedAt)} />
+            </div>
+            <div className="mt-3 text-xs text-[var(--text-muted)]">
+              Backend `startSignalAutoClose()` checks expired signal trades every 60 seconds, so actual auto-sell can happen after `expires_at`.
             </div>
           </div>
         </div>

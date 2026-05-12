@@ -35,6 +35,18 @@ const formatOrderTime = (iso?: string | null) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+const formatShortDateTime = (iso?: string | null) => {
+  if (!iso) return "--";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const getOrderStatusTone = (status?: string) => {
   const normalized = status?.toUpperCase?.() ?? "";
   return normalized === "OPEN" || normalized === "NEW"
@@ -111,10 +123,13 @@ type DashboardMlmSnapshot = {
   levelCode: string;
   levelRank: number;
   totalTeamSize: number;
+  eligibleTeamSize: number;
   referralReward: number;
   tenDaySalary: number;
+  tenDaySalaryNextDueAt?: string | null;
   promotionReward: number;
   birthdayReward: number;
+  minimumEligibleBalance: number;
   lastUpdatedAt?: string | null;
 };
 
@@ -134,10 +149,13 @@ export default function Dashboard() {
     levelCode: "Lv0",
     levelRank: 0,
     totalTeamSize: 0,
+    eligibleTeamSize: 0,
     referralReward: 0,
     tenDaySalary: 0,
+    tenDaySalaryNextDueAt: null,
     promotionReward: 0,
     birthdayReward: 0,
+    minimumEligibleBalance: 300,
     lastUpdatedAt: null,
   });
 
@@ -255,10 +273,13 @@ export default function Dashboard() {
           levelCode: formatUserLevelBadge(dashboard.mlm.currentLevel, dashboard.mlm.currentLevelRank),
           levelRank: Number(dashboard.mlm.currentLevelRank) || currentLevelRank,
           totalTeamSize: Number(dashboard.mlm.summary?.teamTotalMembers) || 0,
+          eligibleTeamSize: Number(dashboard.mlm.summary?.teamEligibleMembers) || 0,
           referralReward: incomeTotals.referralReward,
           tenDaySalary: recurringBonusHistoryTotal || incomeTotals.tenDaySalary,
+          tenDaySalaryNextDueAt: dashboard.mlm.nextBonusDueAt ?? null,
           promotionReward: incomeTotals.promotionReward || promotionHistoryTotal || Number(reward) || 0,
           birthdayReward: incomeTotals.birthdayReward,
+          minimumEligibleBalance: Number(dashboard.mlm.minimumEligibleBalance) || 300,
           lastUpdatedAt:
             dashboard.mlm.summary?.lastCalculatedAt ??
             dashboard.mlm.positionStatus?.lastCheckedAt ??
@@ -271,10 +292,13 @@ export default function Dashboard() {
           levelCode: formatUserLevelBadge(user?.currentLevelCode, user?.currentLevelRank),
           levelRank: currentLevelRank,
           totalTeamSize: 0,
+          eligibleTeamSize: 0,
           referralReward: prev.referralReward,
           tenDaySalary: prev.tenDaySalary,
+          tenDaySalaryNextDueAt: prev.tenDaySalaryNextDueAt ?? null,
           promotionReward: prev.promotionReward || getOneTimePromotionReward(currentLevelRank),
           birthdayReward: prev.birthdayReward,
+          minimumEligibleBalance: prev.minimumEligibleBalance || 300,
           lastUpdatedAt: prev.lastUpdatedAt ?? new Date().toISOString(),
         }));
       }
@@ -357,13 +381,42 @@ export default function Dashboard() {
         )}
 
         <section className="grid grid-cols-2 gap-3">
-          <MetricCard label="Total Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} compact />
+          <MetricCard label="Total Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} valueClassName="text-[var(--success)]" compact />
           <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} valueClassName="text-[var(--success)]" compact />
           <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} valueClassName="text-[var(--success)]" compact />
-          <MetricCard label="Salary / 10 Days" value={formatMlmMoney(mlmSnapshot.tenDaySalary)} compact />
-          <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} compact />
-          <MetricCard label="Birthday Reward" value={formatMlmMoney(mlmSnapshot.birthdayReward)} compact />
-          <MetricCard label="Total Team Size" value={integerFormatter.format(mlmSnapshot.totalTeamSize)} valueClassName="text-[var(--success)]" compact />
+          <MetricCard
+            label="Salary / 10 Days"
+            value={formatMlmMoney(mlmSnapshot.tenDaySalary)}
+            sublabel={mlmSnapshot.tenDaySalaryNextDueAt ? `Next payout ${formatShortDateTime(mlmSnapshot.tenDaySalaryNextDueAt)}` : "Credits to main balance after 10 days"}
+            sublabelClassName="text-[var(--success)]"
+            valueClassName="text-[var(--success)]"
+            compact
+          />
+          <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} valueClassName="text-[var(--success)]" compact />
+          <MetricCard label="Birthday Reward" value={formatMlmMoney(mlmSnapshot.birthdayReward)} valueClassName="text-[var(--success)]" compact />
+          <MetricCard
+            label="Total Team Size"
+            value={
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div>{integerFormatter.format(mlmSnapshot.totalTeamSize)}</div>
+                  <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                    Total users
+                  </div>
+                </div>
+                <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1.5 text-right">
+                  <div className="text-[12px] font-semibold leading-none text-[var(--success)]">
+                    {integerFormatter.format(mlmSnapshot.eligibleTeamSize)}
+                  </div>
+                  <div className="mt-1 text-[9px] font-medium uppercase tracking-[0.14em] text-emerald-200/80">
+                    &gt; ${integerFormatter.format(mlmSnapshot.minimumEligibleBalance)}
+                  </div>
+                </div>
+              </div>
+            }            
+            valueClassName="text-[var(--success)]"
+            compact
+          />
           <MetricCard label="Daily Signal" value={String(dailySignalCount)} valueClassName="text-[var(--success)]" compact />
           <MetricCard
             label="Top Mover"
@@ -549,6 +602,9 @@ export default function Dashboard() {
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
                 <span className="rounded-full border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-2.5 py-1 text-white">Level {mlmSnapshot.levelRank}</span>
                 <span>{mlmLastUpdatedLabel}</span>
+                <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+                  Eligible team {integerFormatter.format(mlmSnapshot.eligibleTeamSize)}
+                </span>
                 {telegramApproved ? <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">Telegram Approved</span> : null}
                 {telegramPending ? <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-amber-200">Telegram Pending</span> : null}
               </div>
@@ -577,10 +633,37 @@ export default function Dashboard() {
         <MetricCard label="Total Wallet Balance" value={`$${numberFormatter.format(finalWalletBalance)}`} valueClassName="text-[var(--success)]" />
         <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} valueClassName="text-[var(--success)]" />
         <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} valueClassName="text-[var(--success)]" />
-        <MetricCard label="Salary / 10 Days" value={formatMlmMoney(mlmSnapshot.tenDaySalary)} />
-        <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} />
-        <MetricCard label="Birthday Reward" value={formatMlmMoney(mlmSnapshot.birthdayReward)} />
-        <MetricCard label="Total Team Size" value={integerFormatter.format(mlmSnapshot.totalTeamSize)} valueClassName="text-[var(--success)]" />
+        <MetricCard
+          label="Salary / 10 Days"
+          value={formatMlmMoney(mlmSnapshot.tenDaySalary)}
+          sublabel={mlmSnapshot.tenDaySalaryNextDueAt ? `Next payout ${formatShortDateTime(mlmSnapshot.tenDaySalaryNextDueAt)}` : "Credits to main balance after 10 days"}
+          sublabelClassName="text-[var(--success)]"
+          valueClassName="text-[var(--success)]"
+        />
+        <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} valueClassName="text-[var(--success)]" />
+        <MetricCard label="Birthday Reward" value={formatMlmMoney(mlmSnapshot.birthdayReward)} valueClassName="text-[var(--success)]" />
+        <MetricCard
+          label="Total Team Size"
+          value={
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div>{integerFormatter.format(mlmSnapshot.totalTeamSize)}</div>
+                <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                  Total users
+                </div>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-right">
+                <div className="text-[1rem] font-semibold leading-none text-[var(--success)]">
+                  {integerFormatter.format(mlmSnapshot.eligibleTeamSize)}
+                </div>
+                <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-200/80">
+                  &gt; ${integerFormatter.format(mlmSnapshot.minimumEligibleBalance)}
+                </div>
+              </div>
+            </div>
+          }          
+          valueClassName="text-[var(--success)]"
+        />
         <MetricCard label="Daily Signal" value={String(dailySignalCount)} valueClassName="text-[var(--success)]" />
         <MetricCard
           label="24h Top Mover"

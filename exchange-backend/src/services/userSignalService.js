@@ -365,8 +365,21 @@ async function getDepositTotal(userId, trx = db) {
 }
 
 async function getUserLevel(userId, trx = db) {
-  const row = await trx(USERS_TABLE).select('kyc_level').where({ id: userId }).first();
-  return toNumber(row?.kyc_level);
+  try {
+    const row = await trx(`${USERS_TABLE} as u`)
+      .leftJoin('user_position_status as ups', 'ups.user_id', 'u.id')
+      .select(
+        'u.current_level_rank',
+        'ups.current_eligible_level_order'
+      )
+      .where('u.id', userId)
+      .first();
+
+    return toNumber(row?.current_eligible_level_order ?? row?.current_level_rank);
+  } catch {
+    const row = await trx(USERS_TABLE).select('current_level_rank').where({ id: userId }).first();
+    return toNumber(row?.current_level_rank);
+  }
 }
 
 async function getTodayUsedSignals(userId, trx = db, now = new Date()) {

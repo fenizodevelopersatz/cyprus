@@ -907,7 +907,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
             <InfoLine label="Signal validity" value={`${walletSummary.signalValidityMinutes} minutes`} />
           </div>
 
-          <div className="mt-5 rounded-2xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] p-4 text-sm text-[var(--text-secondary)]">
+          {/* <div className="mt-5 rounded-2xl border border-[var(--border-soft)] bg-[var(--bg-card-soft)] p-4 text-sm text-[var(--text-secondary)]">
             <div className="font-medium text-white">Auto-close timing check</div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               <InfoLine label="Frontend current time" value={formatDateTimeValue(clockNow)} />
@@ -918,7 +918,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
             <div className="mt-3 text-xs text-[var(--text-muted)]">
               Backend `startSignalAutoClose()` checks expired signal trades every 60 seconds, so actual auto-sell can happen after `expires_at`.
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 

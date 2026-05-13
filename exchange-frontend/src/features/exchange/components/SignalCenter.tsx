@@ -228,18 +228,30 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
       }
 
       try {
-        const [summary, history, ledger] = await Promise.all([
-          fetchSignalWalletSummary(),
-          fetchSignalHistory(),
-          fetchWalletLedger(),
-        ]);
-        syncDerivedState(summary);
-        startTransition(() => {
-          setSignalHistory(history);
-          setWalletLedger(ledger);
+        const summaryPromise = fetchSignalWalletSummary().then((summary) => {
+          syncDerivedState(summary);
+          return summary;
         });
+
+        const historyPromise = fetchSignalHistory().then((history) => {
+          startTransition(() => {
+            setSignalHistory(history);
+          });
+          setHistoryLoading(false);
+          return history;
+        });
+
+        const ledgerPromise = fetchWalletLedger().then((ledger) => {
+          startTransition(() => {
+            setWalletLedger(ledger);
+          });
+          return ledger;
+        });
+
+        await Promise.all([summaryPromise, historyPromise, ledgerPromise]);
         clearSubmitFeedback();
       } catch (error) {
+        setHistoryLoading(false);
         if (keepLoadingState) {
           setSubmitFeedback({ tone: "error", text: parseApiError(error, "Unable to load signal data right now.") });
         }

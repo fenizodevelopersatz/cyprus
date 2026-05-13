@@ -16,7 +16,7 @@ function SessionStatus({ label }: { label: string }) {
     <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
       <div className="flex flex-col items-center gap-3 rounded-3xl border border-indigo-500/40 bg-indigo-500/10 px-6 py-5 text-sm shadow-lg shadow-indigo-500/30">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-        <div className="text-[11px] uppercase tracking-[0.32em] text-indigo-200/80">CryptoSignal</div>
+        <div className="text-[11px] uppercase tracking-[0.32em] text-indigo-200/80">Primerica</div>
         <div className="font-medium text-white">{label}</div>
       </div>
     </div>

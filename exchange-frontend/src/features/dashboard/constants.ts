@@ -1,7 +1,7 @@
 export const DEFAULT_PROMOTIONS = [
   {
     id: "vaults",
-    title: "CryptoSignal Vaults APY Boost",
+    title: "Primerica Vaults APY Boost",
     subtitle: "Earn up to 12.5% on stable pairs with auto-compounded rewards.",
     cta: "Explore vaults",
     to: "/app/staking",
@@ -38,7 +38,7 @@ export const DEFAULT_NEWS = [
     id: "default-news-1",
     title: "CME Bitcoin futures open interest hits all-time high",
     summary: "Institutional desks rotate into longer-dated BTC exposure as funding flips neutral.",
-    source: "CryptoSignal Research",
+    source: "Primerica Research",
     publishedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     tag: "Derivatives",
   },

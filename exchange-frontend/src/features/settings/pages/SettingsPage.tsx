@@ -189,7 +189,7 @@ export default function SettingsPage() {
   const [withdrawAddressHistory, setWithdrawAddressHistory] = useState<WithdrawAddressHistoryEntry[]>([]);
   const profilePhotoPreviewSrc = profilePhotoBlobUrl;
   const selectedCountryCode = getCountryByCode(personalInfo.country)?.code ?? getCountryByName(personalInfo.country)?.code ?? "";
-  const profileDisplayName = user?.name ?? "CryptoSignal Trader";
+  const profileDisplayName = user?.name ?? "Primerica Trader";
   const profileInitial = (user?.name?.charAt(0) || user?.email?.charAt(0) || "U").toUpperCase();
   const userLevelImage = getLevelImageSrc(user?.currentLevelCode, user?.currentLevelRank);
   const userLevelLabel = getLevelLabel(user?.currentLevelCode, user?.currentLevelRank);
@@ -629,7 +629,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="mb-1 block text-xs text-[var(--text-secondary)]">Display Name</label>
-              <Input value={user?.name ?? "CryptoSignal Trader"} disabled className={settingsFieldClass} />
+              <Input value={user?.name ?? "Primerica Trader"} disabled className={settingsFieldClass} />
             </div>
           </div>         
         </div>

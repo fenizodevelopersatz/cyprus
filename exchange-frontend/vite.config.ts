@@ -15,6 +15,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        "/ws": {
+          target,
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+        },
       },
     },
   }

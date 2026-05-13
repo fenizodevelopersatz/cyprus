@@ -83,7 +83,7 @@ export default function PortfolioPage() {
           <div>
             <h1 className="text-xl font-semibold mb-1">Portfolio</h1>
             <p className="text-sm text-slate-300/90">
-              Track holdings, exposure, and live performance across the CryptoSignal portfolio service.
+              Track holdings, exposure, and live performance across the Primerica portfolio service.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300/80">

@@ -438,7 +438,7 @@ export default function AppShell() {
         }
       >
         <p className="text-sm text-[var(--text-secondary)]">
-          This will permanently remove your CryptoSignal account, including balances, orders, trades, and KYC data. This action cannot be undone.
+          This will permanently remove your Primerica account, including balances, orders, trades, and KYC data. This action cannot be undone.
         </p>
         <p className="mt-3 text-xs text-[var(--text-muted)]">
           After deletion you will be signed out immediately and must create a new account to return.

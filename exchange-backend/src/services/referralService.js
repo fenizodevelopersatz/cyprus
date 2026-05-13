@@ -16,7 +16,7 @@ function getConn(trx) {
 }
 
 export function generateReferralCode() {
-  return `CryptoSignal-${uid().replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  return `Primerica-${uid().replace(/-/g, '').slice(0, 10).toUpperCase()}`;
 }
 
 function toNumber(value, fallback = 0) {

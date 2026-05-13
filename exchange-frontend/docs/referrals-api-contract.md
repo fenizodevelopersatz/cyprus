@@ -15,9 +15,9 @@ Returns the complete payload needed by the referrals hub.
     "pendingPayout": { "value": 320.0, "deltaLabel": "Scheduled Friday" }
   },
   "primary": {
-    "code": "CryptoSignal-WELCOME-92FH",
-    "message": "Join CryptoSignal via my invite…",
-    "url": "https://cryptosignal.exchange/invite/CryptoSignal-WELCOME-92FH",
+    "code": "Primerica-WELCOME-92FH",
+    "message": "Join Primerica via my invite…",
+    "url": "https://Primerica.exchange/invite/Primerica-WELCOME-92FH",
     "promoActive": true,
     "updatedAt": "2025-10-05T14:27:00Z"
   },

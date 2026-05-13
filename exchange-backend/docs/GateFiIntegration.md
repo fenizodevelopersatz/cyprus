@@ -1,6 +1,6 @@
 ## GateFi (Unlimit) Overview
 
-GateFi, rebranded from Unlimit, is a regulated fiat on/off ramp platform. It exposes REST APIs and hosted checkout widgets that let our users purchase crypto with cards/Apple Pay and settle the purchased asset directly into our exchange wallets. Within CryptoSignal that asset immediately appears in the user's spot wallet and can be swept into the futures margin account (internally we already journal funds between `spot` and `futures:*` namespaces).
+GateFi, rebranded from Unlimit, is a regulated fiat on/off ramp platform. It exposes REST APIs and hosted checkout widgets that let our users purchase crypto with cards/Apple Pay and settle the purchased asset directly into our exchange wallets. Within Primerica that asset immediately appears in the user's spot wallet and can be swept into the futures margin account (internally we already journal funds between `spot` and `futures:*` namespaces).
 
 Typical reasons to integrate:
 
@@ -8,7 +8,7 @@ Typical reasons to integrate:
 2. Leverage their AML/KYC and fraud tooling for on-ramp transactions.
 3. Provide seamless funding for perpetual futures positions: once the fiat order settles we credit USDT to the user and allow transfers into the futures available balance.
 
-## Configuration in CryptoSignal Admin
+## Configuration in Primerica Admin
 
 1. Navigate to **Settings → Unlimit** in the admin panel (screenshot in issue).  
 2. Fill the fields that map to GateFi credentials:
@@ -23,7 +23,7 @@ Typical reasons to integrate:
 
 1. **Create On-Ramp Order**  
    - Endpoint: POST `https://{baseUrl}/api/v2/orders`.  
-   - Signed with HMAC (key/secret). Include `partnerAccountId`, `amount`, `fiatCurrency`, `cryptoCurrency` (use `USDT` to fund futures), and the CryptoSignal `userId` / `walletAddress` in metadata.
+   - Signed with HMAC (key/secret). Include `partnerAccountId`, `amount`, `fiatCurrency`, `cryptoCurrency` (use `USDT` to fund futures), and the Primerica `userId` / `walletAddress` in metadata.
    - Response returns a `checkoutUrl` for the frontend to redirect or embed.
 
 2. **Handle Webhooks**  
@@ -59,14 +59,14 @@ Content-Type: application/json
   "purchaseAmount": "100",
   "purchaseCurrency": "USD",
   "receiveCurrency": "USDT",
-  "destinationAddress": "cryptosignal:user:42",
-  "returnUrl": "https://app.cryptosignal.com/wallet/onramp/success",
-  "failUrl": "https://app.cryptosignal.com/wallet/onramp/fail",
+  "destinationAddress": "Primerica:user:42",
+  "returnUrl": "https://app.Primerica.com/wallet/onramp/success",
+  "failUrl": "https://app.Primerica.com/wallet/onramp/fail",
   "metadata": { "userId": 42, "fundFor": "futures" }
 }
 ```
 
-**Webhook payload (GateFi → CryptoSignal)**
+**Webhook payload (GateFi → Primerica)**
 ```json
 {
   "orderId": "gf_fiat_001",
@@ -78,7 +78,7 @@ Content-Type: application/json
 }
 ```
 
-CryptoSignal response: `200 OK`.
+Primerica response: `200 OK`.
 
 ## Using GateFi Funds for Futures
 
@@ -93,5 +93,5 @@ CryptoSignal response: `200 OK`.
 - [ ] Add admin reporting + user history endpoints.
 - [ ] Coordinate with GateFi for production keys and compliance paperwork.
 
-Once those steps are complete, CryptoSignal futures users can on-ramp via GateFi/Unlimit and immediately fund their margin accounts.
+Once those steps are complete, Primerica futures users can on-ramp via GateFi/Unlimit and immediately fund their margin accounts.
 

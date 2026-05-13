@@ -237,13 +237,13 @@ export default function ReferralsPage() {
 
   const shareReferral = useCallback(async () => {
     const shareUrl = campaignUrl || window.location.href;
-    const shareText = `Join my CryptoSignal referral team with code ${referralCode}`;
+    const shareText = `Join my Primerica referral team with code ${referralCode}`;
     setShareError(null);
 
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "CryptoSignal Referral",
+          title: "Primerica Referral",
           text: shareText,
           url: shareUrl,
         });
@@ -260,7 +260,7 @@ export default function ReferralsPage() {
 
   const shareLinks = useMemo(() => {
     const shareUrl = campaignUrl || (typeof window !== "undefined" ? window.location.href : "");
-    const shareText = `Join my CryptoSignal referral team with code ${referralCode}`;
+    const shareText = `Join my Primerica referral team with code ${referralCode}`;
     return [
       {
         label: "WhatsApp",

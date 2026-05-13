@@ -77,7 +77,7 @@ export default function CampaignSettingsPage() {
         <div>
           <div className="text-xs uppercase tracking-[0.16em] text-slate-300/70">Automations</div>
           <p className="text-sm text-slate-300/80">
-            Control when CryptoSignal notifies referrals and when payouts happen automatically.
+            Control when Primerica notifies referrals and when payouts happen automatically.
           </p>
         </div>
         <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm">

@@ -60,7 +60,7 @@ export default function AdminLoginPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl shadow-[0_20px_60px_-40px_rgba(16,185,129,0.9)]">
         <div className="mb-6 text-center">
-          <div className="text-xs uppercase tracking-[0.28em] text-emerald-200/80">CryptoSignal Admin</div>
+          <div className="text-xs uppercase tracking-[0.28em] text-emerald-200/80">Primerica Admin</div>
           <h1 className="text-2xl font-semibold text-white mt-2">Admin Sign In</h1>
           <p className="text-sm text-slate-300/80 mt-1">Use an account with the admin role.</p>
         </div>

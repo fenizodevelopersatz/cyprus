@@ -1,4 +1,4 @@
-import { API_BASE_URL, WALLET_WS_PATH } from "./apiRoutes";
+import { WALLET_WS_PATH, WS_BASE_URL } from "./apiRoutes";
 import { getStoredAccessToken } from "../features/auth/state/session.storage";
 
 type WalletSummary = {
@@ -27,7 +27,7 @@ const clearReconnectTimer = () => {
 
 const buildWalletWsUrl = (): string | null => {
   try {
-    const base = new URL(API_BASE_URL);
+    const base = new URL(WS_BASE_URL);
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
     base.pathname = `${base.pathname.replace(/\/?$/, "")}${WALLET_WS_PATH}`;
     const token = getStoredAccessToken();
@@ -77,7 +77,9 @@ const connect = () => {
   };
 
   socket.onerror = () => {
-    socket?.close();
+    if (socket?.readyState === WebSocket.CONNECTING || socket?.readyState === WebSocket.OPEN) {
+      socket.close();
+    }
   };
 };
 

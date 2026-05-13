@@ -311,7 +311,7 @@ export default function StakingPage() {
       <div className={initialLoaderCls}>
         <div className="flex flex-col items-center gap-3 rounded-3xl border border-indigo-500/40 bg-indigo-500/10 px-6 py-5 text-sm shadow-lg shadow-indigo-500/30">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-          <div className="text-xs uppercase tracking-[0.32em] text-indigo-100/70">CryptoSignal</div>
+          <div className="text-xs uppercase tracking-[0.32em] text-indigo-100/70">Primerica</div>
           <div className="text-base font-medium text-white">Loading staking data...</div>
         </div>
       </div>
@@ -324,7 +324,7 @@ export default function StakingPage() {
         <div>
           <h1 className="text-xl font-semibold">Staking Hub</h1>
           <p className="text-sm text-slate-300/85">
-            Allocate idle assets into CryptoSignal staking pools, monitor rewards, and unlock boosted campaigns.
+            Allocate idle assets into Primerica staking pools, monitor rewards, and unlock boosted campaigns.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

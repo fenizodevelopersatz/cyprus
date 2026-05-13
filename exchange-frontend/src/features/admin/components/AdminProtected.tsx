@@ -15,7 +15,7 @@ export default function AdminProtected() {
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
         <div className="flex flex-col items-center gap-3 rounded-3xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-5 text-sm shadow-lg shadow-emerald-500/30">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
-          <div className="uppercase tracking-[0.32em] text-emerald-200/80 text-[11px]">CryptoSignal Admin</div>
+          <div className="uppercase tracking-[0.32em] text-emerald-200/80 text-[11px]">Primerica Admin</div>
           <div className="font-medium text-white">Validating admin session...</div>
         </div>
       </div>

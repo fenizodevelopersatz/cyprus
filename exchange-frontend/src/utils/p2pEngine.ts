@@ -162,7 +162,7 @@ export class P2PEngine {
 
   private user: P2PUserProfile = {
     id: "user-primary",
-    name: "CryptoSignal Trader",
+    name: "Primerica Trader",
     tier: "Advanced",
     kycVerified: false,
     lastUpdated: Date.now(),

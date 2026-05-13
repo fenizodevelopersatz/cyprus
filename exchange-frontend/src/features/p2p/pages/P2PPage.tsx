@@ -139,7 +139,7 @@ export default function P2PPage() {
         <header>
           <h1 className="text-2xl font-semibold text-white">Peer-to-Peer Desk</h1>
           <p className="mt-1 text-sm text-slate-300/80">
-            Securely swap assets with verified CryptoSignal traders. Complete KYC to unlock the desk.
+            Securely swap assets with verified Primerica traders. Complete KYC to unlock the desk.
           </p>
         </header>
 
@@ -175,7 +175,7 @@ export default function P2PPage() {
         <div>
           <h1 className="text-2xl font-semibold text-white">Peer-to-Peer Desk</h1>
           <p className="text-sm text-slate-300/80">
-            Curated marketplace for verified CryptoSignal traders. Escrow backed, chat enabled, compliance ready.
+            Curated marketplace for verified Primerica traders. Escrow backed, chat enabled, compliance ready.
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
@@ -478,7 +478,7 @@ export default function P2PPage() {
           <div className="space-y-3 text-sm text-slate-200">
             <p>
               You are about to open a {tab.toLowerCase()} order with {selectedListing.trader.name}. As a verified user you are eligible for
-              escrow protection, CryptoSignal chat monitoring, and dispute resolution.
+              escrow protection, Primerica chat monitoring, and dispute resolution.
             </p>
             <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300/80">
               <div>Trade size: {currencyFormatter.format(fiatAmount)} {selectedListing.fiatCurrency}</div>

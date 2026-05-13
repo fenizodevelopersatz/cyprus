@@ -173,12 +173,12 @@ export function WithdrawTab(props: Props) {
             <Input value={props.withdrawAddress} onChange={(e) => props.onWithdrawAddressChange(e.target.value)} placeholder={`Address (${(props.selectedNetwork === "ethereum" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : props.selectedNetwork === "bsc" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : "TPXzKN6vjKGiTskocEYHCuEJoPFzyr1TNe")})`} className="h-12" />
             <div className="space-y-2">
               <Input
-                type="text"
+                type="number"
                 inputMode="decimal"
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
-                value={props.withdrawAmount}
+                // value={props.withdrawAmount}
                 onChange={(e) => props.onWithdrawAmountChange(e.target.value)}
                 placeholder="Amount"
                 className="h-12"

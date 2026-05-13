@@ -358,7 +358,7 @@ export default function SipPage() {
       <header className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-950/70 to-indigo-900/60 p-6 shadow-[0_35px_120px_-70px_rgba(79,70,229,0.7)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <p className="text-[11px] uppercase tracking-[0.32em] text-emerald-300/80">CryptoSignal SIP</p>
+            <p className="text-[11px] uppercase tracking-[0.32em] text-emerald-300/80">Primerica SIP</p>
             <h1 className="text-3xl font-semibold text-white">{hero?.title ?? "SIP for Cryptos"}</h1>
             <p className="mt-1 text-sm text-slate-300/80">
               {hero?.subtitle ??

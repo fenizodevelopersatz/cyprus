@@ -514,7 +514,7 @@ export default function AdminShell() {
               <div className="flex items-center gap-4 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm shadow-[0_20px_80px_-65px_rgba(236,72,153,0.75)]">
                 <div className="text-right">
                   <div className="text-sm font-semibold text-white">{session?.name ?? "Admin"}</div>
-                  <div className="text-xs text-slate-300">{session?.email ?? "admin@cryptosignal.com"}</div>
+                  <div className="text-xs text-slate-300">{session?.email ?? "admin@Primerica.com"}</div>
                   <div className="text-[11px] uppercase tracking-[0.3em] text-emerald-300">
                     Roles: {session?.roles?.join(", ") ?? "n/a"}
                   </div>
@@ -532,7 +532,7 @@ export default function AdminShell() {
 
           <footer className="rounded-[24px] border border-white/10 bg-white/5 px-6 py-4 text-xs text-slate-400 backdrop-blur-xl">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <span>&copy; {new Date().getFullYear()} CryptoSignal Admin. For authorized personnel only.</span>
+              <span>&copy; {new Date().getFullYear()} Primerica Admin. For authorized personnel only.</span>
               <span>Audit logging enabled - v2.1</span>
             </div>
           </footer>

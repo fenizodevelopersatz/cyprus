@@ -9,9 +9,9 @@ const slippagePresets = [0.1, 0.3, 0.5, 1, 3];
 const routingOptions = [
   {
     id: "auto",
-    label: "CryptoSignal Smart Route",
-    description: "Splits flow between CryptoSignal liquidity and trusted market makers.",
-    hops: ["CryptoSignal Pool", "Prime MM desk"],
+    label: "Primerica Smart Route",
+    description: "Splits flow between Primerica liquidity and trusted market makers.",
+    hops: ["Primerica Pool", "Prime MM desk"],
     impactPct: 0.12,
     feeBps: 4,
   },
@@ -42,7 +42,7 @@ const tokenMeta: Record<
 > = {
   BTC: {
     name: "Bitcoin",
-    description: "Digital collateral layer for the CryptoSignal ecosystem.",
+    description: "Digital collateral layer for the Primerica ecosystem.",
   },
   ETH: {
     name: "Ethereum",
@@ -228,7 +228,7 @@ export default function SwapPage() {
         <div>
           <h1 className="text-xl font-semibold">Instant Swap</h1>
           <p className="text-sm text-slate-300/85">
-            Route assets across CryptoSignal rails with live quotes, slippage controls, and execution history.
+            Route assets across Primerica rails with live quotes, slippage controls, and execution history.
           </p>
         </div>
         <div className="flex items-center gap-3">

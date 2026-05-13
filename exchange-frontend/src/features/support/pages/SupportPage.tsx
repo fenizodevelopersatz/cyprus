@@ -54,7 +54,7 @@ export default function SupportPage() {
         <div>
           <h1 className="text-xl font-semibold">Support & Help Center</h1>
           <p className="text-sm text-slate-300/85">
-            Search self-serve guides, open priority tickets, or connect with the CryptoSignal response team.
+            Search self-serve guides, open priority tickets, or connect with the Primerica response team.
           </p>
         </div>
         <Button size="sm">View system status</Button>

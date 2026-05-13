@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
 import { formatMoney } from "../../../utils/money";
@@ -65,6 +65,7 @@ type Props = {
 const formatFundingUsd = (value: string | number | null | undefined) => `$${formatMoney(value)}`;
 
 export function WithdrawTab(props: Props) {
+  const navigate = useNavigate();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const policy = props.withdrawalPolicy;
   const policyRules = policy?.policy;
@@ -72,7 +73,7 @@ export function WithdrawTab(props: Props) {
   const preview = policy?.preview;
   const maxWithdrawableAmount = Math.max(0, Number(props.withdrawWalletBalance || 0));
   const eligibilityWarnings = Array.isArray(policyUser?.eligibilityWarnings) ? policyUser.eligibilityWarnings : [];
-  const kycPending = policyUser?.kycVerified === false;
+  const kycPending = policyUser?.kycVerified !== true;
   const showSubmitButton = policyUser?.kycVerified === true;
   const mobileNetworkOrder: Record<string, number> = {
     tron: 0,
@@ -169,7 +170,7 @@ export function WithdrawTab(props: Props) {
             </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <Input value={props.withdrawAddress} onChange={(e) => props.onWithdrawAddressChange(e.target.value)} placeholder="Destination address" className="h-12" />
+            <Input value={props.withdrawAddress} onChange={(e) => props.onWithdrawAddressChange(e.target.value)} placeholder={`Address (${(props.selectedNetwork === "ethereum" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : props.selectedNetwork === "bsc" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : "TPXzKN6vjKGiTskocEYHCuEJoPFzyr1TNe")})`} className="h-12" />
             <div className="space-y-2">
               <Input
                 type="text"
@@ -202,7 +203,11 @@ export function WithdrawTab(props: Props) {
             >
               {props.submitting ? "Submitting..." : "Submit Withdrawal"}
             </Button>
-          ) : null}
+          ) : (
+            <Button type="button" onClick={() => navigate("/app/kyc")}>
+              Submit KYC
+            </Button>
+          )}
           {props.message &&
             (needsKycNavigation ? (
               <Link

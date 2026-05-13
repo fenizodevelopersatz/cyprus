@@ -521,7 +521,7 @@ export default function Exchange() {
                 <Input type="number" value={qtyInput} onChange={(event) => setQtyInput(event.target.value)} step={marketMeta?.stepSize ?? "0.0001"} />
               </div>
               <div className="rounded-[14px] border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-3 py-3 text-xs text-[var(--text-secondary)]">
-                <DetailRow label="Notional" value={notional ? `${notionalFormatter.format(notional)} ${quoteAsset}` : "--"} />
+                <DetailRow label={`cost of the ${baseAsset}`} value={notional ? `${notionalFormatter.format(notional)} ${quoteAsset}` : "--"} />
                 <DetailRow label="Wallet balance" value={totalWalletBalanceLabel} />
                 {!meetsMinNotional && notional > 0 && minNotional > 0 && <div className="mt-2 text-[var(--danger)]">Minimum order size is {notionalFormatter.format(minNotional)} {quoteAsset}.</div>}
                 {sellBlocked && <div className="mt-2 text-[var(--danger)]">You have no available {baseAsset}.</div>}

@@ -47,6 +47,16 @@ const formatShortDateTime = (iso?: string | null) => {
   });
 };
 
+const formatShortDate = (iso?: string | null) => {
+  if (!iso) return "--";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  });
+};
+
 const getOrderStatusTone = (status?: string) => {
   const normalized = status?.toUpperCase?.() ?? "";
   return normalized === "OPEN" || normalized === "NEW"
@@ -195,6 +205,16 @@ export default function Dashboard() {
   const telegramPending = telegramApprovalStatus === "pending";
   const telegramRejected = telegramApprovalStatus === "rejected";
   const dailySignalCount = telegramAccess?.matchedPackageTier?.signalsPerDay ?? 0;
+  const dailySignalValue = telegramApproved ? "Live now" : String(dailySignalCount);
+  const dailySignalSublabel = telegramApproved
+    ? `${dailySignalCount} signal${dailySignalCount === 1 ? "" : "s"} unlocked`
+    : telegramPending
+    ? "Waiting for manual approval"
+    : telegramRejected
+    ? "Approval rejected"
+    : dailySignalCount > 0
+    ? `${dailySignalCount} signal${dailySignalCount === 1 ? "" : "s"} after approval`
+    : "Deposit package needed";
   const tickerSource = tickers.length > 0 ? tickers : movers;
   const sortableTickers = tickerSource.slice().sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
   const topMovers = sortableTickers.slice(0, 3);
@@ -212,7 +232,9 @@ export default function Dashboard() {
   const topMoverPercentClass = featuredTicker?.changePct >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]";
   const mlmLastUpdatedLabel = mlmSnapshot.lastUpdatedAt ? formatRelativeTime(mlmSnapshot.lastUpdatedAt) : "auto refresh 15s";
   const finalWalletBalance = summary?.mainWalletBalance ?? totalEquity;
-
+  const tenDaySalarySublabel = mlmSnapshot.tenDaySalaryNextDueAt
+    ? `Qualify now, first recurring pay after 10 days. Next payout ${formatShortDate(mlmSnapshot.tenDaySalaryNextDueAt)}.`
+    : "Qualify now, first recurring pay after 10 days.";
   useEffect(() => {
     let active = true;
 
@@ -256,6 +278,11 @@ export default function Dashboard() {
         const reward = matchedByRank?.promotionRewardUsdt ?? matchedByCode?.promotionRewardUsdt ?? getOneTimePromotionReward(currentLevelRank);
         const promotionHistoryTotal = sumPromotionRewards(dashboard.mlm.promotionHistory);
         const recurringBonusHistoryTotal = sumRecurringBonusRewards(dashboard.mlm.bonusPayoutHistory);
+        const currentBonusPercent = Number(matchedByRank?.bonusPercent ?? matchedByCode?.bonusPercent ?? 0);
+        const currentEligibleTeamBalance = Number(dashboard.mlm.summary?.teamEligibleBalance ?? 0);
+        const projectedTenDaySalary = currentBonusPercent > 0 && currentEligibleTeamBalance > 0
+          ? (currentEligibleTeamBalance * currentBonusPercent) / 100
+          : 0;
         const incomeTotals = incomeHistory.items.reduce(
           (acc, item) => {
             const amount = Number(item.amount || 0);
@@ -275,7 +302,7 @@ export default function Dashboard() {
           totalTeamSize: Number(dashboard.mlm.summary?.teamTotalMembers) || 0,
           eligibleTeamSize: Number(dashboard.mlm.summary?.teamEligibleMembers) || 0,
           referralReward: incomeTotals.referralReward,
-          tenDaySalary: recurringBonusHistoryTotal || incomeTotals.tenDaySalary,
+          tenDaySalary: projectedTenDaySalary || recurringBonusHistoryTotal || incomeTotals.tenDaySalary,
           tenDaySalaryNextDueAt: dashboard.mlm.nextBonusDueAt ?? null,
           promotionReward: incomeTotals.promotionReward || promotionHistoryTotal || Number(reward) || 0,
           birthdayReward: incomeTotals.birthdayReward,
@@ -310,11 +337,6 @@ export default function Dashboard() {
       active = false;
     };
   }, [currentLevelRank, tradingProfit, user?.currentLevelCode, user?.currentLevelRank]);
-
-  const handleDashboardRefresh = () => {
-    refetch();
-    setMlmSnapshot((prev) => ({ ...prev, lastUpdatedAt: new Date().toISOString() }));
-  };
 
   const handleTelegramAccessClick = async () => {
     if (!telegramAccess?.telegramChannelUrl) return;
@@ -387,8 +409,7 @@ export default function Dashboard() {
           <MetricCard
             label="Salary / 10 Days"
             value={formatMlmMoney(mlmSnapshot.tenDaySalary)}
-            sublabel={mlmSnapshot.tenDaySalaryNextDueAt ? `Next payout ${formatShortDateTime(mlmSnapshot.tenDaySalaryNextDueAt)}` : "Credits to main balance after 10 days"}
-            sublabelClassName="text-[var(--success)]"
+            sublabel={tenDaySalarySublabel}
             valueClassName="text-[var(--success)]"
             compact
           />
@@ -417,7 +438,13 @@ export default function Dashboard() {
             valueClassName="text-[var(--success)]"
             compact
           />
-          <MetricCard label="Daily Signal" value={String(dailySignalCount)} valueClassName="text-[var(--success)]" compact />
+          <MetricCard
+            label="Daily Signal"
+            value={dailySignalValue}
+            sublabel={dailySignalSublabel}
+            valueClassName="text-[var(--success)]"
+            compact
+          />
           <MetricCard
             label="Top Mover"
             value={featuredTicker ? `${featuredTicker.symbol}` : "--"}
@@ -429,8 +456,8 @@ export default function Dashboard() {
         </section>
 
         {telegramAccess ? (
-          <section className="exchange-card exchange-card-strong p-4">
-            <div className="flex flex-col gap-3">
+        <section className="exchange-card exchange-card-strong p-4">
+          <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="micro-label text-[10px]">Telegram Access</div>
@@ -463,6 +490,11 @@ export default function Dashboard() {
                         : telegramRejected
                         ? `Rejected${telegramAccess.rejectNote ? `: ${telegramAccess.rejectNote}` : ""}.`
                         : "One-time info collection is required before manual approval."}
+                    </div>
+                  ) : null}
+                  {telegramApproved ? (
+                    <div className="text-[11px] text-emerald-200">
+                      Signal access is live now. Qualify now, and your first recurring salary payout arrives after 10 days.
                     </div>
                   ) : null}
                 </>
@@ -636,8 +668,7 @@ export default function Dashboard() {
         <MetricCard
           label="Salary / 10 Days"
           value={formatMlmMoney(mlmSnapshot.tenDaySalary)}
-          sublabel={mlmSnapshot.tenDaySalaryNextDueAt ? `Next payout ${formatShortDateTime(mlmSnapshot.tenDaySalaryNextDueAt)}` : "Credits to main balance after 10 days"}
-          sublabelClassName="text-[var(--success)]"
+          sublabel={tenDaySalarySublabel}
           valueClassName="text-[var(--success)]"
         />
         <MetricCard label="Promotion Reward" value={formatMlmMoney(mlmSnapshot.promotionReward)} valueClassName="text-[var(--success)]" />
@@ -664,7 +695,12 @@ export default function Dashboard() {
           }          
           valueClassName="text-[var(--success)]"
         />
-        <MetricCard label="Daily Signal" value={String(dailySignalCount)} valueClassName="text-[var(--success)]" />
+        <MetricCard
+          label="Daily Signal"
+          value={dailySignalValue}
+          sublabel={dailySignalSublabel}
+          valueClassName="text-[var(--success)]"
+        />
         <MetricCard
           label="24h Top Mover"
           value={
@@ -712,6 +748,11 @@ export default function Dashboard() {
                         : telegramRejected
                         ? `Rejected${telegramAccess.rejectNote ? `: ${telegramAccess.rejectNote}` : ""}.`
                         : "Submit your Telegram username once for admin approval."}
+                    </div>
+                  ) : null}
+                  {telegramApproved ? (
+                    <div className="text-xs text-emerald-200">
+                      Signal access is live now. Qualify now, and your first recurring salary payout arrives after 10 days.
                     </div>
                   ) : null}
                 </>

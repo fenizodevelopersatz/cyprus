@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE_URL, PORTFOLIO_WS_PATH } from "../../../app/apiRoutes";
+import { PORTFOLIO_WS_PATH, WS_BASE_URL } from "../../../app/apiRoutes";
 import { getStoredAccessToken } from "../../auth/state/session.storage";
 import {
   fetchPortfolioActivity,
@@ -59,7 +59,7 @@ const ensureRecord = (value: unknown): Record<string, unknown> =>
 
 const buildWsUrl = (): string | null => {
   try {
-    const base = new URL(API_BASE_URL);
+    const base = new URL(WS_BASE_URL);
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
     base.pathname = `${base.pathname.replace(/\/?$/, "")}${PORTFOLIO_WS_PATH}`;
     const token = getStoredAccessToken();
@@ -337,6 +337,9 @@ export function usePortfolioData(): PortfolioHookState {
 
     socket.onerror = () => {
       setWsStatus("error");
+      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
 
     socket.onmessage = (event) => {

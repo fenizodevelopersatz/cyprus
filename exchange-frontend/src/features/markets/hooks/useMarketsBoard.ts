@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../../app/axios";
-import { API_BASE_URL } from "../../../app/apiRoutes";
+import { WS_BASE_URL } from "../../../app/apiRoutes";
 import { getStoredAccessToken } from "../../auth/state/session.storage";
 import {
   fetchExchangeSnapshot,
@@ -55,7 +55,7 @@ type MarketTickerFeedItem = {
 
 const buildWsUrl = (symbol: string): string | null => {
   try {
-    const base = new URL(API_BASE_URL);
+    const base = new URL(WS_BASE_URL);
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
     base.pathname = `${base.pathname.replace(/\/?$/, "")}/ws/exchange`;
     base.searchParams.set("symbol", symbol);
@@ -216,6 +216,9 @@ export const useMarketsBoard = (range: "1h" | "24h" = "24h"): MarketsHookState =
         if (disposed) return;
         hasErrored = true;
         setWsStatus("error");
+        if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
       };
 
       socket.onmessage = (event) => {

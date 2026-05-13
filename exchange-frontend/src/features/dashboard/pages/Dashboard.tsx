@@ -64,6 +64,11 @@ const getOrderStatusTone = (status?: string) => {
     : "bg-emerald-500/15 text-emerald-200";
 };
 
+const isClosedOrderStatus = (status?: string) => {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  return normalized === "CLOSED" || normalized === "CLOSE" || normalized === "FILLED" || normalized === "COMPLETED" || normalized === "SUCCESS";
+};
+
 const resolveUserLevelImage = (currentLevelRank?: number | null) => {
   const rank = Math.max(0, Math.min(10, Number(currentLevelRank ?? 0) || 0));
   return rank === 0 ? "/level/lv0.jpeg" : `/level/lv${rank}.jpg`;
@@ -185,6 +190,9 @@ export default function Dashboard() {
   const tradingProfit = useMemo(
     () =>
       orders.reduce((sum, order) => {
+        if (order.source === "signal" && !isClosedOrderStatus(order.status)) {
+          return sum;
+        }
         const profit = Number(order.profitAmount ?? 0);
         return sum + (Number.isFinite(profit) ? profit : 0);
       }, 0),
@@ -494,7 +502,7 @@ export default function Dashboard() {
                   ) : null}
                   {telegramApproved ? (
                     <div className="text-[11px] text-emerald-200">
-                      Signal access is live now. Qualify now, and your first recurring salary payout arrives after 10 days.
+                      Signal access is live now. Qualify now.
                     </div>
                   ) : null}
                 </>
@@ -752,7 +760,7 @@ export default function Dashboard() {
                   ) : null}
                   {telegramApproved ? (
                     <div className="text-xs text-emerald-200">
-                      Signal access is live now. Qualify now, and your first recurring salary payout arrives after 10 days.
+                      Signal access is live now. Qualify now.
                     </div>
                   ) : null}
                 </>

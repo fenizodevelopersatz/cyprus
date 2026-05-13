@@ -79,12 +79,12 @@ const isNotFoundError = (error: unknown): boolean =>
   );
 
 const resolveSignalOrderStatus = (order: Awaited<ReturnType<typeof fetchSignalHistory>>[number]): string => {
-  const status = String(order.tradeStatus ?? order.status ?? "").toUpperCase();
-  if (status === "CLOSED" || status === "CLOSE" || status === "FILLED" || status === "COMPLETED" || status === "SUCCESS") {
+  const status = String(order.tradeStatus ?? "").trim().toUpperCase();
+  if (status === "CLOSED") {
     return "CLOSED";
   }
 
-  if (order.sellCreatedAt || (order.sellPrice ?? 0) > 0) {
+  if (order.sellCreatedAt) {
     return "CLOSED";
   }
 
@@ -96,6 +96,7 @@ const mapSignalHistoryToDashboardOrders = (
 ): DashboardOrder[] =>
   rows
     .map((row) => {
+      const resolvedStatus = resolveSignalOrderStatus(row);
       const derivedQuantity =
         row.executedQty && row.executedQty > 0
           ? row.executedQty
@@ -109,7 +110,7 @@ const mapSignalHistoryToDashboardOrders = (
         side: "BUY",
         type: "SIGNAL",
         quantity: derivedQuantity,
-        status: resolveSignalOrderStatus(row),
+        status: resolvedStatus,
         createdAt: row.buyCreatedAt ?? row.appliedAt,
         signalToken: row.signalToken,
         buyPrice: row.buyPrice,
@@ -117,9 +118,12 @@ const mapSignalHistoryToDashboardOrders = (
         buyCreatedAt: row.buyCreatedAt ?? row.appliedAt,
         sellCreatedAt: row.sellCreatedAt,
         investmentAmount: row.investmentAmount,
-        profitAmount: row.profitAmount,
-        returnAmount: row.totalReturnUsdt,
-        walletBalance: row.walletBalanceAfterSell ?? row.walletBalanceAfterBuy ?? row.newBalance,
+        profitAmount: resolvedStatus === "CLOSED" ? row.profitAmount : undefined,
+        returnAmount: resolvedStatus === "CLOSED" ? row.totalReturnUsdt : undefined,
+        walletBalance:
+          resolvedStatus === "CLOSED"
+            ? row.walletBalanceAfterSell ?? row.newBalance
+            : row.walletBalanceAfterBuy,
         timeSlot: row.slotLabel || row.slotKey,
         source: "signal",
       };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE_URL } from "../../../app/apiRoutes";
+import { WS_BASE_URL } from "../../../app/apiRoutes";
 import { getStoredAccessToken } from "../../auth/state/session.storage";
 import {
   cancelOrder,
@@ -40,7 +40,7 @@ const parseError = (error: unknown) => {
 
 const buildWsUrl = (symbol: string): string | null => {
   try {
-    const base = new URL(API_BASE_URL);
+    const base = new URL(WS_BASE_URL);
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
     base.pathname = `${base.pathname.replace(/\/?$/, "")}/ws/exchange`;
     base.searchParams.set("symbol", symbol);
@@ -284,6 +284,9 @@ export const useExchangeData = (initialSymbol?: string): ExchangeHookState => {
 
     socket.onerror = () => {
       setWsStatus("error");
+      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
 
     socket.onmessage = (event) => {

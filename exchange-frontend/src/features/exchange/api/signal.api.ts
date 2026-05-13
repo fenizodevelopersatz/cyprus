@@ -314,7 +314,7 @@ const mapHistoryRow = (value: unknown, index: number): SignalHistoryRow => {
     totalEarned,
     totalReturnUsdt: toOptionalNumber(raw.totalReturnUsdt ?? raw.total_return_usdt ?? auditJson.total_return_usdt),
     newBalance,
-    tradeStatus: String(raw.tradeStatus ?? raw.trade_status ?? raw.status ?? "OPEN"),
+    tradeStatus: String(raw.tradeStatus ?? raw.trade_status ?? "OPEN"),
     orderStatus: String(raw.orderStatus ?? raw.order_status ?? "FILLED"),
     sellTrigger: raw.sellTrigger ?? raw.sell_trigger ? String(raw.sellTrigger ?? raw.sell_trigger) : null,
     expiresAt: raw.expiresAt ?? raw.expires_at ? String(raw.expiresAt ?? raw.expires_at) : null,

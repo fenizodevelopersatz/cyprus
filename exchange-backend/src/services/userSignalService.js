@@ -226,6 +226,18 @@ function getEligibleSlotWindows(slots, allowedSignalsToday) {
   return safeSlots.slice(0, limit);
 }
 
+function computeUnlockedSignals(signalsPerDay, userLevel) {
+  const totalSignals = Math.max(0, toNumber(signalsPerDay));
+  const level = Math.max(0, toNumber(userLevel));
+  if (totalSignals <= 0) return 0;
+  if (totalSignals <= 2) return totalSignals;
+
+  let unlocked = 2;
+  if (totalSignals >= 3 && level >= 1) unlocked += 1;
+  if (totalSignals >= 4 && level >= 2) unlocked += 1;
+  return Math.min(unlocked, totalSignals);
+}
+
 async function getActiveSlotWindow(now = new Date(), trx = db) {
   const minutes = now.getHours() * 60 + now.getMinutes();
   const slots = await getDynamicSlotWindows(trx);
@@ -309,21 +321,20 @@ function detectEligiblePackage(balance, userLevel, packages) {
   }
 
   const requiredLevel = toNumber(match.requiredLevel);
-  if (userLevel < requiredLevel) {
-    return { package: match, allowedSignalsToday: toNumber(match.signalsPerDay), eligible: false, reason: 'You are not allowed for the current trade.' };
-  }
+  const normalizedPackage = {
+    name: match.name,
+    minAmount: toNumber(match.minAmount),
+    maxAmount: match.maxAmount === null ? null : toNumber(match.maxAmount),
+    signalsPerDay: toNumber(match.signalsPerDay),
+    requiredLevel,
+  };
+  const unlockedSignals = computeUnlockedSignals(normalizedPackage.signalsPerDay, userLevel);
 
   return {
-    package: {
-      name: match.name,
-      minAmount: toNumber(match.minAmount),
-      maxAmount: match.maxAmount === null ? null : toNumber(match.maxAmount),
-      signalsPerDay: toNumber(match.signalsPerDay),
-      requiredLevel,
-    },
-    allowedSignalsToday: toNumber(match.signalsPerDay),
-    eligible: true,
-    reason: null,
+    package: normalizedPackage,
+    allowedSignalsToday: unlockedSignals,
+    eligible: unlockedSignals > 0,
+    reason: unlockedSignals > 0 ? null : 'You are not allowed for the current trade.',
   };
 }
 

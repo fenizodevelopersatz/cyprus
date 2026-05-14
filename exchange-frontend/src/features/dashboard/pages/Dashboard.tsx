@@ -9,6 +9,7 @@ import Marquee from "../../../ui/Marquee";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { DEFAULT_NEWS, DEFAULT_PROMOTIONS } from "../constants";
 import TradingViewChart from "../../exchange/components/TradingViewChart";
+import { detectEligiblePackage } from "../../exchange/signal/signal.helpers";
 import { getUserProfile } from "../../settings/api/account.api";
 import { fetchReferralDashboard, fetchReferralIncomeHistory } from "../../referrals/api/referrals.api";
 import { submitTelegramAccessRequest } from "../api/dashboard.api";
@@ -212,17 +213,11 @@ export default function Dashboard() {
   const telegramApproved = telegramApprovalStatus === "approved";
   const telegramPending = telegramApprovalStatus === "pending";
   const telegramRejected = telegramApprovalStatus === "rejected";
-  const dailySignalCount = telegramAccess?.matchedPackageTier?.signalsPerDay ?? 0;
-  const dailySignalValue = telegramApproved ? "Live now" : String(dailySignalCount);
-  const dailySignalSublabel = telegramApproved
-    ? `${dailySignalCount} signal${dailySignalCount === 1 ? "" : "s"} unlocked`
-    : telegramPending
-    ? "Waiting for manual approval"
-    : telegramRejected
-    ? "Approval rejected"
-    : dailySignalCount > 0
-    ? `${dailySignalCount} signal${dailySignalCount === 1 ? "" : "s"} after approval`
-    : "Deposit package needed";
+  const finalWalletBalance = summary?.mainWalletBalance ?? totalEquity;
+  const effectiveUserLevel = Math.max(0, Number(mlmSnapshot.levelRank || currentLevelRank || 0));
+  const dashboardSignalEligibility = detectEligiblePackage(finalWalletBalance, effectiveUserLevel);
+  const dailySignalCount = dashboardSignalEligibility.allowedSignalsPerDay;
+  const dailySignalValue = String(dailySignalCount);
   const tickerSource = tickers.length > 0 ? tickers : movers;
   const sortableTickers = tickerSource.slice().sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
   const topMovers = sortableTickers.slice(0, 3);
@@ -239,7 +234,6 @@ export default function Dashboard() {
   const topMoverSublabelClass = featuredTicker?.changePct >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]";
   const topMoverPercentClass = featuredTicker?.changePct >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]";
   const mlmLastUpdatedLabel = mlmSnapshot.lastUpdatedAt ? formatRelativeTime(mlmSnapshot.lastUpdatedAt) : "auto refresh 15s";
-  const finalWalletBalance = summary?.mainWalletBalance ?? totalEquity;
   const tenDaySalarySublabel = mlmSnapshot.tenDaySalaryNextDueAt
     ? `Qualify now, first recurring pay after 10 days. Next payout ${formatShortDate(mlmSnapshot.tenDaySalaryNextDueAt)}.`
     : "Qualify now, first recurring pay after 10 days.";
@@ -438,7 +432,7 @@ export default function Dashboard() {
                     {integerFormatter.format(mlmSnapshot.eligibleTeamSize)}
                   </div>
                   <div className="mt-1 text-[9px] font-medium uppercase tracking-[0.14em] text-emerald-200/80">
-                    &gt; ${integerFormatter.format(mlmSnapshot.minimumEligibleBalance)}
+                    Eligible team &gt; ${integerFormatter.format(mlmSnapshot.minimumEligibleBalance)}
                   </div>
                 </div>
               </div>
@@ -449,7 +443,6 @@ export default function Dashboard() {
           <MetricCard
             label="Daily Signal"
             value={dailySignalValue}
-            sublabel={dailySignalSublabel}
             valueClassName="text-[var(--success)]"
             compact
           />
@@ -471,9 +464,9 @@ export default function Dashboard() {
                   <div className="micro-label text-[10px]">Telegram Access</div>
                   <div className="mt-1 text-base font-semibold text-white">Join Telegram Channel</div>
                   <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">Deposit minimum 100 USDT to get access for daily trade signal through the telegram.</p>
-                  {telegramAccess.matchedPackageTier ? (
+                  {dashboardSignalEligibility.package ? (
                     <div className="mt-2 text-[11px] text-[var(--text-muted)]">
-                      Eligible count: {telegramAccess.matchedPackageTier.signalsPerDay}
+                      Eligible count: {dailySignalCount}
                     </div>
                   ) : null}
                 </div>
@@ -642,11 +635,6 @@ export default function Dashboard() {
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
                 <span className="rounded-full border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-2.5 py-1 text-white">Level {mlmSnapshot.levelRank}</span>
                 <span>{mlmLastUpdatedLabel}</span>
-                <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
-                  Eligible team {integerFormatter.format(mlmSnapshot.eligibleTeamSize)}
-                </span>
-                {telegramApproved ? <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">Telegram Approved</span> : null}
-                {telegramPending ? <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-amber-200">Telegram Pending</span> : null}
               </div>
             </div>
           </div>
@@ -696,7 +684,7 @@ export default function Dashboard() {
                   {integerFormatter.format(mlmSnapshot.eligibleTeamSize)}
                 </div>
                 <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-200/80">
-                  &gt; ${integerFormatter.format(mlmSnapshot.minimumEligibleBalance)}
+                  Eligible team &gt; ${integerFormatter.format(mlmSnapshot.minimumEligibleBalance)}
                 </div>
               </div>
             </div>
@@ -706,7 +694,6 @@ export default function Dashboard() {
         <MetricCard
           label="Daily Signal"
           value={dailySignalValue}
-          sublabel={dailySignalSublabel}
           valueClassName="text-[var(--success)]"
         />
         <MetricCard
@@ -736,9 +723,9 @@ export default function Dashboard() {
               <div className="micro-label">Telegram Access</div>
               <div className="mt-1 text-lg font-semibold text-white">Join Telegram Channel</div>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">Deposit minimum 100 USDT to get access for daily trade signal through the telegram</p>
-              {telegramAccess.matchedPackageTier ? (
+              {dashboardSignalEligibility.package ? (
                 <div className="mt-2 text-xs text-[var(--text-muted)]">
-                  Eligible count: {telegramAccess.matchedPackageTier.signalsPerDay}
+                  Eligible count: {dailySignalCount}
                 </div>
               ) : null}
             </div>

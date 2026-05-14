@@ -202,9 +202,10 @@ const mapWalletSummary = (value: unknown): SignalWalletSummary => {
     currentBalance,
     userLevel
   );
-  const allowedSignalsToday = toNumber(
-    raw.allowedSignalsToday ?? raw.allowed_signals_today ?? eligiblePackage?.signalsPerDay ?? derivedPackageState.allowedSignalsPerDay
+  const rawAllowedSignalsToday = toNumber(
+    raw.allowedSignalsToday ?? raw.allowed_signals_today ?? derivedPackageState.allowedSignalsPerDay
   );
+  const allowedSignalsToday = rawAllowedSignalsToday;
   const remainingSignals = Math.max(
     toNumber(raw.remainingSignals ?? raw.remaining_signals ?? allowedSignalsToday - todayUsedSignals),
     0

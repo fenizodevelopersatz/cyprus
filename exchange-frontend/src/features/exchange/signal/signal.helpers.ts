@@ -56,6 +56,18 @@ const SLOT_CONFIG: ActiveSlot[] = [
 
 const roundCurrency = (value: number) => Math.round((value + Number.EPSILON) * 100000000) / 100000000;
 
+function computeUnlockedSignals(signalsPerDay: number, userLevel: number) {
+  const totalSignals = Math.max(0, Number(signalsPerDay) || 0);
+  const level = Math.max(0, Number(userLevel) || 0);
+  if (totalSignals <= 0) return 0;
+  if (totalSignals <= 2) return totalSignals;
+
+  let unlocked = 2;
+  if (totalSignals >= 3 && level >= 1) unlocked += 1;
+  if (totalSignals >= 4 && level >= 2) unlocked += 1;
+  return Math.min(unlocked, totalSignals);
+}
+
 export function detectEligiblePackage(balance: number, userLevel = 0): {
   package: EligiblePackage | null;
   allowedSignalsPerDay: number;
@@ -81,11 +93,12 @@ export function detectEligiblePackage(balance: number, userLevel = 0): {
       : balance <= 24999
       ? { name: "Package 3", minAmount: 5000, maxAmount: 24999, signalsPerDay: 3, requiredLevel: 1 }
       : { name: "Package 4", minAmount: 25000, maxAmount: null, signalsPerDay: 4, requiredLevel: 2 };
+  const unlockedSignals = computeUnlockedSignals(packageMatch.signalsPerDay, userLevel);
 
-  if (userLevel < packageMatch.requiredLevel) {
+  if (unlockedSignals <= 0) {
     return {
       package: packageMatch,
-      allowedSignalsPerDay: packageMatch.signalsPerDay,
+      allowedSignalsPerDay: 0,
       eligible: false,
       levelMet: false,
       message: `Required level not met for ${packageMatch.name}.`,
@@ -94,9 +107,9 @@ export function detectEligiblePackage(balance: number, userLevel = 0): {
 
   return {
     package: packageMatch,
-    allowedSignalsPerDay: packageMatch.signalsPerDay,
+    allowedSignalsPerDay: unlockedSignals,
     eligible: true,
-    levelMet: true,
+    levelMet: userLevel >= packageMatch.requiredLevel,
   };
 }
 

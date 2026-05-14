@@ -203,7 +203,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
   const syncDerivedState = useCallback((summary: SignalWalletSummary) => {
     const packageState = detectEligiblePackage(summary.currentBalance, summary.userLevel);
     const nextPackage = packageState.package;
-    const allowedSignalsToday = nextPackage?.signalsPerDay ?? 0;
+    const allowedSignalsToday = packageState.allowedSignalsPerDay;
     const usedSignals = summary.todayUsedSignals ?? 0;
 
     setWalletSummary({

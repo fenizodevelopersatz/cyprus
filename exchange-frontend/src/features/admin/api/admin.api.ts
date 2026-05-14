@@ -2,6 +2,7 @@ import api from "../../../app/axios";
 import { ADMIN_ENDPOINTS } from "../../../app/apiRoutes";
 import type { StakingEarningsReport } from "../../staking/api/staking.api";
 import type { SipOrder, SipPlan, SipSubscription } from "../../sip/api/sip.api";
+import type { ReferralDashboard, ReferralIncomeHistoryItem } from "../../referrals/api/referrals.api";
 
 const unwrap = <T,>(raw: T): T => {
   if (raw && typeof raw === "object" && "data" in (raw as Record<string, unknown>) && (raw as any).data !== raw) {
@@ -55,6 +56,8 @@ export type AdminUser = {
   createdAt?: string;
   currentLevelCode?: string | null;
   currentLevelRank?: number | null;
+  referralCode?: string | null;
+  referralUrl?: string | null;
   currentEligibleLevelCode?: string | null;
   currentEligibleLevelOrder?: number | null;
   previousAchievedLevelCode?: string | null;
@@ -87,6 +90,16 @@ export type AdminUser = {
     actedBy?: string | number | null;
     createdAt?: string | null;
   }>;
+};
+
+export type AdminReferralHistoryResponse = {
+  items: ReferralIncomeHistoryItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 export type AdminManualCronJob = {
@@ -1151,6 +1164,24 @@ export async function fetchAdminUsers(params?: {
     meta: { page: number; pageSize: number; total: number; totalPages: number };
     items: AdminUser[];
   }>(data);
+}
+
+export async function fetchAdminReferralDashboard(userId: string | number) {
+  const { data } = await api.get(ADMIN_ENDPOINTS.referrals.dashboard(userId));
+  return unwrap<ReferralDashboard>(data);
+}
+
+export async function fetchAdminReferralIncomeHistory(
+  userId: string | number,
+  params?: { page?: number; limit?: number }
+) {
+  const { data } = await api.get(ADMIN_ENDPOINTS.referrals.history(userId, params));
+  return unwrap<AdminReferralHistoryResponse>(data);
+}
+
+export async function exportAdminReferralCsv(userId: string | number) {
+  const response = await api.get(ADMIN_ENDPOINTS.referrals.export(userId), { responseType: "blob" });
+  return response.data as Blob;
 }
 
 export async function fetchAdminManualCronJobs() {

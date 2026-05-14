@@ -48,6 +48,7 @@ const NAV_GROUPS: NavEntry[] = [
     children: [
       { label: "All Users", to: "/admin/users" },
       { label: "Telegram Users", to: "/admin/users?view=telegram" },
+      { label: "Referral Users", to: "/admin/referrals" },
     ],
   },
   // { label: "Orders Report", to: "/admin/orders-report", icon: "/icons/admin-order.png"},

@@ -61,6 +61,8 @@ import AdminCommissionHistoryPage from "../features/admin/pages/AdminCommissionH
 import LevelManagementSettings from "../features/admin/pages/LevelManagementSettings";
 import AdminMlmTestToolPage from "../features/admin/pages/AdminMlmTestToolPage";
 import AdminUserLookupPage from "../features/admin/pages/AdminUserLookupPage";
+import AdminReferralUsersPage from "../features/admin/pages/AdminReferralUsersPage";
+import AdminReferralDetailPage from "../features/admin/pages/AdminReferralDetailPage";
 
 export function AppRoutes() {
   return (
@@ -146,6 +148,8 @@ export function AppRoutes() {
           <Route path="/admin/manage-signals" element={<AdminManageSignalsPage />} />
           <Route path="/admin/commission/history" element={<AdminCommissionHistoryPage />} />
           <Route path="/admin/signal-history" element={<AdminSignalHistoryPage />} />
+          <Route path="/admin/referrals" element={<AdminReferralUsersPage />} />
+          <Route path="/admin/referrals/:userId" element={<AdminReferralDetailPage />} />
           <Route path="/admin/internal/user-lookup" element={<AdminUserLookupPage />} />
         </Route>
       </Route>

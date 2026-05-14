@@ -410,6 +410,17 @@ export const ADMIN_ENDPOINTS = {
     approveTelegramAccess: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/telegram-access/approve`),
     rejectTelegramAccess: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/telegram-access/reject`),
   },
+  referrals: {
+    dashboard: (userId: string | number) => toAbsolute(`/admin/referrals/${encodeURIComponent(String(userId))}/dashboard`),
+    history: (userId: string | number, params?: { page?: number; limit?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.page) qs.set("page", String(params.page));
+      if (params?.limit) qs.set("limit", String(params.limit));
+      const q = qs.toString() ? `?${qs.toString()}` : "";
+      return toAbsolute(`/admin/referrals/${encodeURIComponent(String(userId))}/history${q}`);
+    },
+    export: (userId: string | number) => toAbsolute(`/admin/referrals/${encodeURIComponent(String(userId))}/export`),
+  },
   internal: {
     cronJobs: toAbsolute("/admin/internal/cron-jobs"),
     runCronJob: (jobKey: string) => toAbsolute(`/admin/internal/cron-jobs/${encodeURIComponent(jobKey)}/run`),

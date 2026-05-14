@@ -221,7 +221,7 @@ function formatReferrals(rows = []) {
 export async function getReferralDashboard(userId) {
   await recalculateMlmForUser(userId);
   const [profile, stats, tiers, referrals, mlm] = await Promise.all([
-    db('referral_profiles').where({ user_id: userId }).first(),
+    ensureReferralProfile(userId),
     db('referral_stats').where({ user_id: userId }).first(),
     db('referral_tiers').select('*'),
     db('referral_referrals').where({ user_id: userId }).orderBy('created_at', 'desc'),

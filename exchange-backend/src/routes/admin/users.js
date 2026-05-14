@@ -64,6 +64,7 @@ router.get('/', guard, async (req, res) => {
 
   const query = db('users as u')
     .leftJoin('user_profiles as p', 'p.user_id', 'u.id')
+    .leftJoin('referral_profiles as rp', 'rp.user_id', 'u.id')
     .leftJoin('user_position_status as ups', 'ups.user_id', 'u.id')
     .leftJoin(achievementRankSubquery, 'ach_rank.user_id', 'u.id')
     .leftJoin('mlm_level_achievements as ach', function () {
@@ -94,6 +95,8 @@ router.get('/', guard, async (req, res) => {
         'u.current_level_code',
         'u.current_level_rank',
         'u.created_at',
+        'rp.code as referral_code',
+        'rp.url as referral_url',
         'ups.current_eligible_level_code',
         'ups.current_eligible_level_order',
         'ups.active_direct_count',
@@ -180,6 +183,8 @@ router.get('/', guard, async (req, res) => {
             hasPassword: Boolean(row.password_hash),
             currentLevelCode: row.current_level_code || null,
             currentLevelRank: Number(row.current_level_rank || 0),
+            referralCode: row.referral_code || null,
+            referralUrl: row.referral_url || null,
             currentEligibleLevelCode: row.current_eligible_level_code || row.current_level_code || null,
             currentEligibleLevelOrder: Number(row.current_eligible_level_order || row.current_level_rank || 0),
             previousAchievedLevelCode: row.highest_achieved_level_code || row.current_level_code || null,
@@ -272,6 +277,8 @@ router.get('/', guard, async (req, res) => {
       'u.current_level_code',
       'u.current_level_rank',
       'u.created_at',
+      'rp.code as referral_code',
+      'rp.url as referral_url',
       'ups.current_eligible_level_code',
       'ups.current_eligible_level_order',
       'ups.active_direct_count',
@@ -321,6 +328,8 @@ router.get('/', guard, async (req, res) => {
       hasPassword: Boolean(row.password_hash),
       currentLevelCode: row.current_level_code || null,
       currentLevelRank: Number(row.current_level_rank || 0),
+      referralCode: row.referral_code || null,
+      referralUrl: row.referral_url || null,
       currentEligibleLevelCode: row.current_eligible_level_code || row.current_level_code || null,
       currentEligibleLevelOrder: Number(row.current_eligible_level_order || row.current_level_rank || 0),
       previousAchievedLevelCode: row.highest_achieved_level_code || row.current_level_code || null,

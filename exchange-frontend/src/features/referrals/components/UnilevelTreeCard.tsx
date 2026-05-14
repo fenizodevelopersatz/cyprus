@@ -269,7 +269,7 @@ type TreeViewportProps = {
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onWheel: (event: React.WheelEvent<HTMLDivElement>) => void;
+  onWheel: (event: WheelEvent) => void;
   className?: string;
 };
 
@@ -284,13 +284,27 @@ function TreeViewport({
   onWheel,
   className = "",
 }: TreeViewportProps) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return undefined;
+
+    const handleWheelEvent = (event: WheelEvent) => onWheel(event);
+    element.addEventListener("wheel", handleWheelEvent, { passive: false });
+
+    return () => {
+      element.removeEventListener("wheel", handleWheelEvent);
+    };
+  }, [onWheel]);
+
   return (
     <div
+      ref={viewportRef}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      onWheel={onWheel}
       className={`relative overflow-hidden touch-none cursor-grab active:cursor-grabbing ${className}`.trim()}
     >
       <div
@@ -380,7 +394,7 @@ export default function UnilevelTreeCard({ tree, mode = "default" }: Props) {
     dragStateRef.current = null;
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = (event: WheelEvent) => {
     event.preventDefault();
     zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
   };

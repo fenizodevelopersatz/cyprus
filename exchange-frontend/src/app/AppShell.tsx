@@ -330,6 +330,7 @@ export default function AppShell() {
     { to: "/app", label: "Home", icon: <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" /> },
     { to: "/app/markets", label: "Markets", icon: <><path d="M5 19V9" /><path d="M12 19V5" /><path d="M19 19v-8" /></> },
     { to: "/app/exchange", label: "Trade", icon: <><path d="m7 7 4-4" /><path d="M3 11h8V3" /><path d="m17 17-4 4" /><path d="M13 21h8v-8" /></> },
+    { to: "/app/orders-audit", label: "Audit", icon: <><path d="M9 6h11" /><path d="M9 12h11" /><path d="M9 18h11" /><path d="M4 6h.01" /><path d="M4 12h.01" /><path d="M4 18h.01" /></> },
     { to: "/app/funding", label: "Wallet", icon: <><path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M16 12h.01" /></> },
     { to: "/app/referrals", label: "Referral", icon: <><path d="M12 4v8" /><path d="M8 8h8" /><path d="M5 19a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3" /><path d="M9 16v-2" /><path d="M15 16v-2" /></> },
     { to: "/app/settings", label: "Profile", icon: <><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /><path d="M5 20a7 7 0 0 1 14 0" /></> },
@@ -397,7 +398,7 @@ export default function AppShell() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-[120] border-t border-[var(--border-soft)] bg-[rgba(17,20,26,0.98)] px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-12px_30px_rgba(0,0,0,0.34)] backdrop-blur-xl pointer-events-auto lg:hidden">
-        <div className="grid grid-cols-6 gap-1">
+        <div className="grid grid-cols-7 gap-1">
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.to;
             return (

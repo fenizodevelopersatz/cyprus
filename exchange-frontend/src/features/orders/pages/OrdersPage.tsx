@@ -94,12 +94,12 @@ export default function OrdersPage() {
   return (
     <div className="space-y-4 px-1 text-slate-100 sm:space-y-5 sm:px-0">
       <header className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_34%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.15),transparent_36%),linear-gradient(180deg,rgba(12,16,28,0.98),rgba(7,10,18,0.98))] p-4 shadow-[0_30px_90px_-45px_rgba(34,211,238,0.35)] sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <div className="text-[9px] uppercase tracking-[0.28em] text-cyan-300/80 sm:text-[10px] sm:tracking-[0.3em]">Orders Audit History</div>
             <h1 className="mt-2 text-[1rem] font-semibold leading-tight text-white sm:text-[1.95rem]">Wallet And Orders Activity</h1>
           </div>
-          <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-[520px] xl:min-w-[420px]">
+          <div className="grid w-full gap-2 lg:max-w-[520px] xl:min-w-[420px]">
             <Input
               value={draftSearch}
               onChange={(e) => setDraftSearch(e.target.value)}
@@ -116,32 +116,44 @@ export default function OrdersPage() {
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
-            <Input type="date" value={filters.fromDate} onChange={(e) => setFilters((prev) => ({ ...prev, fromDate: e.target.value, page: 1 }))} className="h-10 text-[11px] sm:text-[13px]" />
-            <Input type="date" value={filters.toDate} onChange={(e) => setFilters((prev) => ({ ...prev, toDate: e.target.value, page: 1 }))} className="h-10 text-[11px] sm:text-[13px]" />
-            <select
-              value={filters.limit}
-              onChange={(e) => setFilters((prev) => ({ ...prev, limit: Number(e.target.value), page: 1 }))}
-              className={`${selectCls} px-3`}
-            >
-              {[20, 50, 100].map((limit) => (
-                <option key={limit} value={limit}>
-                  {limit} / page
-                </option>
-              ))}
-            </select>
-            <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={handleSearch}>Search</Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="text-[11px] sm:text-[13px]"
-              onClick={() => {
-                void summaryQuery.refetch();
-                void listQuery.refetch();
-              }}
-            >
-              Refresh
-            </Button>
-            <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={reset}>Reset</Button>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="block pl-1 text-[9px] uppercase tracking-[0.14em] text-slate-400">From</span>
+                <Input type="date" value={filters.fromDate} onChange={(e) => setFilters((prev) => ({ ...prev, fromDate: e.target.value, page: 1 }))} className="h-10 text-[11px] sm:text-[13px]" />
+              </label>
+              <label className="space-y-1">
+                <span className="block pl-1 text-[9px] uppercase tracking-[0.14em] text-slate-400">To</span>
+                <Input type="date" value={filters.toDate} onChange={(e) => setFilters((prev) => ({ ...prev, toDate: e.target.value, page: 1 }))} className="h-10 text-[11px] sm:text-[13px]" />
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <select
+                value={filters.limit}
+                onChange={(e) => setFilters((prev) => ({ ...prev, limit: Number(e.target.value), page: 1 }))}
+                className={`${selectCls} px-3`}
+              >
+                {[20, 50, 100].map((limit) => (
+                  <option key={limit} value={limit}>
+                    {limit} / page
+                  </option>
+                ))}
+              </select>
+              <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={handleSearch}>Search</Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="text-[11px] sm:text-[13px]"
+                onClick={() => {
+                  void summaryQuery.refetch();
+                  void listQuery.refetch();
+                }}
+              >
+                Refresh
+              </Button>
+              <Button variant="secondary" size="sm" className="text-[11px] sm:text-[13px]" onClick={reset}>Reset</Button>
+            </div>
           </div>
         </div>
       </header>

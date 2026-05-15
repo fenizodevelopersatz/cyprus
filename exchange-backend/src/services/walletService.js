@@ -11,6 +11,7 @@ import {
 } from './ledgerService.js';
 import { audit } from './auditService.js';
 import { applyWalletCreditRecord, applyWalletDebitRecord } from './walletAccountingService.js';
+import { applyFirstDepositReferralRewards } from './fundingDepositService.js';
 import { getUserSipLiabilities } from './sipService.js';
 import { getSignalAssetByNetwork, listSignalAssets } from './signalAssetService.js';
 import { provisionUserWallets, getUserWalletByNetwork, listUserWallets, findWalletOwnerByAddress } from './userWalletService.js';
@@ -78,6 +79,12 @@ function resolveInsertId(result) {
     return result.id ?? result.ID ?? Object.values(result)[0];
   }
   return result;
+}
+
+function normalizeManualDepositReferenceKey(orderId) {
+  const raw = String(orderId || '').trim();
+  if (!raw) return null;
+  return raw.replace(/^deposit:/i, '') || null;
 }
 
 function getWithdrawalSummaryAmount(row) {
@@ -937,6 +944,16 @@ export async function adminAdjustBalance({
           },
           trx
         );
+
+        const manualDepositReferenceKey = normalizeManualDepositReferenceKey(orderId);
+        if (manualDepositReferenceKey) {
+          await applyFirstDepositReferralRewards(trx, {
+            userId,
+            referenceKey: manualDepositReferenceKey,
+            depositAmount: formatUnits(amountBig, 18),
+            now: new Date(),
+          });
+        }
       }
     } else {
       await journal(

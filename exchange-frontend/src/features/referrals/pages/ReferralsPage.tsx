@@ -54,6 +54,33 @@ const CertificateStars = () => (
   </div>
 );
 
+const MlmProgressCard = ({
+  title,
+  value,
+  meta,
+  media,
+  className = "",
+}: {
+  title: string;
+  value: React.ReactNode;
+  meta: string;
+  media?: React.ReactNode;
+  className?: string;
+}) => (
+  <div className={`flex h-full flex-col rounded-[18px] border border-white/10 bg-white/6 p-3.5 backdrop-blur-xl ${className}`}>
+    <div className="text-[10px] uppercase tracking-[0.16em] text-slate-300/65">{title}</div>
+    {media ? (
+      <div className="mt-3 flex items-center gap-3">
+        {media}
+        <div className="text-[1.2rem] font-semibold leading-none text-white">{value}</div>
+      </div>
+    ) : (
+      <div className="mt-2 text-[1.2rem] font-semibold leading-none text-white">{value}</div>
+    )}
+    <div className="mt-auto pt-3 text-[10px] leading-4 text-slate-400">{meta}</div>
+  </div>
+);
+
 const LevelCertificateCard = ({
   levelImage,
   levelLabel,
@@ -425,6 +452,40 @@ export default function ReferralsPage() {
               </svg>
               Invite Friends Now
             </button>
+            <div className="mt-2 grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsQrOpen(true)}
+                disabled={!canShowQr}
+                className="flex min-h-10 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-soft)] bg-[#171b20] px-3 text-[#d9cfb3] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7V3h4" />
+                  <path d="M21 7V3h-4" />
+                  <path d="M3 17v4h4" />
+                  <path d="M21 17v4h-4" />
+                  <path d="M7 7h3v3H7z" />
+                  <path d="M14 7h3v3h-3z" />
+                  <path d="M7 14h3v3H7z" />
+                  <path d="M14 14h1" />
+                  <path d="M17 14h.01" />
+                  <path d="M14 17h3" />
+                  <path d="M17 17h.01" />
+                </svg>
+                <span className="text-[11px] font-semibold">View QR</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(campaignUrl || referralCode, "url")}
+                className="flex min-h-10 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-soft)] bg-[#171b20] px-3 text-[#d9cfb3]"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 1 0-7.07-7.07L11.4 4.5" />
+                  <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 1 0 7.07 7.07L12.6 19.5" />
+                </svg>
+                <span className="text-[11px] font-semibold">{copyState === "url" ? "Copied" : "Copy Link"}</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -438,6 +499,49 @@ export default function ReferralsPage() {
               </div>
             </div>
           </div>
+          {mlm ? (
+            <div className="grid grid-cols-2 gap-3">
+              <MlmProgressCard
+                title="Current MLM level"
+                value={currentLevelLabel}
+                meta={`Rank ${mlm.currentLevelRank || 0}${nextLevelRequirement ? ` | Next target ${nextLevelCode}` : ""}`}
+                media={<LevelBadge levelCode={mlm.currentLevel} levelRank={mlm.currentLevelRank} size="sm" />}
+              />
+              <MlmProgressCard
+                title={nextLevelRequirement?.directLevelCode ? `Qualified directs (${nextLevelRequirement.directLevelCode})` : "Eligible directs"}
+                value={
+                  <>
+                    {qualifiedDirectCount}
+                    {nextLevelRequirement ? (
+                      <span className="ml-1.5 text-[0.8rem] font-medium text-slate-400">/ {nextLevelRequirement.directRequirement}</span>
+                    ) : null}
+                  </>
+                }
+                meta={
+                  nextLevelRequirement?.directLevelCode
+                    ? nextLevelRequirement.label
+                    : `Wallet balance >= ${formatMoneyWithSymbol(mlm.minimumEligibleBalance)}`
+                }
+              />
+              <MlmProgressCard
+                title="Eligible team members"
+                value={
+                  <>
+                    {mlm.summary.teamEligibleMembers}
+                    {nextLevelRequirement ? (
+                      <span className="ml-1.5 text-[0.8rem] font-medium text-slate-400">/ {nextLevelRequirement.teamRequirement}</span>
+                    ) : null}
+                  </>
+                }
+                meta={`Min ${formatMoneyWithSymbol(mlm.minimumEligibleBalance)} wallet each`}
+              />
+              <MlmProgressCard
+                title="Next level reward"
+                value={nextLevelRequirement ? formatMoneyWithSymbol(nextLevelRequirement.promotionRewardUsdt) : "--"}
+                meta={recurringBonusLabel}
+              />
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-[18px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-3.5">
               <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">One-time rewards</div>
@@ -503,35 +607,68 @@ export default function ReferralsPage() {
           <div className="pb-1 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(213,197,156,0.55)]">View All Transactions</div>
         </section>
 
-        {bonusPayoutHistory.length > 0 && (
+          <section className="space-y-3">
+            <div className="text-[13px] font-semibold uppercase tracking-[0.16em] text-[#d5c59c]">Promotion History</div>
+            <div className="space-y-2.5">
+              {mlm?.promotionHistory.length ? (
+                mlm.promotionHistory.slice(0, 4).map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-[18px] border border-[var(--border-soft)] bg-[linear-gradient(180deg,#171b20_0%,#14181d_100%)] px-3.5 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <LevelBadge levelCode={item.levelCode} levelRank={item.levelRank} size="sm" />
+                        <div>
+                          <div className="text-[13px] font-semibold text-white">{getLevelLabel(item.levelCode, item.levelRank)}</div>
+                          <div className="mt-1 text-[9px] leading-4 text-[var(--text-muted)]">{formatDateTime(item.achievedAt)}</div>
+                        </div>
+                      </div>
+                      <div className="text-[13px] font-bold text-[var(--accent-yellow)]">{formatMoneyWithSymbol(item.rewardAmount)}</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-[var(--border-soft)] bg-[linear-gradient(180deg,#171b20_0%,#14181d_100%)] px-3.5 py-5 text-center text-[12px] text-[var(--text-muted)]">
+                  No promotion rewards yet.
+                </div>
+              )}
+            </div>
+          </section>
+
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-[13px] font-semibold uppercase tracking-[0.16em] text-[#d5c59c]">Bonus Payout History</div>
               <div className="text-[11px] text-[var(--text-muted)]">Live Values</div>
             </div>
             <div className="space-y-2.5">
-              {bonusPayoutHistory.slice(0, 4).map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-[18px] border border-[var(--border-soft)] bg-[linear-gradient(180deg,#171b20_0%,#14181d_100%)] px-3.5 py-3"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <LevelBadge levelCode={item.levelCode} levelRank={item.levelRank} size="sm" />
-                      <div>
-                        <div className="text-[13px] font-semibold text-white">{getLevelLabel(item.levelCode, item.levelRank)}</div>
-                        <div className="mt-1 text-[9px] leading-4 text-[var(--text-muted)]">
-                          {formatDateTime(item.periodStartedAt)} to {formatDateTime(item.periodEndedAt)}
+              {bonusPayoutHistory.length ? (
+                bonusPayoutHistory.slice(0, 4).map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-[18px] border border-[var(--border-soft)] bg-[linear-gradient(180deg,#171b20_0%,#14181d_100%)] px-3.5 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <LevelBadge levelCode={item.levelCode} levelRank={item.levelRank} size="sm" />
+                        <div>
+                          <div className="text-[13px] font-semibold text-white">{getLevelLabel(item.levelCode, item.levelRank)}</div>
+                          <div className="mt-1 text-[9px] leading-4 text-[var(--text-muted)]">
+                            {formatDateTime(item.periodStartedAt)} to {formatDateTime(item.periodEndedAt)}
+                          </div>
                         </div>
                       </div>
+                      <div className="text-[13px] font-bold text-[var(--accent-yellow)]">{formatMoneyWithSymbol(item.payoutAmount)}</div>
                     </div>
-                    <div className="text-[13px] font-bold text-[var(--accent-yellow)]">{formatMoneyWithSymbol(item.payoutAmount)}</div>
                   </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-[var(--border-soft)] bg-[linear-gradient(180deg,#171b20_0%,#14181d_100%)] px-3.5 py-5 text-center text-[12px] text-[var(--text-muted)]">
+                  No recurring MLM bonus payouts yet.
                 </div>
-              ))}
+              )}
             </div>
           </section>
-        )}
 
         {isShareSheetOpen ? (
           <div className="fixed inset-0 z-[95] bg-[rgba(0,0,0,0.72)]">
@@ -683,55 +820,54 @@ export default function ReferralsPage() {
       </section>
 
       {mlm && (
-        <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-          <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-white/6 p-5 backdrop-blur-xl shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]">
-            <div className="text-xs uppercase tracking-[0.16em] text-slate-300/65">Current MLM level</div>
-            <div className="mt-3 flex items-center gap-3">
+        <section className="hidden gap-4 lg:grid lg:grid-cols-2 xl:grid-cols-4">
+          <MlmProgressCard
+            title="Current MLM level"
+            value={currentLevelLabel}
+            meta={`Rank ${mlm.currentLevelRank || 0}${nextLevelRequirement ? ` | Next target ${nextLevelCode}` : ""}`}
+            media={
               <div className="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_14px_32px_rgba(0,0,0,0.24)]">
                 <img src={currentLevelImage} alt={currentLevelLabel} className="h-full w-full object-cover" />
               </div>
-              <div className="text-2xl font-semibold text-white">{currentLevelLabel}</div>
-            </div>
-            <div className="mt-auto pt-3 text-xs text-slate-400">
-              Rank {mlm.currentLevelRank || 0}
-              {nextLevelRequirement ? ` | Next target ${nextLevelCode}` : ""}
-            </div>
-          </div>
-          <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-white/6 p-5 backdrop-blur-xl shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]">
-            <div className="text-xs uppercase tracking-[0.16em] text-slate-300/65">
-              {nextLevelRequirement?.directLevelCode ? `Qualified directs (${nextLevelRequirement.directLevelCode})` : "Eligible directs"}
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-white">
-              {qualifiedDirectCount}
-              {nextLevelRequirement ? (
-                <span className="ml-2 text-sm font-medium text-slate-400">/ {nextLevelRequirement.directRequirement}</span>
-              ) : null}
-            </div>
-            <div className="mt-auto pt-3 text-xs text-slate-400">
-              {nextLevelRequirement?.directLevelCode
-                ? `${nextLevelRequirement.label}`
-                : `Wallet balance >= ${formatMoneyWithSymbol(mlm.minimumEligibleBalance)}`}
-            </div>
-          </div>
-          <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-white/6 p-5 backdrop-blur-xl shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]">
-            <div className="text-xs uppercase tracking-[0.16em] text-slate-300/65">Eligible team members</div>
-            <div className="mt-2 text-2xl font-semibold text-white">
-              {mlm.summary.teamEligibleMembers}
-              {nextLevelRequirement ? (
-                <span className="ml-2 text-sm font-medium text-slate-400">/ {nextLevelRequirement.teamRequirement}</span>
-              ) : null}
-            </div>
-            <div className="mt-auto pt-3 text-xs text-slate-400">
-              Min {formatMoneyWithSymbol(mlm.minimumEligibleBalance)} wallet each
-            </div>
-          </div>
-          <div className="flex h-full flex-col rounded-3xl border border-white/10 bg-white/6 p-5 backdrop-blur-xl shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]">
-            <div className="text-xs uppercase tracking-[0.16em] text-slate-300/65">Next level reward</div>
-            <div className="mt-2 text-2xl font-semibold text-white">
-              {nextLevelRequirement ? formatMoneyWithSymbol(nextLevelRequirement.promotionRewardUsdt) : "--"}
-            </div>
-            <div className="mt-auto pt-3 text-xs text-slate-400">{recurringBonusLabel}</div>
-          </div>     
+            }
+            className="rounded-3xl p-5 shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]"
+          />
+          <MlmProgressCard
+            title={nextLevelRequirement?.directLevelCode ? `Qualified directs (${nextLevelRequirement.directLevelCode})` : "Eligible directs"}
+            value={
+              <>
+                {qualifiedDirectCount}
+                {nextLevelRequirement ? (
+                  <span className="ml-2 text-sm font-medium text-slate-400">/ {nextLevelRequirement.directRequirement}</span>
+                ) : null}
+              </>
+            }
+            meta={
+              nextLevelRequirement?.directLevelCode
+                ? nextLevelRequirement.label
+                : `Wallet balance >= ${formatMoneyWithSymbol(mlm.minimumEligibleBalance)}`
+            }
+            className="rounded-3xl p-5 shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]"
+          />
+          <MlmProgressCard
+            title="Eligible team members"
+            value={
+              <>
+                {mlm.summary.teamEligibleMembers}
+                {nextLevelRequirement ? (
+                  <span className="ml-2 text-sm font-medium text-slate-400">/ {nextLevelRequirement.teamRequirement}</span>
+                ) : null}
+              </>
+            }
+            meta={`Min ${formatMoneyWithSymbol(mlm.minimumEligibleBalance)} wallet each`}
+            className="rounded-3xl p-5 shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]"
+          />
+          <MlmProgressCard
+            title="Next level reward"
+            value={nextLevelRequirement ? formatMoneyWithSymbol(nextLevelRequirement.promotionRewardUsdt) : "--"}
+            meta={recurringBonusLabel}
+            className="rounded-3xl p-5 shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]"
+          />
         </section>
       )}
 

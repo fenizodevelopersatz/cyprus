@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../../../ui/Button";
 import Dialog from "../../../ui/Dialog";
@@ -161,6 +161,8 @@ export default function Dashboard() {
   const [telegramUsernameInput, setTelegramUsernameInput] = useState("");
   const [telegramSubmitting, setTelegramSubmitting] = useState(false);
   const [telegramSubmitError, setTelegramSubmitError] = useState<string | null>(null);
+  const [achievementDownloading, setAchievementDownloading] = useState(false);
+  const achievementCardRef = useRef<HTMLDivElement | null>(null);
   const [mlmSnapshot, setMlmSnapshot] = useState<DashboardMlmSnapshot>({
     levelCode: "Lv0",
     levelRank: 0,
@@ -363,6 +365,236 @@ export default function Dashboard() {
       setTelegramSubmitError(error instanceof Error ? error.message : "Unable to submit Telegram information.");
     } finally {
       setTelegramSubmitting(false);
+    }
+  };
+
+  const handleAchievementDownload = async () => {
+    if (achievementDownloading) return;
+
+    try {
+      setAchievementDownloading(true);
+      const width = 900;
+      const height = 1400;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas rendering is unavailable.");
+      const exportStarCount = Math.max(0, Math.min(12, achievementStarCount));
+
+      const loadImage = async (src?: string | null) => {
+        if (!src) return null;
+        try {
+          return await new Promise<HTMLImageElement | null>((resolve) => {
+            const image = new Image();
+            image.crossOrigin = "anonymous";
+            image.decoding = "async";
+            image.onload = () => resolve(image);
+            image.onerror = () => resolve(null);
+            image.src = src;
+          });
+        } catch {
+          return null;
+        }
+      };
+
+      const profileBitmap = await loadImage(profilePhotoUrl);
+      const logoBitmap = await loadImage(siteLogoUrl || DEFAULT_SITE_LOGO);
+
+      const fillRoundRect = (x: number, y: number, w: number, h: number, r: number, fillStyle: string | CanvasGradient) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+        ctx.fillStyle = fillStyle;
+        ctx.fill();
+      };
+
+      const strokeRoundRect = (x: number, y: number, w: number, h: number, r: number, strokeStyle: string, lineWidth = 2) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+        ctx.lineWidth = lineWidth;
+        ctx.strokeStyle = strokeStyle;
+        ctx.stroke();
+      };
+
+      const drawCenteredText = (text: string, y: number, font: string, color: string) => {
+        ctx.font = font;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, width / 2, y);
+      };
+
+      const drawStars = (count: number, x: number, y: number, maxWidth: number, font: string, color: string) => {
+        if (count <= 0) return;
+        ctx.font = font;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        const spacing = Math.min(26, maxWidth / Math.max(count, 1));
+        const startX = x - (spacing * (count - 1)) / 2;
+        for (let index = 0; index < count; index += 1) {
+          ctx.fillText("\u2605", startX + spacing * index, y);
+        }
+      };
+
+      const wrapText = (text: string, maxWidth: number) => {
+        ctx.font = "28px sans-serif";
+        const words = text.split(" ");
+        const lines: string[] = [];
+        let current = "";
+        for (const word of words) {
+          const test = current ? `${current} ${word}` : word;
+          if (ctx.measureText(test).width > maxWidth && current) {
+            lines.push(current);
+            current = word;
+          } else {
+            current = test;
+          }
+        }
+        if (current) lines.push(current);
+        return lines;
+      };
+
+      const bg = ctx.createLinearGradient(0, 0, 0, height);
+      bg.addColorStop(0, "#0d0d10");
+      bg.addColorStop(1, "#060607");
+      fillRoundRect(0, 0, width, height, 32, bg);
+
+      strokeRoundRect(24, 24, width - 48, height - 48, 28, "#8a6a24", 3);
+      strokeRoundRect(48, 48, width - 96, height - 96, 24, "#d7b24c", 2);
+
+      ctx.strokeStyle = "#d7b24c";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(80, 120); ctx.lineTo(150, 120); ctx.moveTo(80, 120); ctx.lineTo(80, 190);
+      ctx.moveTo(width - 80, 120); ctx.lineTo(width - 150, 120); ctx.moveTo(width - 80, 120); ctx.lineTo(width - 80, 190);
+      ctx.moveTo(80, height - 120); ctx.lineTo(150, height - 120); ctx.moveTo(80, height - 120); ctx.lineTo(80, height - 190);
+      ctx.moveTo(width - 80, height - 120); ctx.lineTo(width - 150, height - 120); ctx.moveTo(width - 80, height - 120); ctx.lineTo(width - 80, height - 190);
+      ctx.stroke();
+
+      drawCenteredText("ACHIEVEMENT UNLOCKED", 150, "bold 24px sans-serif", "#f0d27a");
+
+      const ring = ctx.createRadialGradient(width / 2, 280, 20, width / 2, 280, 95);
+      ring.addColorStop(0, "#232323");
+      ring.addColorStop(1, "#111111");
+      ctx.beginPath();
+      ctx.arc(width / 2, 280, 95, 0, Math.PI * 2);
+      ctx.fillStyle = ring;
+      ctx.fill();
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = "#f0cf67";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(width / 2, 280, 74, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.save();
+      ctx.clip();
+      if (profileBitmap) {
+        ctx.drawImage(profileBitmap, width / 2 - 74, 206, 148, 148);
+      } else {
+        fillRoundRect(width / 2 - 74, 206, 148, 148, 74, "#17181d");
+        drawCenteredText(achievementInitials, 295, "bold 56px sans-serif", "#ffd54f");
+      }
+      ctx.restore();
+
+      const starsGradient = ctx.createLinearGradient(width / 2 - 130, 420, width / 2 + 130, 420);
+      starsGradient.addColorStop(0, "#22336f");
+      starsGradient.addColorStop(0.5, "#7a5f1d");
+      starsGradient.addColorStop(1, "#22336f");
+      if (exportStarCount > 0) {
+        fillRoundRect(width / 2 - 130, 400, 260, 40, 20, starsGradient);
+        drawStars(exportStarCount, width / 2, 428, 220, "bold 24px sans-serif", "#ffe7a0");
+      }
+
+      drawCenteredText("USER NAME", 495, "bold 24px sans-serif", "#f5dc90");
+      const nameGradient = ctx.createLinearGradient(width / 2 - 280, 0, width / 2 + 280, 0);
+      nameGradient.addColorStop(0, "rgba(26,38,88,0.9)");
+      nameGradient.addColorStop(1, "rgba(45,61,130,0.7)");
+      fillRoundRect(width / 2 - 280, 525, 560, 84, 22, nameGradient);
+      strokeRoundRect(width / 2 - 280, 525, 560, 84, 22, "#8a6a1f", 2);
+      drawCenteredText(userDisplayName, 580, "bold 38px sans-serif", "#ffffff");
+
+      drawCenteredText("CURRENT POSITION LEVEL", 690, "bold 24px sans-serif", "#f5dc90");
+      drawCenteredText(userLevelBadge, 775, "bold 76px sans-serif", "#ffd54f");
+      drawCenteredText(currentLevelRank > 0 ? `${currentLevelRank} level manager` : "New member milestone", 820, "28px sans-serif", "#dcb44a");
+
+      if (promotionReward > 0) {
+        ctx.textAlign = "center";
+        ctx.font = "bold 38px sans-serif";
+        ctx.fillStyle = "#f8df93";
+        const left = "Promotion Reward ";
+        const reward = `${promotionReward} USDT`;
+        const leftWidth = ctx.measureText(left).width;
+        const rewardWidth = ctx.measureText(reward).width;
+        let x = width / 2 - (leftWidth + rewardWidth) / 2;
+        ctx.fillText(left, x + leftWidth / 2, 900);
+        x += leftWidth;
+        ctx.fillStyle = "#ff544f";
+        ctx.fillText(reward, x + rewardWidth / 2, 900);
+      }
+
+      ctx.font = "28px sans-serif";
+      ctx.fillStyle = "#f2e5b8";
+      ctx.textAlign = "center";
+      const wrapped = wrapText(achievementMessage, 620);
+      wrapped.forEach((line, index) => ctx.fillText(line, width / 2, 990 + index * 40));
+
+      drawCenteredText("PRIMERICA EXCHANGE GROWTH JOURNEY", 1165, "20px sans-serif", "#a9965c");
+
+      ctx.strokeStyle = "rgba(110,83,22,0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(90, 1210);
+      ctx.lineTo(width - 90, 1210);
+      ctx.stroke();
+
+      fillRoundRect(90, 1235, 220, 52, 24, "rgba(255,214,79,0.06)");
+      strokeRoundRect(90, 1235, 220, 52, 24, "#8a6a1f", 2);
+      if (logoBitmap) {
+        ctx.drawImage(logoBitmap, 114, 1247, 172, 28);
+      } else {
+        ctx.font = "bold 20px sans-serif";
+        ctx.fillStyle = "#f0d27a";
+        ctx.textAlign = "left";
+        ctx.fillText("PRIMERICA", 122, 1268);
+      }
+
+      if (exportStarCount > 0) {
+        fillRoundRect(width - 290, 1235, 200, 52, 24, "rgba(255,214,79,0.06)");
+        strokeRoundRect(width - 290, 1235, 200, 52, 24, "#8a6a1f", 2);
+        drawStars(exportStarCount, width - 190, 1268, 160, "bold 24px sans-serif", "#f0d27a");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((pngBlob) => {
+          if (!pngBlob) {
+            reject(new Error("Unable to create PNG file."));
+            return;
+          }
+          const downloadUrl = URL.createObjectURL(pngBlob);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = `achievement-card-${String(userLevelBadge || "level").toLowerCase()}.png`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(downloadUrl);
+          resolve();
+        }, "image/png");
+      });
+    } catch (error) {
+      console.error("Failed to download achievement card", error);
+    } finally {
+      setAchievementDownloading(false);
     }
   };
 
@@ -1000,19 +1232,32 @@ export default function Dashboard() {
         open={achievementOpen}
         onClose={() => setAchievementOpen(false)}
         title="Achievement Card"
-        panelClassName="max-w-md border-[#a77a18] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.2),transparent_20%),linear-gradient(180deg,#070708_0%,#131316_100%)] p-4 sm:p-5"
+        panelClassName="max-h-[calc(100vh-0.35rem)] w-[calc(100vw-0.35rem)] max-w-md overflow-y-auto border-[#a77a18] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.2),transparent_20%),linear-gradient(180deg,#070708_0%,#131316_100%)] p-2 sm:w-full sm:p-5"
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => void handleAchievementDownload()} disabled={achievementDownloading}>
+              {achievementDownloading ? "Preparing..." : "Download PNG"}
+            </Button>
+            <Button size="sm" onClick={() => setAchievementOpen(false)}>
+              Close
+            </Button>
+          </>
+        }
       >
-        <div className="rounded-[30px] border border-[#7b5a10] bg-[radial-gradient(circle_at_top,rgba(255,224,133,0.12),transparent_18%),linear-gradient(180deg,#0d0d10_0%,#060607_100%)] p-3 shadow-[0_0_0_1px_rgba(255,214,79,0.12),0_18px_50px_rgba(0,0,0,0.45)]">
-          <div className="relative overflow-hidden rounded-[26px] border border-[#d7b24c] px-4 py-5 text-center">
+        <div
+          ref={achievementCardRef}
+          className="rounded-[24px] border border-[#7b5a10] bg-[radial-gradient(circle_at_top,rgba(255,224,133,0.12),transparent_18%),linear-gradient(180deg,#0d0d10_0%,#060607_100%)] p-2 shadow-[0_0_0_1px_rgba(255,214,79,0.12),0_18px_50px_rgba(0,0,0,0.45)] sm:rounded-[30px] sm:p-3"
+        >
+          <div className="relative overflow-hidden rounded-[20px] border border-[#d7b24c] px-2.5 py-3 text-center sm:rounded-[26px] sm:px-4 sm:py-5">
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,transparent_0%,rgba(255,214,79,0.08)_18%,transparent_40%,rgba(255,214,79,0.05)_100%)]" />
-            <div className="pointer-events-none absolute left-3 top-3 h-10 w-10 border-l-2 border-t-2 border-[#d7b24c]/85" />
-            <div className="pointer-events-none absolute right-3 top-3 h-10 w-10 border-r-2 border-t-2 border-[#d7b24c]/85" />
-            <div className="pointer-events-none absolute bottom-3 left-3 h-10 w-10 border-b-2 border-l-2 border-[#d7b24c]/85" />
-            <div className="pointer-events-none absolute bottom-3 right-3 h-10 w-10 border-b-2 border-r-2 border-[#d7b24c]/85" />
+            <div className="pointer-events-none absolute left-2.5 top-2.5 h-6 w-6 border-l-2 border-t-2 border-[#d7b24c]/85 sm:left-3 sm:top-3 sm:h-10 sm:w-10" />
+            <div className="pointer-events-none absolute right-2.5 top-2.5 h-6 w-6 border-r-2 border-t-2 border-[#d7b24c]/85 sm:right-3 sm:top-3 sm:h-10 sm:w-10" />
+            <div className="pointer-events-none absolute bottom-2.5 left-2.5 h-6 w-6 border-b-2 border-l-2 border-[#d7b24c]/85 sm:bottom-3 sm:left-3 sm:h-10 sm:w-10" />
+            <div className="pointer-events-none absolute bottom-2.5 right-2.5 h-6 w-6 border-b-2 border-r-2 border-[#d7b24c]/85 sm:bottom-3 sm:right-3 sm:h-10 sm:w-10" />
 
             <div className="relative text-[10px] font-semibold uppercase tracking-[0.32em] text-[#f0d27a]">Achievement unlocked</div>
-            <div className="relative mx-auto mt-4 flex h-32 w-32 items-center justify-center rounded-full border-[6px] border-[#f0cf67] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.16),rgba(16,16,18,0.92))] shadow-[0_0_0_6px_rgba(255,214,79,0.08),0_0_35px_rgba(255,214,79,0.18)]">
-              <div className="flex h-[104px] w-[104px] items-center justify-center overflow-hidden rounded-full border-4 border-[#14151a] bg-[#17181d] text-xl font-black text-[#ffd54f]">
+            <div className="relative mx-auto mt-2.5 flex h-20 w-20 items-center justify-center rounded-full border-[4px] border-[#f0cf67] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.16),rgba(16,16,18,0.92))] shadow-[0_0_0_5px_rgba(255,214,79,0.08),0_0_28px_rgba(255,214,79,0.18)] sm:mt-4 sm:h-32 sm:w-32 sm:border-[6px] sm:shadow-[0_0_0_6px_rgba(255,214,79,0.08),0_0_35px_rgba(255,214,79,0.18)]">
+              <div className="flex h-[64px] w-[64px] items-center justify-center overflow-hidden rounded-full border-4 border-[#14151a] bg-[#17181d] text-base font-black text-[#ffd54f] sm:h-[104px] sm:w-[104px] sm:text-xl">
                 {profilePhotoUrl ? (
                   <img src={profilePhotoUrl} alt={userDisplayName} className="h-full w-full object-cover" />
                 ) : (
@@ -1022,52 +1267,52 @@ export default function Dashboard() {
             </div>
 
             {achievementStarCount > 0 ? (
-              <div className="relative mx-auto mt-3 flex max-w-[220px] flex-wrap items-center justify-center gap-2 rounded-full bg-[linear-gradient(90deg,#22336f,#7a5f1d,#22336f)] px-4 py-1.5 text-[#ffe7a0] shadow-[0_10px_24px_rgba(0,0,0,0.35)]">
+              <div className="relative mx-auto mt-2.5 flex max-w-[190px] flex-wrap items-center justify-center gap-1 rounded-full bg-[linear-gradient(90deg,#22336f,#7a5f1d,#22336f)] px-2.5 py-1 text-[#ffe7a0] shadow-[0_10px_24px_rgba(0,0,0,0.35)] sm:mt-3 sm:max-w-[220px] sm:gap-2 sm:px-4 sm:py-1.5">
                 {Array.from({ length: achievementStarCount }).map((_, index) => (
-                  <span key={`achievement-star-top-${index}`} className="text-sm leading-none">
+                  <span key={`achievement-star-top-${index}`} className="text-[11px] leading-none sm:text-sm">
                     {"\u2605"}
                   </span>
                 ))}
               </div>
             ) : null}
 
-            <div className="relative mt-5 text-[0.9rem] font-semibold uppercase tracking-[0.14em] text-[#f5dc90]">User Name</div>
-            <div className="relative mt-2 rounded-2xl border border-[#8a6a1f] bg-[linear-gradient(90deg,rgba(26,38,88,0.78),rgba(45,61,130,0.58))] px-4 py-3 text-lg font-bold text-white">
+            <div className="relative mt-3 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#f5dc90] sm:mt-5 sm:text-[0.9rem]">User Name</div>
+            <div className="relative mt-2 rounded-2xl border border-[#8a6a1f] bg-[linear-gradient(90deg,rgba(26,38,88,0.78),rgba(45,61,130,0.58))] px-3 py-2 text-[15px] font-bold text-white sm:px-4 sm:py-3 sm:text-lg">
               {userDisplayName}
             </div>
 
-            <div className="relative mt-5 text-[0.9rem] font-semibold uppercase tracking-[0.14em] text-[#f5dc90]">Current Position Level</div>
-            <div className="relative mt-2 text-4xl font-black text-[#ffd54f]">{userLevelBadge}</div>
-            <div className="relative mt-1 text-sm font-medium text-[#dcb44a]">
+            <div className="relative mt-3 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#f5dc90] sm:mt-5 sm:text-[0.9rem]">Current Position Level</div>
+            <div className="relative mt-1.5 text-[1.9rem] font-black text-[#ffd54f] sm:mt-2 sm:text-4xl">{userLevelBadge}</div>
+            <div className="relative mt-1 text-[12px] font-medium text-[#dcb44a] sm:text-sm">
               {currentLevelRank > 0 ? `${currentLevelRank} level manager` : "New member milestone"}
             </div>
 
             {promotionReward > 0 ? (
-              <div className="relative mt-4 text-lg font-bold text-[#f8df93]">
+              <div className="relative mt-3 text-[15px] font-bold text-[#f8df93] sm:mt-4 sm:text-lg">
                 Promotion Reward <span className="text-[#ff544f]">{promotionReward} USDT</span>
               </div>
             ) : null}
 
-            <p className="relative mt-5 text-sm leading-6 text-[#f2e5b8]">
+            <p className="relative mt-3 px-2 text-[12px] leading-5 text-[#f2e5b8] sm:mt-5 sm:px-0 sm:text-sm sm:leading-6">
               {achievementMessage}
             </p>
 
-            <div className="relative mt-4 text-xs uppercase tracking-[0.22em] text-[#a9965c]">
+            <div className="relative mt-3 text-[9px] uppercase tracking-[0.2em] text-[#a9965c] sm:mt-4 sm:text-xs sm:tracking-[0.22em]">
               Primerica Exchange Growth Journey
             </div>
-            <div className="relative mt-5 flex items-center justify-between gap-3 border-t border-[#6e5316]/70 pt-3">
-              <div className="flex items-center gap-2 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-3 py-1.5">
+            <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-[#6e5316]/70 pt-2.5 sm:mt-5 sm:gap-3 sm:pt-3">
+              <div className="flex items-center gap-2 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-2 py-1 sm:px-3 sm:py-1.5">
                 <img
                   src={siteLogoUrl || DEFAULT_SITE_LOGO}
                   alt="Primerica Exchange"
-                  className="h-5 w-auto max-w-[96px] object-contain"
+                  className="h-3.5 w-auto max-w-[72px] object-contain sm:h-5 sm:max-w-[96px]"
                   onError={(event) => {
                     event.currentTarget.src = DEFAULT_SITE_LOGO;
                   }}
                 />
               </div>
               {achievementStarCount > 0 ? (
-                <div className="flex max-w-[160px] flex-wrap items-center justify-end gap-1 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-3 py-1.5 text-[13px] leading-none text-[#f0d27a]">
+                <div className="flex max-w-[138px] flex-wrap items-center justify-end gap-1 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-2 py-1 text-[11px] leading-none text-[#f0d27a] sm:max-w-[160px] sm:px-3 sm:py-1.5 sm:text-[13px]">
                   {Array.from({ length: achievementStarCount }).map((_, index) => (
                     <span key={`achievement-star-bottom-${index}`}>{"\u2605"}</span>
                   ))}

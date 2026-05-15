@@ -1166,6 +1166,11 @@ export async function fetchAdminUsers(params?: {
   }>(data);
 }
 
+export async function fetchAdminUser(userId: string | number) {
+  const { data } = await api.get(ADMIN_ENDPOINTS.users.get(userId));
+  return unwrap<AdminUser>(data);
+}
+
 export async function fetchAdminReferralDashboard(userId: string | number) {
   const { data } = await api.get(ADMIN_ENDPOINTS.referrals.dashboard(userId));
   return unwrap<ReferralDashboard>(data);

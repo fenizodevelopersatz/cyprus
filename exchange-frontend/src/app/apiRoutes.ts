@@ -402,6 +402,7 @@ export const ADMIN_ENDPOINTS = {
       const q = qs.toString() ? `?${qs.toString()}` : "";
       return toAbsolute(`/admin/users${q}`);
     },
+    get: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}`),
     balances: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/balances`),
     overview: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/overview`),
     depositAddresses: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/deposit-addresses`),

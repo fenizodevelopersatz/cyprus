@@ -10,7 +10,7 @@ import {
   exportAdminReferralCsv,
   fetchAdminReferralDashboard,
   fetchAdminReferralIncomeHistory,
-  fetchAdminUsers,
+  fetchAdminUser,
 } from "../api/admin.api";
 import { formatMoneyWithSymbol } from "../../../utils/money";
 import { getLevelImageSrc, getLevelLabel } from "../../../utils/levelImages";
@@ -50,10 +50,7 @@ export default function AdminReferralDetailPage() {
 
   const userQuery = useQuery({
     queryKey: ["admin", "referrals", "user-summary", numericUserId],
-    queryFn: async () => {
-      const response = await fetchAdminUsers({ search: String(numericUserId), page: 1, limit: 50 });
-      return response.items.find((item) => String(item.id) === String(numericUserId)) ?? null;
-    },
+    queryFn: () => fetchAdminUser(numericUserId),
     enabled: Number.isFinite(numericUserId) && numericUserId > 0,
   });
 

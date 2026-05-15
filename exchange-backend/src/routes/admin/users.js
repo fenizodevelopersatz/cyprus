@@ -43,6 +43,55 @@ function toAbsoluteProfilePhotoUrl(req, value) {
   return `${forwardedProto}://${forwardedHost}${String(value).startsWith('/') ? value : `/${value}`}`;
 }
 
+function mapAdminUserRow(req, row) {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name || null,
+    profilePhoto: toAbsoluteProfilePhotoUrl(req, row.profile_photo),
+    country: row.country,
+    kycLevel: row.kyc_level || 0,
+    kycVerified: !!row.kyc_verified,
+    status: normalizeStatus(row),
+    hasPassword: Boolean(row.password_hash),
+    currentLevelCode: row.current_level_code || null,
+    currentLevelRank: Number(row.current_level_rank || 0),
+    referralCode: row.referral_code || null,
+    referralUrl: row.referral_url || null,
+    currentEligibleLevelCode: row.current_eligible_level_code || row.current_level_code || null,
+    currentEligibleLevelOrder: Number(row.current_eligible_level_order || row.current_level_rank || 0),
+    previousAchievedLevelCode: row.highest_achieved_level_code || row.current_level_code || null,
+    previousAchievedLevelRank: Number(row.highest_achieved_level_rank || row.current_level_rank || 0),
+    fallbackHappened:
+      Boolean(row.highest_achieved_level_code) &&
+      Boolean(row.current_eligible_level_code) &&
+      String(row.highest_achieved_level_code) !== String(row.current_eligible_level_code),
+    isCurrentlyQualified: Boolean(row.is_currently_qualified),
+    activeDirectCount: Number(row.active_direct_count || 0),
+    activeTeamCount: Number(row.active_team_count || 0),
+    directLv1Count: Number(row.direct_lv1_count || 0),
+    directLv7Count: Number(row.direct_lv7_count || 0),
+    directLv8Count: Number(row.direct_lv8_count || 0),
+    directLv9Count: Number(row.direct_lv9_count || 0),
+    qualifiedAt: row.qualified_at || null,
+    lastCheckedAt: row.last_checked_at || null,
+    nextBonusDueAt: row.next_bonus_due_at || null,
+    roles: (row.roles || 'user').split(','),
+    createdAt: row.created_at,
+    passwordChangedAt: row.updated_at || row.created_at,
+    twoFactorEnabled: row.two_factor_enabled === undefined || row.two_factor_enabled === null ? true : Boolean(row.two_factor_enabled),
+    googleAuthConfigured: Boolean(row.google_auth_secret),
+    tier: row.tier || null,
+    telegramUsername: row.telegram_username || null,
+    telegramAccessStatus: normalizeTelegramAccessStatus(row),
+    telegramAccessRequestedAt: row.telegram_access_requested_at || null,
+    telegramAccessApprovedAt: row.telegram_access_approved_at || null,
+    telegramAccessRejectedAt: row.telegram_access_rejected_at || null,
+    telegramAccessRejectNote: row.telegram_access_reject_note || null,
+    telegramHistory: [],
+  };
+}
+
 router.get('/', guard, async (req, res) => {
   await ensureMlmLevelSchema();
   await ensureTelegramAccessSchema();
@@ -316,53 +365,74 @@ router.get('/', guard, async (req, res) => {
       total,
       totalPages: Math.ceil(total / pageSize),
     },
-    items: rows.map((row) => ({
-      id: row.id,
-      email: row.email,
-      displayName: row.display_name || null,
-      profilePhoto: toAbsoluteProfilePhotoUrl(req, row.profile_photo),
-      country: row.country,
-      kycLevel: row.kyc_level || 0,
-      kycVerified: !!row.kyc_verified,
-      status: normalizeStatus(row),
-      hasPassword: Boolean(row.password_hash),
-      currentLevelCode: row.current_level_code || null,
-      currentLevelRank: Number(row.current_level_rank || 0),
-      referralCode: row.referral_code || null,
-      referralUrl: row.referral_url || null,
-      currentEligibleLevelCode: row.current_eligible_level_code || row.current_level_code || null,
-      currentEligibleLevelOrder: Number(row.current_eligible_level_order || row.current_level_rank || 0),
-      previousAchievedLevelCode: row.highest_achieved_level_code || row.current_level_code || null,
-      previousAchievedLevelRank: Number(row.highest_achieved_level_rank || row.current_level_rank || 0),
-      fallbackHappened:
-        Boolean(row.highest_achieved_level_code) &&
-        Boolean(row.current_eligible_level_code) &&
-        String(row.highest_achieved_level_code) !== String(row.current_eligible_level_code),
-      isCurrentlyQualified: Boolean(row.is_currently_qualified),
-      activeDirectCount: Number(row.active_direct_count || 0),
-      activeTeamCount: Number(row.active_team_count || 0),
-      directLv1Count: Number(row.direct_lv1_count || 0),
-      directLv7Count: Number(row.direct_lv7_count || 0),
-      directLv8Count: Number(row.direct_lv8_count || 0),
-      directLv9Count: Number(row.direct_lv9_count || 0),
-      qualifiedAt: row.qualified_at || null,
-      lastCheckedAt: row.last_checked_at || null,
-      nextBonusDueAt: row.next_bonus_due_at || null,
-      roles: (row.roles || 'user').split(','),
-      createdAt: row.created_at,
-      passwordChangedAt: row.updated_at || row.created_at,
-      twoFactorEnabled: row.two_factor_enabled === undefined || row.two_factor_enabled === null ? true : Boolean(row.two_factor_enabled),
-      googleAuthConfigured: Boolean(row.google_auth_secret),
-      tier: row.tier || null,
-      telegramUsername: row.telegram_username || null,
-      telegramAccessStatus: normalizeTelegramAccessStatus(row),
-      telegramAccessRequestedAt: row.telegram_access_requested_at || null,
-      telegramAccessApprovedAt: row.telegram_access_approved_at || null,
-      telegramAccessRejectedAt: row.telegram_access_rejected_at || null,
-      telegramAccessRejectNote: row.telegram_access_reject_note || null,
-      telegramHistory: [],
-    })),
+    items: rows.map((row) => mapAdminUserRow(req, row)),
   });
+});
+
+router.get('/:id', guard, async (req, res) => {
+  await ensureMlmLevelSchema();
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) return fail(res, 'Invalid user ID', 400);
+
+  const achievementRankSubquery = db('mlm_level_achievements as mla')
+    .select('mla.user_id')
+    .max({ highest_achieved_level_rank: 'mla.level_rank' })
+    .groupBy('mla.user_id')
+    .as('ach_rank');
+
+  const row = await db('users as u')
+    .leftJoin('user_profiles as p', 'p.user_id', 'u.id')
+    .leftJoin('referral_profiles as rp', 'rp.user_id', 'u.id')
+    .leftJoin('user_position_status as ups', 'ups.user_id', 'u.id')
+    .leftJoin(achievementRankSubquery, 'ach_rank.user_id', 'u.id')
+    .leftJoin('mlm_level_achievements as ach', function () {
+      this.on('ach.user_id', '=', 'u.id').andOn('ach.level_rank', '=', 'ach_rank.highest_achieved_level_rank');
+    })
+    .where('u.id', id)
+    .first(
+      'u.id',
+      'u.email',
+      'u.country',
+      'u.kyc_level',
+      'u.kyc_verified',
+      'u.status',
+      'u.roles',
+      'u.password_hash',
+      'u.current_level_code',
+      'u.current_level_rank',
+      'u.created_at',
+      'rp.code as referral_code',
+      'rp.url as referral_url',
+      'ups.current_eligible_level_code',
+      'ups.current_eligible_level_order',
+      'ups.active_direct_count',
+      'ups.active_team_count',
+      'ups.direct_lv1_count',
+      'ups.direct_lv7_count',
+      'ups.direct_lv8_count',
+      'ups.direct_lv9_count',
+      'ups.is_currently_qualified',
+      'ups.qualified_at',
+      'ups.last_checked_at',
+      'ups.next_bonus_due_at',
+      'ach.level_code as highest_achieved_level_code',
+      'ach_rank.highest_achieved_level_rank',
+      'p.display_name',
+      'p.profile_photo',
+      'p.tier',
+      'p.two_factor_enabled',
+      'p.google_auth_secret',
+      'p.telegram_username',
+      'p.telegram_access_status',
+      'p.telegram_access_requested_at',
+      'p.telegram_access_approved_at',
+      'p.telegram_access_rejected_at',
+      'p.telegram_access_reject_note',
+      'u.updated_at'
+    );
+
+  if (!row) return fail(res, 'User not found', 404);
+  return ok(res, mapAdminUserRow(req, row));
 });
 
 router.patch('/:id/status', guard, async (req, res) => {

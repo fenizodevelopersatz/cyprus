@@ -10,13 +10,59 @@ const INVITE_BASE_URL = (cfg.referrals?.baseUrl || 'https://novax.exchange/invit
 );
 const DEFAULT_INVITE_MESSAGE =
   cfg.referrals?.defaultMessage || 'Join NovaX via my invite...';
+const LEGACY_REFERRAL_PREFIXES = ['PRIMERICA-', 'CRYPTOSIGNAL-', 'NOVAX-'];
 
 function getConn(trx) {
   return trx || db;
 }
 
 export function generateReferralCode() {
-  return `Primerica-${uid().replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  return uid().replace(/-/g, '').slice(0, 10).toUpperCase();
+}
+
+export function normalizeReferralCode(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return '';
+
+  for (const prefix of LEGACY_REFERRAL_PREFIXES) {
+    if (normalized.startsWith(prefix)) {
+      return normalized.slice(prefix.length);
+    }
+  }
+
+  return normalized;
+}
+
+function getReferralCodeCandidates(value) {
+  const exact = String(value || '').trim().toUpperCase();
+  const normalized = normalizeReferralCode(exact);
+  return Array.from(new Set([exact, normalized].filter(Boolean)));
+}
+
+async function findExistingReferralProfileByCode(conn, code, excludeUserId = null) {
+  if (!code) return null;
+  const query = conn('referral_profiles')
+    .whereRaw('UPPER(code) = ?', [String(code).trim().toUpperCase()]);
+  if (excludeUserId != null) query.whereNot({ user_id: excludeUserId });
+  return query.first();
+}
+
+async function resolveAvailableReferralCode(conn, preferredCode, excludeUserId = null) {
+  const normalizedPreferred = normalizeReferralCode(preferredCode);
+  if (normalizedPreferred) {
+    const existing = await findExistingReferralProfileByCode(conn, normalizedPreferred, excludeUserId);
+    if (!existing) return normalizedPreferred;
+  }
+
+  let attempts = 0;
+  while (attempts < 10) {
+    const nextCode = generateReferralCode();
+    const existing = await findExistingReferralProfileByCode(conn, nextCode, excludeUserId);
+    if (!existing) return nextCode;
+    attempts += 1;
+  }
+
+  throw new Error('Unable to generate unique referral code');
 }
 
 function toNumber(value, fallback = 0) {
@@ -31,8 +77,8 @@ function toDateISOString(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function buildInviteUrl(code) {
-  return `${INVITE_BASE_URL}/${code}`;
+export function buildInviteUrl(code) {
+  return `${INVITE_BASE_URL}/${normalizeReferralCode(code)}`;
 }
 
 export async function ensureReferralProfile(
@@ -42,11 +88,16 @@ export async function ensureReferralProfile(
   const conn = getConn(trx);
   let profile = await conn('referral_profiles').where({ user_id: userId }).first();
   if (profile) {
-    const expectedUrl = buildInviteUrl(profile.code);
-    if (profile.url !== expectedUrl) {
+    const normalizedCode = normalizeReferralCode(profile.code);
+    const nextCode = normalizedCode !== profile.code
+      ? await resolveAvailableReferralCode(conn, normalizedCode, userId)
+      : normalizedCode;
+    const expectedUrl = buildInviteUrl(nextCode);
+    if (profile.code !== nextCode || profile.url !== expectedUrl) {
       await conn('referral_profiles')
         .where({ user_id: userId })
         .update({
+          code: nextCode,
           url: expectedUrl,
           updated_at: new Date(),
         });
@@ -57,9 +108,8 @@ export async function ensureReferralProfile(
 
   const now = new Date();
   const timestamp = promoUpdatedAt || now;
-  let attempts = 0;
   while (!profile) {
-    const code = generateReferralCode();
+    const code = await resolveAvailableReferralCode(conn, generateReferralCode(), userId);
     try {
       await conn('referral_profiles').insert({
         user_id: userId,
@@ -75,14 +125,37 @@ export async function ensureReferralProfile(
     } catch (err) {
       const duplicate =
         err?.code && ['ER_DUP_ENTRY', '23505', 'SQLITE_CONSTRAINT'].includes(err.code);
-      if (duplicate && attempts < 5) {
-        attempts += 1;
+      if (duplicate) {
         continue;
       }
       throw err;
     }
   }
   return profile;
+}
+
+export async function findReferralProfileByCode(code, { trx } = {}) {
+  const conn = getConn(trx);
+  const candidates = getReferralCodeCandidates(code);
+  if (!candidates.length) return null;
+
+  const rows = await conn('referral_profiles')
+    .where((builder) => {
+      candidates.forEach((candidate, index) => {
+        const method = index === 0 ? 'whereRaw' : 'orWhereRaw';
+        builder[method]('UPPER(code) = ?', [String(candidate).trim().toUpperCase()]);
+      });
+    })
+    .select('*');
+
+  if (!rows.length) return null;
+
+  for (const candidate of candidates) {
+    const match = rows.find((row) => String(row.code || '').trim().toUpperCase() === candidate);
+    if (match) return match;
+  }
+
+  return rows[0] ?? null;
 }
 
 export async function ensureReferralStats(userId, { trx } = {}) {

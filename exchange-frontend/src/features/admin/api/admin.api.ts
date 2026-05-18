@@ -46,6 +46,7 @@ export type AdminUser = {
   kycLevel?: number | null;
   kycVerified?: boolean;
   status?: string;
+  mainWalletBalance?: number;
   tier?: string | null;
   roles?: string[];
   hasPassword?: boolean;

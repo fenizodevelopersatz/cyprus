@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
@@ -17,7 +17,7 @@ const labelMap: Record<string, string> = {
 };
 
 const selectCls =
-  "h-10 rounded-xl border border-white/10 bg-slate-900 text-[11px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 sm:text-[13px]";
+  "h-10 w-full min-w-0 rounded-xl border border-white/10 bg-slate-900 text-[11px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 sm:text-[13px]";
 
 export default function OrdersPage() {
   const [draftSearch, setDraftSearch] = useState("");
@@ -99,12 +99,12 @@ export default function OrdersPage() {
             <div className="text-[9px] uppercase tracking-[0.28em] text-cyan-300/80 sm:text-[10px] sm:tracking-[0.3em]">Orders Audit History</div>
             <h1 className="mt-2 text-[1rem] font-semibold leading-tight text-white sm:text-[1.95rem]">Wallet And Orders Activity</h1>
           </div>
-          <div className="grid w-full gap-2 lg:max-w-[520px] xl:min-w-[420px]">
+          <div className="grid w-full min-w-0 gap-2 lg:max-w-[520px] xl:min-w-[420px]">
             <Input
               value={draftSearch}
               onChange={(e) => setDraftSearch(e.target.value)}
               placeholder="Search txn id / order id / signal code"
-              className="h-10 text-[11px] sm:text-[13px]"
+              className="h-10 min-w-0 text-[11px] sm:text-[13px]"
             />
             <select
               value={filters.incomeType}
@@ -116,15 +116,17 @@ export default function OrdersPage() {
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="block pl-1 text-[9px] uppercase tracking-[0.14em] text-slate-400">From</span>
-                <Input type="date" value={filters.fromDate} onChange={(e) => setFilters((prev) => ({ ...prev, fromDate: e.target.value, page: 1 }))} className="h-10 text-[11px] sm:text-[13px]" />
-              </label>
-              <label className="space-y-1">
-                <span className="block pl-1 text-[9px] uppercase tracking-[0.14em] text-slate-400">To</span>
-                <Input type="date" value={filters.toDate} onChange={(e) => setFilters((prev) => ({ ...prev, toDate: e.target.value, page: 1 }))} className="h-10 text-[11px] sm:text-[13px]" />
-              </label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <DateField
+                label="From"
+                value={filters.fromDate}
+                onChange={(value) => setFilters((prev) => ({ ...prev, fromDate: value, page: 1 }))}
+              />
+              <DateField
+                label="To"
+                value={filters.toDate}
+                onChange={(value) => setFilters((prev) => ({ ...prev, toDate: value, page: 1 }))}
+              />
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <select
@@ -257,6 +259,38 @@ export default function OrdersPage() {
   );
 }
 
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const inputId = useId();
+  const displayValue = formatDateInputValue(value);
+
+  return (
+    <label htmlFor={inputId} className="min-w-0 space-y-1">
+      <span className="block pl-1 text-[9px] uppercase tracking-[0.14em] text-slate-400">{label}</span>
+      <div className="relative min-w-0 overflow-hidden rounded-[10px] border border-[rgba(148,163,184,0.26)] bg-[var(--bg-input)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[rgba(148,163,184,0.52)] focus-within:shadow-[0_0_0_3px_rgba(148,163,184,0.12)]">
+        <div className={`pointer-events-none flex h-10 items-center px-3 text-[11px] sm:text-[13px] ${displayValue ? "text-white" : "text-[var(--text-muted)]"}`}>
+          {displayValue || "Select date"}
+        </div>
+        <input
+          id={inputId}
+          type="date"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={label}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
+    </label>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[1.4rem] border border-white/10 bg-white/6 p-3.5 backdrop-blur-xl sm:rounded-3xl sm:p-5">
@@ -349,6 +383,14 @@ function formatDate(value?: string) {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatDateInputValue(value?: string) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function getPackageLevelLabel(row: {

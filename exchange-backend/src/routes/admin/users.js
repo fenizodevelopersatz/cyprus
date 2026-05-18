@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/roles.js';
 import { ok, fail } from '../../utils/responses.js';
 import { db } from '../../db.js';
 import { ensureMlmLevelSchema, recalculateMlmForUser } from '../../services/mlmLevelService.js';
+import { buildInviteUrl, normalizeReferralCode } from '../../services/referralService.js';
 import {
   approveUserTelegramAccess,
   ensureTelegramAccessHistorySchema,
@@ -43,7 +44,16 @@ function toAbsoluteProfilePhotoUrl(req, value) {
   return `${forwardedProto}://${forwardedHost}${String(value).startsWith('/') ? value : `/${value}`}`;
 }
 
+function normalizeReferralIdentity(code, url) {
+  const normalizedCode = normalizeReferralCode(code);
+  return {
+    referralCode: normalizedCode || null,
+    referralUrl: normalizedCode ? buildInviteUrl(normalizedCode) : String(url || '').trim() || null,
+  };
+}
+
 function mapAdminUserRow(req, row) {
+  const referralIdentity = normalizeReferralIdentity(row.referral_code, row.referral_url);
   return {
     id: row.id,
     email: row.email,
@@ -53,11 +63,12 @@ function mapAdminUserRow(req, row) {
     kycLevel: row.kyc_level || 0,
     kycVerified: !!row.kyc_verified,
     status: normalizeStatus(row),
+    mainWalletBalance: Number(row.main_wallet_balance || 0),
     hasPassword: Boolean(row.password_hash),
     currentLevelCode: row.current_level_code || null,
     currentLevelRank: Number(row.current_level_rank || 0),
-    referralCode: row.referral_code || null,
-    referralUrl: row.referral_url || null,
+    referralCode: referralIdentity.referralCode,
+    referralUrl: referralIdentity.referralUrl,
     currentEligibleLevelCode: row.current_eligible_level_code || row.current_level_code || null,
     currentEligibleLevelOrder: Number(row.current_eligible_level_order || row.current_level_rank || 0),
     previousAchievedLevelCode: row.highest_achieved_level_code || row.current_level_code || null,
@@ -219,6 +230,7 @@ router.get('/', guard, async (req, res) => {
             normalizeTelegramAccessStatus(row) === normalizedEntryStatus;
 
           return {
+            ...normalizeReferralIdentity(row.referral_code, row.referral_url),
             id: row.id,
             telegramHistoryEntryId: entry.id,
             telegramIsCurrentRecord: isCurrentRecord,
@@ -229,11 +241,10 @@ router.get('/', guard, async (req, res) => {
             kycLevel: row.kyc_level || 0,
             kycVerified: !!row.kyc_verified,
             status: normalizeStatus(row),
+            mainWalletBalance: Number(row.main_wallet_balance || 0),
             hasPassword: Boolean(row.password_hash),
             currentLevelCode: row.current_level_code || null,
             currentLevelRank: Number(row.current_level_rank || 0),
-            referralCode: row.referral_code || null,
-            referralUrl: row.referral_url || null,
             currentEligibleLevelCode: row.current_eligible_level_code || row.current_level_code || null,
             currentEligibleLevelOrder: Number(row.current_eligible_level_order || row.current_level_rank || 0),
             previousAchievedLevelCode: row.highest_achieved_level_code || row.current_level_code || null,
@@ -319,9 +330,10 @@ router.get('/', guard, async (req, res) => {
       'u.email',
       'u.country',
       'u.kyc_level',
-      'u.kyc_verified',
-      'u.status',
-      'u.roles',
+        'u.kyc_verified',
+        'u.status',
+        'u.main_wallet_balance',
+        'u.roles',
       'u.password_hash',
       'u.current_level_code',
       'u.current_level_rank',
@@ -396,6 +408,7 @@ router.get('/:id', guard, async (req, res) => {
       'u.kyc_level',
       'u.kyc_verified',
       'u.status',
+      'u.main_wallet_balance',
       'u.roles',
       'u.password_hash',
       'u.current_level_code',

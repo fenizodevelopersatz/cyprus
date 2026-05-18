@@ -42,7 +42,7 @@ export default function AdminReferralUsersPage() {
           <div className="text-xs uppercase tracking-[0.3em] text-slate-400">Admin Referrals</div>
           <h2 className="text-2xl font-semibold text-white">Referral User Directory</h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Open any user referral hub and review their MLM level, tree map, campaign code, campaign URL, income ledger, and payout history.
+            Open any user referral hub and review their MLM level, wallet balance, member growth, income ledger, and payout history.
           </p>
         </div>
         <form onSubmit={submitSearch} className="ml-auto flex gap-2">
@@ -69,12 +69,14 @@ export default function AdminReferralUsersPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-sm">
+          <table className="w-full min-w-[1180px] text-sm">
             <thead className="text-left text-xs uppercase tracking-[0.22em] text-slate-400">
               <tr>
                 <th className="pb-3">User</th>
                 <th className="pb-3">Email</th>
-                <th className="pb-3">Referral URL</th>
+                <th className="pb-3">Wallet Balance</th>
+                <th className="pb-3">Members</th>
+                <th className="pb-3">Downline</th>
                 <th className="pb-3">Level</th>
                 <th className="pb-3">Eligible Level</th>
                 <th className="pb-3">Status</th>
@@ -100,21 +102,9 @@ export default function AdminReferralUsersPage() {
                     </div>
                   </td>
                   <td className="py-3 text-slate-300">{user.email}</td>
-                  <td className="py-3">
-                    {user.referralUrl ? (
-                      <a
-                        href={user.referralUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block max-w-[320px] truncate text-cyan-300 underline-offset-2 hover:text-cyan-200 hover:underline"
-                        title={user.referralUrl}
-                      >
-                        {user.referralUrl}
-                      </a>
-                    ) : (
-                      <span className="text-slate-500">Not generated yet</span>
-                    )}
-                  </td>
+                  <td className="py-3 text-slate-200">{formatUsd(user.mainWalletBalance ?? 0)}</td>
+                  <td className="py-3 text-slate-300">{user.activeDirectCount ?? 0}</td>
+                  <td className="py-3 text-slate-300">{user.activeTeamCount ?? 0}</td>
                   <td className="py-3 text-slate-300">{user.currentLevelCode || `Lv${Number(user.currentLevelRank || 0)}`}</td>
                   <td className="py-3 text-slate-300">{user.currentEligibleLevelCode || "-"}</td>
                   <td className="py-3">
@@ -154,4 +144,12 @@ export default function AdminReferralUsersPage() {
       </section>
     </div>
   );
+}
+
+function formatUsd(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
 }

@@ -6,6 +6,7 @@ import { syncUserSnapshot } from './binanceSync.js';
 import {
   ensureReferralProfile,
   ensureReferralStats,
+  findReferralProfileByCode,
   recordReferralSignup,
 } from './referralService.js';
 import { creditUserBonus } from './walletService.js';
@@ -94,9 +95,7 @@ export async function register({ name, email, password, country, referralCode })
       if (!normalized) {
         throw new Error('Invalid referral code');
       }
-      const inviterProfile = await trx('referral_profiles')
-        .whereRaw('UPPER(code) = ?', [normalized])
-        .first();
+      const inviterProfile = await findReferralProfileByCode(normalized, { trx });
       if (!inviterProfile) {
         throw new Error('Invalid referral code');
       }
@@ -133,9 +132,7 @@ export async function register({ name, email, password, country, referralCode })
     }
 
     if (referralCode) {
-      const inviterProfile = await trx('referral_profiles')
-        .where({ user_id: sponsorId })
-        .first();
+      const inviterProfile = await trx('referral_profiles').where({ user_id: sponsorId }).first();
       if (!inviterProfile) {
         throw new Error('Invalid referral code');
       }

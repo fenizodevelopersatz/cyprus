@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type ChangeEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Input from "../../../ui/Input";
 import Button from "../../../ui/Button";
@@ -671,7 +671,10 @@ export default function SettingsPage() {
             <Input className={settingsFieldClass} value={personalInfo.postal_code} onChange={(event) => onPersonalInfoChange("postal_code", event.target.value)} />
           </Field>
           <Field label="Date of Birth">
-            <Input className={settingsFieldClass} type="date" value={personalInfo.date_of_birth} onChange={(event) => onPersonalInfoChange("date_of_birth", event.target.value)} />
+            <SettingsDateField
+              value={personalInfo.date_of_birth}
+              onChange={(value) => onPersonalInfoChange("date_of_birth", value)}
+            />
           </Field>
           <Field label="Gender">
             <select
@@ -1067,6 +1070,41 @@ function Field({
       {error && <div className="mt-1 text-xs text-rose-300">{error}</div>}
     </div>
   );
+}
+
+function SettingsDateField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const inputId = useId();
+  const displayValue = formatSettingsDateValue(value);
+
+  return (
+    <div className="relative min-w-0 overflow-hidden rounded-[10px] border border-[rgba(148,163,184,0.26)] bg-[var(--bg-input)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[rgba(255,255,255,0.8)] focus-within:shadow-[0_0_0_3px_rgba(255,255,255,0.08)]">
+      <div className={`pointer-events-none flex h-10 items-center px-3 text-sm ${displayValue ? "text-white" : "text-[var(--text-muted)]"}`}>
+        {displayValue || "Select date of birth"}
+      </div>
+      <input
+        id={inputId}
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label="Date of Birth"
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </div>
+  );
+}
+
+function formatSettingsDateValue(value?: string) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 type ToggleRowProps = {

@@ -174,7 +174,7 @@ type SignalIntentDetail = {
 type SignalCenterProps = {
   marketSocketStatus?: string;
   compact?: boolean;
-  compactSection?: "all" | "entry" | "history";
+  compactSection?: "all" | "entry" | "overview" | "validation" | "history";
 };
 
 const SIGNAL_INTENT_EVENT = "exchange:signal-intent";
@@ -664,6 +664,56 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
     </div>
   );
 
+  const compactOverviewSection = (
+    <div className="overflow-hidden rounded-3xl border border-[var(--border-soft)] bg-[var(--bg-card)]">
+      <div className="border-b border-[var(--border-soft)] px-4 py-4">
+        <div className="micro-label">Enter The Signal Code</div>
+        <h2 className="mt-2 text-lg font-semibold text-white">User Signal Apply Screen</h2>
+        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+          Balance decides how many trades you get. Every trade uses your latest wallet total, then applies the configured investment and profit percentages after the signal passes validation.
+        </p>
+      </div>
+      <div className="p-4">
+        <div className="rounded-2xl border border-[rgba(252,213,53,0.22)] bg-[rgba(252,213,53,0.12)] px-4 py-3 text-right text-sm">
+          <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--accent-yellow)]">Current Active Time Slot</div>
+          <div className="mt-1 font-semibold text-white">{displayActiveSlot ? `${displayActiveSlot.start} to ${displayActiveSlot.end}` : "Closed"}</div>
+          <div className="mt-1 text-xs text-[var(--text-secondary)]">
+            {hasOpenSignals
+              ? "Open signal is still waiting for auto-sell settlement."
+              : activeSlotCountdown ?? (nextSlot ? `Next window ${nextSlot.start} to ${nextSlot.end} in ${nextSlotCountdown}` : "Today's eligible slots are complete")}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <SummaryCard label="Main Wallet Balance" value={formatMoneyWithSymbol(displayWalletBalance)} />
+          <SummaryCard label="Eligible Package" value={currentPackage ? `${currentPackage.name} · ${eligibleSlotLabel}` : "No package"} />
+          <SummaryCard label="Signal Income Total" value={formatMoneyWithSymbol(walletSummary.signalIncomeTotal)} />
+          <SummaryCard label="Allowed Signals Today" value={String(walletSummary.allowedSignalsToday)} />
+          <SummaryCard label="Used Signals Today" value={String(todayUsedSignals)} />
+          <SummaryCard label="Remaining Signals Today" value={String(remainingSignals)} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const compactValidationSection = (
+    <div className="overflow-hidden rounded-3xl border border-[var(--border-soft)] bg-[var(--bg-card)]">
+      <div className="border-b border-[var(--border-soft)] px-4 py-4">
+        <div className="text-sm font-semibold text-white">Validation Message Area</div>
+      </div>
+      <div className="grid gap-3 p-4 sm:grid-cols-2">
+        <InfoLine label="Package rule" value={currentPackage ? `${currentPackage.signalsPerDay} slot${currentPackage.signalsPerDay > 1 ? "s" : ""}/day` : "No trade allowed"} />
+        <InfoLine label="Eligible slots" value={eligibleSlotLabel} />
+        <InfoLine label="Required MLM level" value={currentPackage ? String(currentPackage.requiredLevel) : "--"} />
+        <InfoLine label="Your MLM level" value={String(walletSummary.userLevel)} />
+        <InfoLine label="Latest balance basis" value={currencyFormatter.format(mainWalletBalanceBasis)} />
+        <InfoLine label="Investment per trade %" value={`${walletSummary.investmentPerTradePercent}%`} />
+        <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} />
+        <InfoLine label="Signal validity" value={`${walletSummary.signalValidityMinutes} minutes`} />
+      </div>
+    </div>
+  );
+
   const historySection = (
     <>
       <div className="mt-8 overflow-hidden rounded-3xl border border-[var(--border-soft)] bg-[var(--bg-card)]">
@@ -824,6 +874,8 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
 
   if (compact) {
     const showEntry = compactSection === "all" || compactSection === "entry";
+    const showOverview = compactSection === "all" || compactSection === "overview";
+    const showValidation = compactSection === "all" || compactSection === "validation";
     const showHistory = compactSection === "all" || compactSection === "history";
 
     return (
@@ -831,20 +883,9 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         id="signal-center"
         className="exchange-card exchange-card-strong rounded-[24px] p-3.5 text-slate-100"
       >
-        {/* <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="micro-label">Enter The Signal Code</div>
-            <h2 className="mt-2 text-xl font-semibold text-white">User Signal Apply Screen</h2>
-          </div>
-          <div className="rounded-2xl border border-[rgba(252,213,53,0.22)] bg-[rgba(252,213,53,0.12)] px-4 py-3 text-right text-sm">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--accent-yellow)]">Current Active Time Slot</div>
-            <div className="mt-1 font-semibold text-white">{activeSlot ? `${activeSlot.start} to ${activeSlot.end}` : "Closed"}</div>
-            <div className="mt-1 text-xs text-[var(--text-secondary)]">
-              {activeSlotCountdown ?? (nextSlot ? `Next window ${nextSlot.start} to ${nextSlot.end} in ${nextSlotCountdown}` : "Today's eligible slots are complete")}
-            </div>
-          </div>
-        </div> */}
+        {showOverview ? compactOverviewSection : null}
         {showEntry ? compactSignalEntryCard : null}
+        {showValidation ? compactValidationSection : null}
         {showHistory ? compactHistorySection : null}
       </section>
     );

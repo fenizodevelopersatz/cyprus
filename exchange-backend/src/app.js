@@ -143,6 +143,31 @@ function corsMiddleware(req, res, next) {
   next();
 }
 
+function setCorsHeaders(res, origin) {
+  if (!origin) return;
+  if (!isOriginAllowed(origin) && !ALLOW_ALL) return;
+
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  if (ALLOW_CREDENTIALS) {
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  res.setHeader('Vary', 'Origin');
+}
+
+function storageCorsMiddleware(req, res, next) {
+  setCorsHeaders(res, req.headers.origin);
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    return res.sendStatus(204);
+  }
+
+  next();
+}
+
 export function createApp() {
   const app = express();
 
@@ -219,6 +244,7 @@ export function createApp() {
   // Serve profile images with route-level CORS/CORP headers so <img> works across devtunnels.
   app.use(
     '/api/storage/profile',
+    storageCorsMiddleware,
     express.static(PROFILE_STORAGE_DIR, {
       fallthrough: false,
       setHeaders(res, filePath) {
@@ -233,16 +259,6 @@ export function createApp() {
                 : 'application/octet-stream';
 
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
-
-        const origin = res.req?.headers?.origin;
-        if (origin && isOriginAllowed(origin)) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-          res.setHeader('Vary', 'Origin');
-        }
-
         res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
       },
     })
@@ -250,6 +266,7 @@ export function createApp() {
 
   app.use(
     '/api/storage/site',
+    storageCorsMiddleware,
     express.static(SITE_STORAGE_DIR, {
       fallthrough: false,
       setHeaders(res, filePath) {
@@ -268,16 +285,6 @@ export function createApp() {
                     : 'application/octet-stream';
 
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
-
-        const origin = res.req?.headers?.origin;
-        if (origin && isOriginAllowed(origin)) {
-          res.setHeader('Access-Control-Allow-Origin', origin);
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-          res.setHeader('Vary', 'Origin');
-        }
-
         res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
       },
     })

@@ -18,9 +18,8 @@ const normaliseBase = (raw?: string) => {
 
 export const API_BASE_URL = normaliseBase(import.meta.env.VITE_API_URL as string | undefined);
 export const WS_BASE_URL = (() => {
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin.replace(/\/+$/, "");
-  }
+  const explicitWsBase = normaliseBase(import.meta.env.VITE_WS_URL as string | undefined);
+  if (explicitWsBase) return explicitWsBase;
   return API_BASE_URL;
 })();
 export const ADMIN_DASHBOARD_WS_PATH = "/ws/admin/dashboard";

@@ -88,6 +88,19 @@ const getUserDisplayName = (user?: { name?: string; displayName?: string; email?
   return base ? `${base.charAt(0).toUpperCase()}${base.slice(1)}` : "Trader";
 };
 
+const toFrontendStorageAssetUrl = (src?: string | null) => {
+  if (!src) return null;
+  try {
+    const resolved = new URL(src, window.location.origin);
+    if (resolved.pathname.startsWith("/api/storage/")) {
+      return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    }
+    return resolved.toString();
+  } catch {
+    return src;
+  }
+};
+
 const promotionHighlights: Record<string, string[]> = {
   vaults: ["Auto-compound enabled", "Stable-pair yield focus", "Flexible redemption windows"],
   p2p: ["Merchant-friendly release flow", "Regional routing upgrades", "Lower settlement friction"],
@@ -187,6 +200,8 @@ export default function Dashboard() {
   const userLevelBadge = mlmSnapshot.levelCode || formatUserLevelBadge(user?.currentLevelCode, user?.currentLevelRank);
   const userLevelImage = resolveUserLevelImage(user?.currentLevelRank);
   const userDisplayName = getUserDisplayName(user);
+  const resolvedProfilePhotoUrl = toFrontendStorageAssetUrl(profilePhotoUrl);
+  const resolvedSiteLogoUrl = toFrontendStorageAssetUrl(siteLogoUrl || DEFAULT_SITE_LOGO) || DEFAULT_SITE_LOGO;
   const currentLevelRank = Math.max(0, Number(user?.currentLevelRank ?? 0) || 0);
   const achievementStarCount = getAchievementStarCount(mlmSnapshot.levelRank || currentLevelRank);
   const promotionReward = mlmSnapshot.promotionReward;
@@ -382,8 +397,19 @@ export default function Dashboard() {
       if (!ctx) throw new Error("Canvas rendering is unavailable.");
       const exportStarCount = Math.max(0, Math.min(12, achievementStarCount));
 
+      const isSameOriginAsset = (src?: string | null) => {
+        if (!src) return false;
+        try {
+          const resolved = new URL(src, window.location.origin);
+          return resolved.origin === window.location.origin;
+        } catch {
+          return false;
+        }
+      };
+
       const loadImage = async (src?: string | null) => {
         if (!src) return null;
+        if (!isSameOriginAsset(src)) return null;
         try {
           return await new Promise<HTMLImageElement | null>((resolve) => {
             const image = new Image();
@@ -398,8 +424,8 @@ export default function Dashboard() {
         }
       };
 
-      const profileBitmap = await loadImage(profilePhotoUrl);
-      const logoBitmap = await loadImage(siteLogoUrl || DEFAULT_SITE_LOGO);
+      const profileBitmap = await loadImage(resolvedProfilePhotoUrl);
+      const logoBitmap = await loadImage(resolvedSiteLogoUrl);
 
       const fillRoundRect = (x: number, y: number, w: number, h: number, r: number, fillStyle: string | CanvasGradient) => {
         ctx.beginPath();
@@ -1232,13 +1258,13 @@ export default function Dashboard() {
         open={achievementOpen}
         onClose={() => setAchievementOpen(false)}
         title="Achievement Card"
-        panelClassName="max-h-[calc(100vh-0.35rem)] w-[calc(100vw-0.35rem)] max-w-md overflow-y-auto border-[#a77a18] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.2),transparent_20%),linear-gradient(180deg,#070708_0%,#131316_100%)] p-2 sm:w-full sm:p-5"
+        panelClassName="max-h-[calc(100vh-0.35rem)] w-[calc(100vw-0.35rem)] max-w-md border-[#a77a18] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.2),transparent_20%),linear-gradient(180deg,#070708_0%,#131316_100%)] p-2 sm:w-full sm:p-5"
         footer={
           <>
-            <Button variant="ghost" size="sm" onClick={() => void handleAchievementDownload()} disabled={achievementDownloading}>
+            <Button variant="ghost" size="sm" className="w-full sm:min-w-[132px] sm:w-auto" onClick={() => void handleAchievementDownload()} disabled={achievementDownloading}>
               {achievementDownloading ? "Preparing..." : "Download PNG"}
             </Button>
-            <Button size="sm" onClick={() => setAchievementOpen(false)}>
+            <Button size="sm" className="w-full sm:min-w-[96px] sm:w-auto" onClick={() => setAchievementOpen(false)}>
               Close
             </Button>
           </>
@@ -1258,8 +1284,8 @@ export default function Dashboard() {
             <div className="relative text-[10px] font-semibold uppercase tracking-[0.32em] text-[#f0d27a]">Achievement unlocked</div>
             <div className="relative mx-auto mt-2.5 flex h-20 w-20 items-center justify-center rounded-full border-[4px] border-[#f0cf67] bg-[radial-gradient(circle_at_top,rgba(255,215,96,0.16),rgba(16,16,18,0.92))] shadow-[0_0_0_5px_rgba(255,214,79,0.08),0_0_28px_rgba(255,214,79,0.18)] sm:mt-4 sm:h-32 sm:w-32 sm:border-[6px] sm:shadow-[0_0_0_6px_rgba(255,214,79,0.08),0_0_35px_rgba(255,214,79,0.18)]">
               <div className="flex h-[64px] w-[64px] items-center justify-center overflow-hidden rounded-full border-4 border-[#14151a] bg-[#17181d] text-base font-black text-[#ffd54f] sm:h-[104px] sm:w-[104px] sm:text-xl">
-                {profilePhotoUrl ? (
-                  <img src={profilePhotoUrl} alt={userDisplayName} className="h-full w-full object-cover" />
+                {resolvedProfilePhotoUrl ? (
+                  <img src={resolvedProfilePhotoUrl} alt={userDisplayName} className="h-full w-full object-cover" />
                 ) : (
                   achievementInitials
                 )}
@@ -1303,7 +1329,7 @@ export default function Dashboard() {
             <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-[#6e5316]/70 pt-2.5 sm:mt-5 sm:gap-3 sm:pt-3">
               <div className="flex items-center gap-2 rounded-full border border-[#8a6a1f]/80 bg-[rgba(255,214,79,0.06)] px-2 py-1 sm:px-3 sm:py-1.5">
                 <img
-                  src={siteLogoUrl || DEFAULT_SITE_LOGO}
+                  src={resolvedSiteLogoUrl}
                   alt="Primerica Exchange"
                   className="h-3.5 w-auto max-w-[72px] object-contain sm:h-5 sm:max-w-[96px]"
                   onError={(event) => {

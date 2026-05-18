@@ -27,8 +27,8 @@ export default function Dialog({ open, onClose, title, children, footer, panelCl
         aria-hidden="true"
         onClick={onClose}
       />
-      <div className={`relative z-10 w-full max-w-md rounded-[18px] border border-[var(--border-yellow)] bg-[linear-gradient(180deg,#181A20_0%,#14151A_100%)] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.45)] ${panelClassName}`.trim()}>
-        <div className="flex items-start justify-between gap-3">
+      <div className={`relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-[18px] border border-[var(--border-yellow)] bg-[linear-gradient(180deg,#181A20_0%,#14151A_100%)] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.45)] ${panelClassName}`.trim()}>
+        <div className="flex shrink-0 items-start justify-between gap-3">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <button
             type="button"
@@ -39,8 +39,8 @@ export default function Dialog({ open, onClose, title, children, footer, panelCl
             &times;
           </button>
         </div>
-        {children ? <div className="mt-4 text-sm text-slate-200">{children}</div> : null}
-        {footer ? <div className="mt-6 flex flex-wrap items-center justify-end gap-3">{footer}</div> : null}
+        {children ? <div className="mt-4 min-h-0 flex-1 overflow-y-auto text-sm text-slate-200">{children}</div> : null}
+        {footer ? <div className="mt-4 flex shrink-0 flex-col gap-3 border-t border-white/8 bg-[#14151A] pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">{footer}</div> : null}
       </div>
     </div>,
     document.body

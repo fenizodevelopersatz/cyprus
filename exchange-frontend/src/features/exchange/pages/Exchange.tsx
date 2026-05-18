@@ -494,6 +494,8 @@ export default function Exchange() {
           )}
         </Panel>
 
+        <SignalCenter marketSocketStatus={wsStatus} compact compactSection="overview" />
+        <SignalCenter marketSocketStatus={wsStatus} compact compactSection="validation" />
         <SignalCenter marketSocketStatus={wsStatus} compact compactSection="history" />
       </section>
 

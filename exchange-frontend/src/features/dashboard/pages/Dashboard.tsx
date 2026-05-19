@@ -299,7 +299,8 @@ export default function Dashboard() {
         const recurringBonusHistoryTotal = sumRecurringBonusRewards(dashboard.mlm.bonusPayoutHistory);
         const currentBonusPercent = Number(matchedByRank?.bonusPercent ?? matchedByCode?.bonusPercent ?? 0);
         const currentEligibleTeamBalance = Number(dashboard.mlm.summary?.teamEligibleBalance ?? 0);
-        const projectedTenDaySalary = currentBonusPercent > 0 && currentEligibleTeamBalance > 0
+        const projectedTenDaySalary = Number(dashboard.mlm.currentCycleProjectedPayout ?? 0);
+        const liveFallbackTenDaySalary = currentBonusPercent > 0 && currentEligibleTeamBalance > 0
           ? (currentEligibleTeamBalance * currentBonusPercent) / 100
           : 0;
         const incomeTotals = incomeHistory.items.reduce(
@@ -321,7 +322,7 @@ export default function Dashboard() {
           totalTeamSize: Number(dashboard.mlm.summary?.teamTotalMembers) || 0,
           eligibleTeamSize: Number(dashboard.mlm.summary?.teamEligibleMembers) || 0,
           referralReward: incomeTotals.referralReward,
-          tenDaySalary: projectedTenDaySalary || recurringBonusHistoryTotal || incomeTotals.tenDaySalary,
+          tenDaySalary: projectedTenDaySalary || recurringBonusHistoryTotal || incomeTotals.tenDaySalary || liveFallbackTenDaySalary,
           tenDaySalaryNextDueAt: dashboard.mlm.nextBonusDueAt ?? null,
           promotionReward: incomeTotals.promotionReward || promotionHistoryTotal || Number(reward) || 0,
           birthdayReward: incomeTotals.birthdayReward,

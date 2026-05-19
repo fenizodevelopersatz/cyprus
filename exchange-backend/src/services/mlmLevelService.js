@@ -537,20 +537,36 @@ function buildPositionStatusPayload({ statusRow, matched, metrics, levelRules, b
   const levelOrder = level ? toNumber(level.sortOrder) : 0;
   const wasQualified = Boolean(statusRow?.is_currently_qualified);
   const isQualified = Boolean(levelCode);
+  const qualificationChanged = isQualified && (!wasQualified || String(statusRow?.current_eligible_level_code || '') !== String(levelCode || ''));
   const directLv1Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv1');
   const directLv7Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv7');
   const directLv8Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv8');
   const directLv9Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv9');
   const qualifiedAt = isQualified
-    ? wasQualified && statusRow?.qualified_at
+    ? !qualificationChanged && statusRow?.qualified_at
       ? statusRow.qualified_at
       : checkedAt
     : null;
   const nextBonusDueAt = isQualified
-    ? wasQualified && statusRow?.next_bonus_due_at
+    ? !qualificationChanged && statusRow?.next_bonus_due_at
       ? statusRow.next_bonus_due_at
       : addDays(checkedAt, bonusIntervalDays)
     : null;
+  const frozenEligibleBalance = isQualified
+    ? !qualificationChanged && statusRow?.frozen_eligible_balance !== undefined && statusRow?.frozen_eligible_balance !== null
+      ? statusRow.frozen_eligible_balance
+      : toAmount(metrics.teamEligibleBalance)
+    : toAmount(0);
+  const frozenEligibleMembers = isQualified
+    ? !qualificationChanged && statusRow?.frozen_eligible_members !== undefined && statusRow?.frozen_eligible_members !== null
+      ? toNumber(statusRow.frozen_eligible_members)
+      : toNumber(metrics.teamEligibleMembers)
+    : 0;
+  const frozenQualifiedDirectMembers = isQualified
+    ? !qualificationChanged && statusRow?.frozen_qualified_direct_members !== undefined && statusRow?.frozen_qualified_direct_members !== null
+      ? toNumber(statusRow.frozen_qualified_direct_members)
+      : toNumber(matched?.qualifiedDirectMembers)
+    : 0;
 
   return {
     current_eligible_level_code: levelCode,
@@ -564,6 +580,9 @@ function buildPositionStatusPayload({ statusRow, matched, metrics, levelRules, b
     is_currently_qualified: isQualified,
     qualified_at: qualifiedAt,
     next_bonus_due_at: nextBonusDueAt,
+    frozen_eligible_balance: frozenEligibleBalance,
+    frozen_eligible_members: frozenEligibleMembers,
+    frozen_qualified_direct_members: frozenQualifiedDirectMembers,
     last_checked_at: checkedAt,
   };
 }
@@ -665,7 +684,10 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     context.mlmConfig.MLM_MINIMUM_BALANCE,
     context.mlmConfig.LEVEL_RULES
   );
-  const baseAmount = toNumber(bonusDetails.payoutEligibleBalance);
+  const frozenBaseAmount = toNumber(statusRow?.frozen_eligible_balance);
+  const baseAmount = frozenBaseAmount > 0 ? frozenBaseAmount : toNumber(bonusDetails.payoutEligibleBalance);
+  const frozenEligibleMembers = toNumber(statusRow?.frozen_eligible_members, bonusDetails.eligibleMembers);
+  const frozenQualifiedDirectMembers = toNumber(statusRow?.frozen_qualified_direct_members, matched?.qualifiedDirectMembers || 0);
   if (baseAmount <= 0) {
     await recordRecurringBonusHistory(trx, {
       user_id: user.id,
@@ -703,8 +725,8 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
       level_rank: toNumber(level.sortOrder),
       bonus_percent: toNumber(level.bonusPercent).toFixed(4),
       eligible_balance: toAmount(baseAmount),
-      eligible_members: bonusDetails.eligibleMembers,
-      qualified_direct_members: matched?.qualifiedDirectMembers || 0,
+      eligible_members: frozenEligibleMembers,
+      qualified_direct_members: frozenQualifiedDirectMembers,
       payout_amount: toAmount(bonusAmount),
       period_started_at: cycleFrom,
       period_ended_at: paidAt,
@@ -712,7 +734,10 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
       meta: JSON.stringify({
         actualEligibleBalance: toAmount(bonusDetails.actualEligibleBalance),
         minimumEligibleBalance: toAmount(bonusDetails.minimumEligibleBalance),
-        payoutEligibleBalance: toAmount(bonusDetails.payoutEligibleBalance),
+        payoutEligibleBalance: toAmount(baseAmount),
+        frozenEligibleBalance: toAmount(baseAmount),
+        frozenEligibleMembers,
+        frozenQualifiedDirectMembers,
         bonusBase: bonusDetails.usesDirectBase ? 'direct' : 'team',
         recurringBonusDueAt: dueAt,
       }),
@@ -772,8 +797,9 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     skip_reason: null,
     meta: {
       currentEligibleLevel: level.levelCode,
-      qualifiedDirectMembers: matched?.qualifiedDirectMembers || 0,
-      eligibleMembers: bonusDetails.eligibleMembers,
+      qualifiedDirectMembers: frozenQualifiedDirectMembers,
+      eligibleMembers: frozenEligibleMembers,
+      frozenEligibleBalance: toAmount(baseAmount),
       bonusBase: bonusDetails.usesDirectBase ? 'direct' : 'team',
     },
   });
@@ -789,8 +815,11 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
       bonusIntervalDays: context.mlmConfig.BONUS_INTERVAL_DAYS,
       checkedAt: paidAt,
     }),
-    qualified_at: statusRow?.qualified_at || paidAt,
+    qualified_at: paidAt,
     next_bonus_due_at: nextDueAt,
+    frozen_eligible_balance: toAmount(bonusDetails.payoutEligibleBalance),
+    frozen_eligible_members: toNumber(bonusDetails.eligibleMembers),
+    frozen_qualified_direct_members: toNumber(matched?.qualifiedDirectMembers || 0),
   });
 
   return {
@@ -1112,6 +1141,14 @@ export async function getUserMlmDashboard(userId) {
     currentEligibleLevelOrder: toNumber(statusRow?.current_eligible_level_order),
     nextBonusDueAt: statusRow?.next_bonus_due_at || null,
     qualifiedAt: statusRow?.qualified_at || null,
+    currentCycleEligibleBalance: String(statusRow?.frozen_eligible_balance || '0'),
+    currentCycleEligibleMembers: toNumber(statusRow?.frozen_eligible_members),
+    currentCycleQualifiedDirectMembers: toNumber(statusRow?.frozen_qualified_direct_members),
+    currentCycleProjectedPayout: toAmount(
+      (toNumber(statusRow?.frozen_eligible_balance) * toNumber(
+        levelSettings.find((level) => String(level.levelCode || '').trim() === String(statusRow?.current_eligible_level_code || '').trim())?.bonusPercent
+      )) / 100
+    ),
     isCurrentlyQualified: Boolean(statusRow?.is_currently_qualified),
     positionStatus: {
       activeDirectCount: toNumber(statusRow?.active_direct_count),

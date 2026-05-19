@@ -137,6 +137,10 @@ async function applyFirstDepositReferralRewards(
     : null;
 
   const { config } = await getLevelManagementSettings();
+  const commissionEnabled = Boolean(config?.isCommissionActive);
+  if (!commissionEnabled) {
+    return { applied: false, reason: 'COMMISSION_DISABLED' };
+  }
   const sponsorPercent = Number(config?.directSponsorCommissionPercent ?? 0);
   const joinPercent = Number(config?.joinedCommissionPercent ?? 0);
   const firstDepositAmount = Number(depositAmount);

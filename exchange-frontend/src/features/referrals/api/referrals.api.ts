@@ -93,6 +93,10 @@ export type ReferralDashboard = {
     currentEligibleLevelOrder?: number;
     nextBonusDueAt?: string | null;
     qualifiedAt?: string | null;
+    currentCycleEligibleBalance?: string;
+    currentCycleEligibleMembers?: number;
+    currentCycleQualifiedDirectMembers?: number;
+    currentCycleProjectedPayout?: string;
     isCurrentlyQualified?: boolean;
     positionStatus?: {
       activeDirectCount: number;
@@ -321,6 +325,10 @@ const mapMlm = (value: unknown): ReferralDashboard["mlm"] => {
     currentEligibleLevelOrder: toNumber(raw.currentEligibleLevelOrder),
     nextBonusDueAt: raw.nextBonusDueAt ? String(raw.nextBonusDueAt) : null,
     qualifiedAt: raw.qualifiedAt ? String(raw.qualifiedAt) : null,
+    currentCycleEligibleBalance: String(raw.currentCycleEligibleBalance ?? "0"),
+    currentCycleEligibleMembers: toNumber(raw.currentCycleEligibleMembers),
+    currentCycleQualifiedDirectMembers: toNumber(raw.currentCycleQualifiedDirectMembers),
+    currentCycleProjectedPayout: String(raw.currentCycleProjectedPayout ?? "0"),
     isCurrentlyQualified: Boolean(raw.isCurrentlyQualified),
     positionStatus: {
       activeDirectCount: toNumber(ensureRecord(raw.positionStatus).activeDirectCount),

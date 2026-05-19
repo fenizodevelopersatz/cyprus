@@ -138,12 +138,16 @@ export async function getFundingSummary(userId) {
     if (row.type === 'admin_adjustment_debit') return sum - debit;
     return sum;
   }, 0n);
+  const adminAdjustmentBalance = toNumber(formatUnits(adminAdjustmentBalanceBig, 18));
 
   const directDepositTotal = creditedRows.reduce((sum, row) => sum + toNumber(row.amount_decimal), 0);
   const tradeProfitTotal = toNumber(signalIncomeRow?.total);
   const tenDaySalaryTotal = toNumber(tenDaySalaryRow?.total);
   const activeWithdrawalTotal = withdrawalRows.reduce((sum, row) => sum + toNumber(row.amount), 0);
-  const withdrawWalletBalance = Math.max(0, directDepositTotal + tradeProfitTotal + tenDaySalaryTotal - activeWithdrawalTotal);
+  const withdrawWalletBalance = Math.max(
+    0,
+    directDepositTotal + adminAdjustmentBalance + tradeProfitTotal + tenDaySalaryTotal - activeWithdrawalTotal
+  );
 
   const balance = {
     token: 'USDT',
@@ -198,11 +202,12 @@ export async function getFundingSummary(userId) {
     withdrawWalletBalance: formatCurrencyString(withdrawWalletBalance),
     withdrawWalletBreakdown: {
       directDepositTotal: formatCurrencyString(directDepositTotal),
+      adminAdjustmentTotal: formatCurrencyString(adminAdjustmentBalance),
       tradeProfitTotal: formatCurrencyString(tradeProfitTotal),
       tenDaySalaryTotal: formatCurrencyString(tenDaySalaryTotal),
       activeWithdrawalTotal: formatCurrencyString(activeWithdrawalTotal),
     },
-    adminAdjustmentBalance: formatCurrencyString(formatUnits(adminAdjustmentBalanceBig, 18)),
+    adminAdjustmentBalance: formatCurrencyString(adminAdjustmentBalance),
     withdrawalPolicy,
     depositAddresses,
     updatedAt: latestUpdatedAt,

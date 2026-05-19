@@ -47,6 +47,12 @@ function formatWalletBalance(value) {
 
 function classifyBonusReason(reason = '') {
   const normalized = String(reason || '').trim().toLowerCase();
+  const normalizedReasonMap = {
+    mlm_level_bonus: 'level_bonus_10day',
+    mlm_level_promotion_reward: 'level_promotion_reward',
+    promotion_reward: 'level_promotion_reward',
+  };
+  const sourceType = normalizedReasonMap[normalized] || normalized;
   const mlmTypes = new Set([
     'direct_sponsor_commission',
     'joined_commission',
@@ -55,19 +61,21 @@ function classifyBonusReason(reason = '') {
     'promotion_reward',
     'salary_reward',
     'mlm_income',
+    'level_bonus_10day',
+    'level_promotion_reward',
   ]);
 
-  if (mlmTypes.has(normalized)) {
+  if (mlmTypes.has(sourceType)) {
     return {
       ledgerType: 'mlm_income_credit',
-      sourceType: normalized,
+      sourceType,
       isMlm: true,
     };
   }
 
   return {
     ledgerType: 'admin_adjustment_credit',
-    sourceType: normalized || 'bonus_credit',
+    sourceType: sourceType || 'bonus_credit',
     isMlm: false,
   };
 }

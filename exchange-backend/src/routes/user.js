@@ -315,7 +315,7 @@ async function loadOrdersAuditRows(userId) {
         'bp.id',
         hasMlmBonusTxnId ? 'bp.txn_id' : db.raw('NULL as txn_id'),
         'bp.level_code',
-        db.raw("CASE WHEN COALESCE(bp.level_code, '') = '' THEN 'level_bonus_10day' ELSE 'level_promotion_reward' END as kind"),
+        db.raw("'level_bonus_10day' as kind"),
         'bp.payout_amount as amount',
         'bp.status',
         'bp.created_at as createdAt',

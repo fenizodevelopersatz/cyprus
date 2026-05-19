@@ -168,7 +168,7 @@ export default function AdminCommissionHistoryPage() {
       { label: "Total 10-Day Level Income", value: formatAmount(summary?.totalLevelBonus10DayIncome ?? 0) },
       { label: "Total One-Time Level Rewards", value: formatAmount(summary?.totalLevelPromotionRewardIncome ?? 0) },
       { label: "Total Signal Income", value: formatAmount(summary?.totalSignalIncome ?? 0) },
-      { label: "Total Combined Income", value: formatAmount(summary?.totalCombinedIncome ?? 0) },
+      // { label: "Total Combined Income", value: formatAmount(summary?.totalCombinedIncome ?? 0) },
       { label: "Total Beneficiary Users", value: compact.format(summary?.totalBeneficiaryUsers ?? 0) },
     ],
     [summary]

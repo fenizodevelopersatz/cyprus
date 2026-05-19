@@ -15,9 +15,25 @@ export async function up(knex) {
       table.dateTime('qualified_at').nullable();
       table.dateTime('last_checked_at').nullable();
       table.dateTime('next_bonus_due_at').nullable();
+      table.decimal('frozen_eligible_balance', 36, 18).notNullable().defaultTo(0);
+      table.integer('frozen_eligible_members').notNullable().defaultTo(0);
+      table.integer('frozen_qualified_direct_members').notNullable().defaultTo(0);
       table.timestamps(true, true);
       table.index(['is_currently_qualified', 'next_bonus_due_at'], 'user_position_status_due_lookup_idx');
     });
+  }
+  const userPositionColumns = [
+    ['frozen_eligible_balance', (table) => table.decimal('frozen_eligible_balance', 36, 18).notNullable().defaultTo(0)],
+    ['frozen_eligible_members', (table) => table.integer('frozen_eligible_members').notNullable().defaultTo(0)],
+    ['frozen_qualified_direct_members', (table) => table.integer('frozen_qualified_direct_members').notNullable().defaultTo(0)],
+  ];
+  for (const [columnName, addColumn] of userPositionColumns) {
+    const hasColumn = await knex.schema.hasColumn('user_position_status', columnName);
+    if (!hasColumn) {
+      await knex.schema.alterTable('user_position_status', (table) => {
+        addColumn(table);
+      });
+    }
   }
 
   const hasRecurringBonusHistory = await knex.schema.hasTable('recurring_bonus_history');

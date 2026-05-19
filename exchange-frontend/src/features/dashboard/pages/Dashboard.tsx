@@ -1262,7 +1262,7 @@ export default function Dashboard() {
         footer={
           <>
             <Button variant="ghost" size="sm" className="w-full sm:min-w-[132px] sm:w-auto" onClick={() => void handleAchievementDownload()} disabled={achievementDownloading}>
-              {achievementDownloading ? "Preparing..." : "Download PNG"}
+              {achievementDownloading ? "Preparing..." : "Download"}
             </Button>
             <Button size="sm" className="w-full sm:min-w-[96px] sm:w-auto" onClick={() => setAchievementOpen(false)}>
               Close

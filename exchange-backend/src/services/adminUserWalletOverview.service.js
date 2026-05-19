@@ -32,6 +32,8 @@ async function fetchEvmWalletBalances({ address, rpcUrl, contractAddress, tokenD
 }
 
 async function fetchTronWalletBalances({ address, fullHost, contractAddress, tokenDecimals }) {
+  console.log('fetchTronWalletBalances-73->', { address, contractAddress, tokenDecimals, fullHost }, "\n");
+
   const tronWeb = getTronClient({ fullHost });
   if (typeof tronWeb.setAddress === 'function') {
     tronWeb.setAddress(address);

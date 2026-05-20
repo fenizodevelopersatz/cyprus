@@ -109,7 +109,7 @@ const AUDIT_LABELS = {
   signal_income: 'Signal Income',
   direct_sponsor_commission: 'Direct Sponsor Income',
   joined_commission: 'Joined Commission',
-  level_bonus_10day: '10-Day Level Income',
+  level_bonus_10day: '10-Day Salary Income',
   level_promotion_reward: 'Level Reward',
   admin_adjustment_credit: 'admin_deposit',
   admin_adjustment_debit: 'admin_withdraw',

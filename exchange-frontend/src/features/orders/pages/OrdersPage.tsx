@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
-import { fetchOrdersAudit, fetchOrdersAuditSummary } from "../api/ordersAudit.api";
+import { fetchOrdersAudit, fetchOrdersAuditSummary, type OrdersAuditRow } from "../api/ordersAudit.api";
 
 const panelCls = "rounded-3xl border border-white/10 bg-white/6 p-4 backdrop-blur-xl shadow-[0_25px_80px_-45px_rgba(56,189,248,0.18)] sm:p-5";
 
@@ -10,7 +10,7 @@ const labelMap: Record<string, string> = {
   signal_income: "Signal Income",
   direct_sponsor_commission: "Direct Sponsor Income",
   joined_commission: "Joined Commission",
-  level_bonus_10day: "10-Day Level Income",
+  level_bonus_10day: "10-Day Salary Income",
   level_promotion_reward: "Level Reward",
   admin_adjustment_credit: "admin_deposit",
   admin_adjustment_debit: "admin_withdraw",
@@ -18,6 +18,13 @@ const labelMap: Record<string, string> = {
 
 const selectCls =
   "h-10 w-full min-w-0 rounded-xl border border-white/10 bg-slate-900 text-[11px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-400/20 sm:text-[13px]";
+
+function shouldHideFrontendMirrorAdminCredit(row: OrdersAuditRow) {
+  if (row.incomeType !== "admin_adjustment_credit") return false;
+  const detail = String(row.referenceDetails || "").toLowerCase();
+  const remark = String(row.remark || "").toLowerCase();
+  return detail.includes("bonus credited to main wallet") || remark.includes("bonus credited to main wallet");
+}
 
 export default function OrdersPage() {
   const [draftSearch, setDraftSearch] = useState("");
@@ -51,7 +58,10 @@ export default function OrdersPage() {
   });
 
   const summary = summaryQuery.data;
-  const items = listQuery.data?.items ?? [];
+  const items = useMemo(
+    () => (listQuery.data?.items ?? []).filter((row) => !shouldHideFrontendMirrorAdminCredit(row)),
+    [listQuery.data?.items]
+  );
   const pagination = listQuery.data?.pagination ?? { page: 1, limit: 50, total: 0, totalPages: 0 };
   const loading = summaryQuery.isLoading || listQuery.isLoading || listQuery.isFetching;
 
@@ -173,7 +183,7 @@ export default function OrdersPage() {
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/90 sm:text-[13px] sm:normal-case sm:tracking-normal">Audit History</div>
           </div>
-          <div className="text-[10px] text-slate-400 sm:text-[11px]">{loading ? "Loading..." : `${pagination.total} rows`}</div>
+          <div className="text-[10px] text-slate-400 sm:text-[11px]">{loading ? "Loading..." : `${items.length} rows`}</div>
         </div>
 
         <div className="mt-4 overflow-hidden rounded-2xl border border-white/8">

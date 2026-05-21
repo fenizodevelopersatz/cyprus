@@ -21,6 +21,7 @@ export const DEFAULT_LEVEL_MANAGEMENT_CONFIG = {
   oneTimeRewardNote: 'Gets One-time reward',
   minimumDepositEligibilityNote: 'Every Downline person should have Min $300, then only it’s calculated',
   minimumEligibleDeposit: '300.00',
+  bonusIntervalDays: 10,
   directSponsorCommissionPercent: '5.00',
   joinedCommissionPercent: '2.00',
   isCommissionActive: 1,
@@ -103,6 +104,7 @@ export const SELECT_ACTIVE_CONFIG = `
     one_time_reward_note,
     minimum_deposit_eligibility_note,
     minimum_eligible_deposit,
+    bonus_interval_days,
     direct_sponsor_commission_percent,
     joined_commission_percent,
     is_commission_active,
@@ -125,12 +127,13 @@ export const INSERT_DEFAULT_CONFIG = `
     one_time_reward_note,
     minimum_deposit_eligibility_note,
     minimum_eligible_deposit,
+    bonus_interval_days,
     direct_sponsor_commission_percent,
     joined_commission_percent,
     is_commission_active,
     is_active,
     updated_by
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 export const UPDATE_CONFIG = `
@@ -143,6 +146,7 @@ export const UPDATE_CONFIG = `
     one_time_reward_note = ?,
     minimum_deposit_eligibility_note = ?,
     minimum_eligible_deposit = ?,
+    bonus_interval_days = ?,
     direct_sponsor_commission_percent = ?,
     joined_commission_percent = ?,
     is_commission_active = ?,
@@ -164,6 +168,7 @@ export function getDefaultConfigBindings(updatedBy = null) {
     DEFAULT_LEVEL_MANAGEMENT_CONFIG.oneTimeRewardNote,
     DEFAULT_LEVEL_MANAGEMENT_CONFIG.minimumDepositEligibilityNote,
     DEFAULT_LEVEL_MANAGEMENT_CONFIG.minimumEligibleDeposit,
+    DEFAULT_LEVEL_MANAGEMENT_CONFIG.bonusIntervalDays,
     DEFAULT_LEVEL_MANAGEMENT_CONFIG.directSponsorCommissionPercent,
     DEFAULT_LEVEL_MANAGEMENT_CONFIG.joinedCommissionPercent,
     DEFAULT_LEVEL_MANAGEMENT_CONFIG.isCommissionActive,

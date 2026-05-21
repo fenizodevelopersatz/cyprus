@@ -24,6 +24,7 @@ const formatDateTime = (value: string): string => {
   })}`;
 };
 
+
 const metricSkeletons = Array.from({ length: 4 }, (_, index) => index);
 
 const LevelBadge = ({ levelCode, levelRank, size = "md" }: { levelCode?: string | null; levelRank?: number | null; size?: "sm" | "md" }) => {

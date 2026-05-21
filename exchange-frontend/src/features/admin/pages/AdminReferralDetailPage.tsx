@@ -21,6 +21,8 @@ const formatDateTime = (value: string) => {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
+const formatMoneyValue = (value: string | number | null | undefined) => formatMoneyWithSymbol(Number(value || 0));
+
 const statusClassNames: Record<string, string> = {
   rewarded: "text-emerald-300",
   verified: "text-indigo-300",
@@ -119,6 +121,23 @@ export default function AdminReferralDetailPage() {
 
   const nextLevelRequirement = levelRequirements[nextLevelCode] ?? null;
   const currentLevelRequirement = mlm?.currentLevel ? levelRequirements[mlm.currentLevel] ?? null : null;
+  const currentBonusPercent = currentLevelRequirement?.bonusPercent ?? 0;
+  const currentEligibleTeamBalance = Number(mlm?.summary.teamEligibleBalance ?? 0);
+  const projectedPayoutAmount = Number(mlm?.currentCycleProjectedPayout ?? 0);
+  const fallbackProjectedPayout = currentBonusPercent > 0 && currentEligibleTeamBalance > 0
+    ? (currentEligibleTeamBalance * currentBonusPercent) / 100
+    : 0;
+  const exactPayoutAmount = projectedPayoutAmount > 0 ? projectedPayoutAmount : fallbackProjectedPayout;
+  const eligibilityCheckedAt = mlm?.positionStatus?.lastCheckedAt ?? mlm?.summary?.lastCalculatedAt ?? null;
+  const qualifiedDirectMembers = Number(mlm?.currentCycleQualifiedDirectMembers ?? 0);
+  const eligibleMembers = Number(mlm?.currentCycleEligibleMembers ?? mlm?.summary.teamEligibleMembers ?? 0);
+  const eligibleTreeUsers = useMemo(
+    () =>
+      (mlm?.tree.nodes ?? [])
+        .filter((node) => !node.isRoot && node.eligible)
+        .sort((a, b) => a.id - b.id),
+    [mlm?.tree.nodes]
+  );
 
   const oneTimeRewardsTotal = useMemo(
     () => (mlm?.promotionHistory ?? []).reduce((sum, item) => sum + Number(item.rewardAmount || 0), 0),
@@ -250,9 +269,129 @@ export default function AdminReferralDetailPage() {
                   value={nextLevelRequirement ? formatMoneyWithSymbol(nextLevelRequirement.promotionRewardUsdt) : "--"}
                   helper={recurringBonusLabel}
                 />
+                <MetricTile
+                  label="Exact 10-day payout"
+                  value={formatMoneyValue(exactPayoutAmount)}
+                  helper={
+                    currentLevelRequirement
+                      ? `${currentEligibleTeamBalance.toFixed(2)} eligible balance x ${currentBonusPercent.toFixed(2)}%`
+                      : "Waiting for active level bonus"
+                  }
+                  accent
+                />
+                <MetricTile
+                  label="Eligibility checked"
+                  value={mlm.isCurrentlyQualified ? "Yes" : "No"}
+                  helper={
+                    eligibilityCheckedAt
+                      ? `Checked ${formatDateTime(eligibilityCheckedAt)}`
+                      : "Check timestamp unavailable"
+                  }
+                />
+                <MetricTile
+                  label="Checked eligible members"
+                  value={String(eligibleMembers)}
+                  helper={`Qualified directs ${qualifiedDirectMembers}`}
+                />
+                <MetricTile
+                  label="Next payout time"
+                  value={mlm.nextBonusDueAt ? formatDateTime(mlm.nextBonusDueAt) : "--"}
+                  helper={
+                    mlm.isCurrentlyQualified
+                      ? "Eligibility is confirmed before payout."
+                      : "Not qualified yet, payout should not be released."
+                  }
+                />
               </div>
             ) : null}
           </section>
+
+          {mlm ? (
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)]">
+              <div className="rounded-3xl border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(13,23,48,0.92),rgba(8,47,73,0.72))] p-5 shadow-[0_25px_80px_-45px_rgba(34,211,238,0.45)]">
+                <div className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Current 10-day frozen cycle</div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricTile
+                    label="Level reached at"
+                    value={mlm.qualifiedAt ? formatDateTime(mlm.qualifiedAt) : "--"}
+                    helper={mlm.isCurrentlyQualified ? "Eligible and frozen for this cycle" : "Not qualified yet"}
+                  />
+                  <MetricTile
+                    label="Salary payout at"
+                    value={mlm.nextBonusDueAt ? formatDateTime(mlm.nextBonusDueAt) : "--"}
+                    helper="Preserves the reached clock time across the cycle"
+                  />
+                  <MetricTile
+                    label="Frozen amount"
+                    value={formatMoneyValue(exactPayoutAmount)}
+                    helper={
+                      currentLevelRequirement
+                        ? `${currentEligibleTeamBalance.toFixed(2)} eligible balance x ${currentBonusPercent.toFixed(2)}%`
+                        : "Waiting for active level bonus"
+                    }
+                    accent
+                  />
+                  <MetricTile
+                    label="Next recalculate"
+                    value={mlm.nextBonusDueAt ? formatDateTime(mlm.nextBonusDueAt) : "--"}
+                    helper="After payout, upgrade or downgrade is checked again"
+                  />
+                  <MetricTile
+                    label="Eligible now"
+                    value={mlm.isCurrentlyQualified ? "Yes" : "No"}
+                    helper={eligibilityCheckedAt ? `Checked ${formatDateTime(eligibilityCheckedAt)}` : "Check time unavailable"}
+                  />
+                  <MetricTile
+                    label="Frozen eligible users"
+                    value={String(eligibleMembers)}
+                    helper="User IDs counted in this cycle snapshot"
+                  />
+                  <MetricTile
+                    label="Qualified directs"
+                    value={String(qualifiedDirectMembers)}
+                    helper="Direct requirement used for the current level"
+                  />
+                  <MetricTile
+                    label="Frozen team balance"
+                    value={formatMoneyValue(currentEligibleTeamBalance)}
+                    helper="Do not disturb this amount until the payout is given"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-white/6 p-5 shadow-[0_25px_80px_-45px_rgba(79,70,229,0.35)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Eligible user IDs and wallet balances</div>
+                    <div className="mt-1 text-xs text-slate-400">Active eligible members shown from the current tree snapshot.</div>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+                    {eligibleTreeUsers.length} users
+                  </div>
+                </div>
+                <div className="mt-4 max-h-[1200px] space-y-2 overflow-y-auto pr-1">
+                  {eligibleTreeUsers.length ? (
+                    eligibleTreeUsers.map((node) => (
+                      <div key={node.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                        <div className="min-w-0">
+                          <div className="font-medium text-white">User #{node.id}</div>
+                          <div className="truncate text-xs text-slate-400">{node.name || node.email || "--"}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-emerald-300">{formatMoneyValue(node.walletBalance)}</div>
+                          <div className="text-xs text-slate-400">{getLevelLabel(node.levelCode, node.levelRank)}</div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-white/15 bg-white/4 px-4 py-6 text-center text-sm text-slate-300/70">
+                      No eligible users in the current snapshot yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {mlm ? <UnilevelTreeCard tree={mlm.tree} /> : null}
 

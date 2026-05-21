@@ -537,47 +537,59 @@ function buildPositionStatusPayload({ statusRow, matched, metrics, levelRules, b
   const levelOrder = level ? toNumber(level.sortOrder) : 0;
   const wasQualified = Boolean(statusRow?.is_currently_qualified);
   const isQualified = Boolean(levelCode);
-  const qualificationChanged = isQualified && (!wasQualified || String(statusRow?.current_eligible_level_code || '') !== String(levelCode || ''));
+  const activeDueAt = statusRow?.next_bonus_due_at ? new Date(statusRow.next_bonus_due_at) : null;
+  const cycleLocked = Boolean(
+    statusRow?.is_currently_qualified &&
+      statusRow?.qualified_at &&
+      activeDueAt &&
+      activeDueAt.getTime() > new Date(checkedAt).getTime()
+  );
+  const qualificationChanged = !cycleLocked && isQualified && (!wasQualified || String(statusRow?.current_eligible_level_code || '') !== String(levelCode || ''));
+  const effectiveLevelCode = cycleLocked ? String(statusRow?.current_eligible_level_code || '') || null : levelCode;
+  const effectiveLevelOrder = cycleLocked
+    ? toNumber(statusRow?.current_eligible_level_order)
+    : levelOrder;
+  const effectiveIsQualified = cycleLocked ? Boolean(statusRow?.is_currently_qualified) : isQualified;
   const directLv1Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv1');
   const directLv7Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv7');
   const directLv8Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv8');
   const directLv9Count = countQualifiedDirectsByCode(metrics.children || [], 'Lv9');
-  const qualifiedAt = isQualified
-    ? !qualificationChanged && statusRow?.qualified_at
+  const qualifiedAt = effectiveIsQualified
+    ? cycleLocked || (!qualificationChanged && statusRow?.qualified_at)
       ? statusRow.qualified_at
       : checkedAt
     : null;
-  const nextBonusDueAt = isQualified
-    ? !qualificationChanged && statusRow?.next_bonus_due_at
+  const nextBonusDueAt = effectiveIsQualified
+    ? cycleLocked || (!qualificationChanged && statusRow?.next_bonus_due_at)
       ? statusRow.next_bonus_due_at
       : addDays(checkedAt, bonusIntervalDays)
     : null;
-  const frozenEligibleBalance = isQualified
-    ? !qualificationChanged && statusRow?.frozen_eligible_balance !== undefined && statusRow?.frozen_eligible_balance !== null
+  const frozenEligibleBalance = effectiveIsQualified
+    ? cycleLocked || (!qualificationChanged && statusRow?.frozen_eligible_balance !== undefined && statusRow?.frozen_eligible_balance !== null)
       ? statusRow.frozen_eligible_balance
       : toAmount(metrics.teamEligibleBalance)
     : toAmount(0);
-  const frozenEligibleMembers = isQualified
-    ? !qualificationChanged && statusRow?.frozen_eligible_members !== undefined && statusRow?.frozen_eligible_members !== null
+  const frozenEligibleMembers = effectiveIsQualified
+    ? cycleLocked || (!qualificationChanged && statusRow?.frozen_eligible_members !== undefined && statusRow?.frozen_eligible_members !== null)
       ? toNumber(statusRow.frozen_eligible_members)
       : toNumber(metrics.teamEligibleMembers)
     : 0;
-  const frozenQualifiedDirectMembers = isQualified
-    ? !qualificationChanged && statusRow?.frozen_qualified_direct_members !== undefined && statusRow?.frozen_qualified_direct_members !== null
+  const frozenQualifiedDirectMembers = effectiveIsQualified
+    ? cycleLocked || (!qualificationChanged && statusRow?.frozen_qualified_direct_members !== undefined && statusRow?.frozen_qualified_direct_members !== null)
       ? toNumber(statusRow.frozen_qualified_direct_members)
       : toNumber(matched?.qualifiedDirectMembers)
     : 0;
 
   return {
-    current_eligible_level_code: levelCode,
-    current_eligible_level_order: levelOrder,
+    current_eligible_level_code: effectiveLevelCode,
+    current_eligible_level_order: effectiveLevelOrder,
     active_direct_count: toNumber(metrics.directEligibleMembers),
     active_team_count: toNumber(metrics.teamEligibleMembers),
     direct_lv1_count: directLv1Count,
     direct_lv7_count: directLv7Count,
     direct_lv8_count: directLv8Count,
     direct_lv9_count: directLv9Count,
-    is_currently_qualified: isQualified,
+    is_currently_qualified: effectiveIsQualified,
     qualified_at: qualifiedAt,
     next_bonus_due_at: nextBonusDueAt,
     frozen_eligible_balance: frozenEligibleBalance,
@@ -606,16 +618,11 @@ function getCycleBounds(statusRow, dueAt, bonusIntervalDays) {
   return { cycleFrom, cycleTo };
 }
 
+function findLevelByCode(levels, levelCode) {
+  return (levels || []).find((level) => String(level?.levelCode || '') === String(levelCode || '')) || null;
+}
+
 async function processRecurringBonusPayment(trx, user, matched, metrics, statusRow, context) {
-  const refreshedStatusPayload = buildPositionStatusPayload({
-    statusRow,
-    matched,
-    metrics,
-    levelRules: context.mlmConfig.LEVEL_RULES,
-    bonusIntervalDays: context.mlmConfig.BONUS_INTERVAL_DAYS,
-    checkedAt: new Date(),
-  });
-  await upsertUserPositionStatus(trx, user.id, refreshedStatusPayload);
   const dueAt = statusRow?.next_bonus_due_at ? new Date(statusRow.next_bonus_due_at) : null;
   if (!dueAt || dueAt.getTime() > Date.now()) {
     return { skipped: true, reason: RECURRING_SKIP_REASONS.BONUS_NOT_DUE };
@@ -649,8 +656,9 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     return { skipped: true, reason: RECURRING_SKIP_REASONS.USER_NOT_ACTIVE };
   }
 
-  const level = matched?.level || null;
-  if (!level) {
+  const frozenLevelCode = statusRow?.current_eligible_level_code || null;
+  const frozenLevel = findLevelByCode(context.levels, frozenLevelCode);
+  if (!frozenLevel) {
     await recordRecurringBonusHistory(trx, {
       user_id: user.id,
       level_code: null,
@@ -679,7 +687,7 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
   }
 
   const bonusDetails = getEligibleBalanceDetails(
-    level.levelCode,
+    frozenLevel.levelCode,
     metrics,
     context.mlmConfig.MLM_MINIMUM_BALANCE,
     context.mlmConfig.LEVEL_RULES
@@ -687,12 +695,12 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
   const frozenBaseAmount = toNumber(statusRow?.frozen_eligible_balance);
   const baseAmount = frozenBaseAmount > 0 ? frozenBaseAmount : toNumber(bonusDetails.payoutEligibleBalance);
   const frozenEligibleMembers = toNumber(statusRow?.frozen_eligible_members, bonusDetails.eligibleMembers);
-  const frozenQualifiedDirectMembers = toNumber(statusRow?.frozen_qualified_direct_members, matched?.qualifiedDirectMembers || 0);
+  const frozenQualifiedDirectMembers = toNumber(statusRow?.frozen_qualified_direct_members, 0);
   if (baseAmount <= 0) {
     await recordRecurringBonusHistory(trx, {
       user_id: user.id,
-      level_code: level.levelCode,
-      percent: toNumber(level.bonusPercent).toFixed(4),
+      level_code: frozenLevel.levelCode,
+      percent: toNumber(frozenLevel.bonusPercent).toFixed(4),
       base_amount: toAmount(baseAmount),
       bonus_amount: toAmount(0),
       due_at: dueAt,
@@ -702,11 +710,11 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     return { skipped: true, reason: RECURRING_SKIP_REASONS.INVALID_BASE_AMOUNT };
   }
 
-  const bonusAmount = (baseAmount * toNumber(level.bonusPercent)) / 100;
+  const bonusAmount = (baseAmount * toNumber(frozenLevel.bonusPercent)) / 100;
   const { cycleFrom, cycleTo } = getCycleBounds(statusRow, dueAt, context.mlmConfig.BONUS_INTERVAL_DAYS);
   const paidAt = new Date();
 
-  const existingPayout = await getLevelBonusPayoutQuery(trx, user.id, level.levelCode, cycleFrom).first();
+  const existingPayout = await getLevelBonusPayoutQuery(trx, user.id, frozenLevel.levelCode, cycleFrom).first();
   if (existingPayout) {
     return {
       skipped: false,
@@ -721,9 +729,9 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
   try {
     inserted = await trx('mlm_level_bonus_payouts').insert({
       user_id: user.id,
-      level_code: level.levelCode,
-      level_rank: toNumber(level.sortOrder),
-      bonus_percent: toNumber(level.bonusPercent).toFixed(4),
+      level_code: frozenLevel.levelCode,
+      level_rank: toNumber(frozenLevel.sortOrder),
+      bonus_percent: toNumber(frozenLevel.bonusPercent).toFixed(4),
       eligible_balance: toAmount(baseAmount),
       eligible_members: frozenEligibleMembers,
       qualified_direct_members: frozenQualifiedDirectMembers,
@@ -746,12 +754,12 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     });
   } catch (error) {
     if (isLevelBonusPayoutDuplicate(error)) {
-      const duplicatePayout = await getLevelBonusPayoutQuery(trx, user.id, level.levelCode, cycleFrom).first();
+      const duplicatePayout = await getLevelBonusPayoutQuery(trx, user.id, frozenLevel.levelCode, cycleFrom).first();
       return {
         skipped: false,
         duplicate: true,
         payoutId: duplicatePayout?.id || null,
-        levelCode: duplicatePayout?.level_code || level.levelCode,
+        levelCode: duplicatePayout?.level_code || frozenLevel.levelCode,
         bonusAmount: duplicatePayout?.payout_amount || toAmount(bonusAmount),
       };
     }
@@ -769,8 +777,8 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     await trx('mlm_level_bonus_payouts').where({ id: payoutId }).del();
     await recordRecurringBonusHistory(trx, {
       user_id: user.id,
-      level_code: level.levelCode,
-      percent: toNumber(level.bonusPercent).toFixed(4),
+      level_code: frozenLevel.levelCode,
+      percent: toNumber(frozenLevel.bonusPercent).toFixed(4),
       base_amount: toAmount(baseAmount),
       bonus_amount: toAmount(bonusAmount),
       cycle_from: cycleFrom,
@@ -785,8 +793,8 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
 
   await recordRecurringBonusHistory(trx, {
     user_id: user.id,
-    level_code: level.levelCode,
-    percent: toNumber(level.bonusPercent).toFixed(4),
+    level_code: frozenLevel.levelCode,
+    percent: toNumber(frozenLevel.bonusPercent).toFixed(4),
     base_amount: toAmount(baseAmount),
     bonus_amount: toAmount(bonusAmount),
     cycle_from: cycleFrom,
@@ -796,7 +804,7 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     status: 'paid',
     skip_reason: null,
     meta: {
-      currentEligibleLevel: level.levelCode,
+      currentEligibleLevel: frozenLevel.levelCode,
       qualifiedDirectMembers: frozenQualifiedDirectMembers,
       eligibleMembers: frozenEligibleMembers,
       frozenEligibleBalance: toAmount(baseAmount),
@@ -806,26 +814,32 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
 
   const nextDueAt = addDays(dueAt, context.mlmConfig.BONUS_INTERVAL_DAYS);
   await trx('users').where({ id: user.id }).update({ last_level_bonus_at: paidAt, level_last_paid_at: paidAt, updated_at: paidAt });
+  const nextStatusRow = {
+    ...statusRow,
+    current_eligible_level_code: null,
+    current_eligible_level_order: 0,
+    is_currently_qualified: false,
+    qualified_at: null,
+    next_bonus_due_at: null,
+    frozen_eligible_balance: toAmount(0),
+    frozen_eligible_members: 0,
+    frozen_qualified_direct_members: 0,
+  };
   await upsertUserPositionStatus(trx, user.id, {
     ...buildPositionStatusPayload({
-      statusRow,
+      statusRow: nextStatusRow,
       matched,
       metrics,
       levelRules: context.mlmConfig.LEVEL_RULES,
       bonusIntervalDays: context.mlmConfig.BONUS_INTERVAL_DAYS,
       checkedAt: paidAt,
     }),
-    qualified_at: paidAt,
-    next_bonus_due_at: nextDueAt,
-    frozen_eligible_balance: toAmount(bonusDetails.payoutEligibleBalance),
-    frozen_eligible_members: toNumber(bonusDetails.eligibleMembers),
-    frozen_qualified_direct_members: toNumber(matched?.qualifiedDirectMembers || 0),
   });
 
   return {
     skipped: false,
     payoutId,
-    levelCode: level.levelCode,
+    levelCode: frozenLevel.levelCode,
     bonusAmount: toAmount(bonusAmount),
     dueAt,
     nextDueAt,

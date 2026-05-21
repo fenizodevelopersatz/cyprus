@@ -1,6 +1,7 @@
 import { mysqlPool } from '../config/db.js';
 import { db } from '../db.js';
 import { up as ensureLevelManagementMigration } from '../../db/migrations/026_admin_level_management.js';
+import { up as ensureBonusIntervalDaysMigration } from '../../db/migrations/040_add_bonus_interval_days_to_admin_level_management.js';
 import {
   COUNT_LEVEL_SETTINGS,
   DEFAULT_LEVEL_SETTINGS,
@@ -24,10 +25,12 @@ function formatDecimal(value, fractionDigits = 2) {
 
 async function ensureLevelManagementSchema() {
   if (!schemaReadyPromise) {
-    schemaReadyPromise = ensureLevelManagementMigration(db).catch((error) => {
+    schemaReadyPromise = ensureLevelManagementMigration(db)
+      .then(() => ensureBonusIntervalDaysMigration(db))
+      .catch((error) => {
       schemaReadyPromise = null;
       throw error;
-    });
+      });
   }
 
   await schemaReadyPromise;
@@ -55,6 +58,7 @@ function mapConfigRow(row) {
     oneTimeRewardNote: row.one_time_reward_note,
     minimumDepositEligibilityNote: row.minimum_deposit_eligibility_note,
     minimumEligibleDeposit: Number(row.minimum_eligible_deposit),
+    bonusIntervalDays: Number(row.bonus_interval_days),
     directSponsorCommissionPercent: Number(row.direct_sponsor_commission_percent),
     joinedCommissionPercent: Number(row.joined_commission_percent),
     isCommissionActive: Boolean(row.is_commission_active),
@@ -161,6 +165,7 @@ export async function updateLevelManagementSettings(payload, adminId = null) {
       String(payload.config.oneTimeRewardNote).trim(),
       String(payload.config.minimumDepositEligibilityNote).trim(),
       formatDecimal(payload.config.minimumEligibleDeposit),
+      Math.max(1, Math.trunc(Number(payload.config.bonusIntervalDays ?? 10))),
       formatDecimal(payload.config.directSponsorCommissionPercent),
       formatDecimal(payload.config.joinedCommissionPercent),
       payload.config.isCommissionActive ? 1 : 0,

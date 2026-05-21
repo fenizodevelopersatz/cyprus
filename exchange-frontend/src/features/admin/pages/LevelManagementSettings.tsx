@@ -25,6 +25,7 @@ const defaultConfig: AdminLevelManagementConfig = {
   oneTimeRewardNote: "",
   minimumDepositEligibilityNote: "",
   minimumEligibleDeposit: 300,
+  bonusIntervalDays: 10,
   directSponsorCommissionPercent: 5,
   joinedCommissionPercent: 2,
   isCommissionActive: true,
@@ -129,6 +130,9 @@ export default function LevelManagementSettings() {
     if (!Number.isFinite(Number(config.minimumEligibleDeposit)) || Number(config.minimumEligibleDeposit) < 0) {
       nextErrors.minimumEligibleDeposit = "Minimum eligible deposit must be 0 or more";
     }
+    if (!Number.isFinite(Number(config.bonusIntervalDays)) || Number(config.bonusIntervalDays) < 1) {
+      nextErrors.bonusIntervalDays = "Bonus interval days must be 1 or more";
+    }
     if (
       !Number.isFinite(Number(config.directSponsorCommissionPercent)) ||
       Number(config.directSponsorCommissionPercent) < 0
@@ -161,6 +165,7 @@ export default function LevelManagementSettings() {
       config: {
         ...config,
         minimumEligibleDeposit: Number(config.minimumEligibleDeposit),
+        bonusIntervalDays: Math.max(1, Math.trunc(Number(config.bonusIntervalDays))),
         directSponsorCommissionPercent: Number(config.directSponsorCommissionPercent),
         joinedCommissionPercent: Number(config.joinedCommissionPercent),
         isCommissionActive: Boolean(config.isCommissionActive),
@@ -351,7 +356,7 @@ export default function LevelManagementSettings() {
             />
           </Field>
         </div>
-        <div className="mt-4 max-w-sm">
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
           <Field label="Minimum Eligible Deposit" error={errors.minimumEligibleDeposit}>
             <Input
               type="number"
@@ -359,6 +364,16 @@ export default function LevelManagementSettings() {
               step="0.01"
               value={String(config.minimumEligibleDeposit)}
               onChange={(event) => handleConfigChange("minimumEligibleDeposit", event.target.value)}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Bonus Interval Days" error={errors.bonusIntervalDays}>
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              value={String(config.bonusIntervalDays)}
+              onChange={(event) => handleConfigChange("bonusIntervalDays", event.target.value)}
               className={inputCls}
             />
           </Field>

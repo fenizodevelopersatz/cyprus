@@ -894,6 +894,7 @@ export type AdminLevelManagementConfig = {
   oneTimeRewardNote: string;
   minimumDepositEligibilityNote: string;
   minimumEligibleDeposit: number;
+  bonusIntervalDays: number;
   directSponsorCommissionPercent: number;
   joinedCommissionPercent: number;
   isCommissionActive: boolean;

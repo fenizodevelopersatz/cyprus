@@ -102,6 +102,11 @@ export function validateLevelManagementPayload(payload) {
       'minimumEligibleDeposit',
       errors
     );
+    const bonusIntervalDays = parseNonNegativeNumber(
+      config.bonusIntervalDays,
+      'bonusIntervalDays',
+      errors
+    );
     const directSponsorCommissionPercent = parseNonNegativeNumber(
       config.directSponsorCommissionPercent,
       'directSponsorCommissionPercent',
@@ -115,6 +120,7 @@ export function validateLevelManagementPayload(payload) {
     const isCommissionActive = parseBooleanLike(config.isCommissionActive, 'isCommissionActive', errors);
 
     if (minimumEligibleDeposit !== null) config.minimumEligibleDeposit = minimumEligibleDeposit;
+    if (bonusIntervalDays !== null) config.bonusIntervalDays = Math.max(1, Math.trunc(bonusIntervalDays));
     if (directSponsorCommissionPercent !== null) {
       config.directSponsorCommissionPercent = directSponsorCommissionPercent;
     }

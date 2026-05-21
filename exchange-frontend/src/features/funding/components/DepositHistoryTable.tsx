@@ -32,6 +32,7 @@ function networkLabel(network: DepositHistoryItem["network"]) {
 
 export function DepositHistoryTable({ items, pagination, network, onNetworkChange, onPageChange }: Props) {
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const startIndex = Math.max(0, (Math.max(pagination.page, 1) - 1) * Math.max(pagination.limit, 1));
 
   const copyHash = async (id: number, hash: string) => {
     try {
@@ -70,11 +71,12 @@ export function DepositHistoryTable({ items, pagination, network, onNetworkChang
       </div>
 
       <div className="space-y-3">
-        {items.map((item) => {
+        {items.map((item, index) => {
           const completed =
             String(item.status || "").toLowerCase().includes("complete") ||
             String(item.status || "").toLowerCase().includes("detected") ||
             String(item.status || "").toLowerCase().includes("credit");
+          const serialNumber = startIndex + index + 1;
 
           return (
             <article
@@ -102,8 +104,13 @@ export function DepositHistoryTable({ items, pagination, network, onNetworkChang
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[0.78rem] font-semibold leading-tight text-white sm:text-[0.95rem]">
-                        Deposit {networkLabel(item.network)} {item.token}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex rounded-full border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--text-muted)] sm:text-[10px]">
+                          S.No {serialNumber}
+                        </div>
+                        <div className="text-[0.78rem] font-semibold leading-tight text-white sm:text-[0.95rem]">
+                          Deposit {networkLabel(item.network)} {item.token}
+                        </div>
                       </div>
                       <div className="mt-0.5 text-[0.74rem] text-[var(--text-muted)] sm:text-[0.8rem]">
                         {new Date(item.createdAt).toLocaleDateString()} • {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

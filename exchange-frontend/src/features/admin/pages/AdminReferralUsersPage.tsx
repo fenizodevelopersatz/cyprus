@@ -75,7 +75,7 @@ export default function AdminReferralUsersPage() {
                 <th className="pb-3">User</th>
                 <th className="pb-3">Email</th>
                 <th className="pb-3">Wallet Balance</th>
-                <th className="pb-3">Members</th>
+                <th className="pb-3">Direct Members</th>
                 <th className="pb-3">Downline</th>
                 <th className="pb-3">Level</th>
                 <th className="pb-3">Eligible Level</th>

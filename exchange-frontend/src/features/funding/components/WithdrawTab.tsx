@@ -67,6 +67,7 @@ const formatFundingUsd = (value: string | number | null | undefined) => `$${form
 export function WithdrawTab(props: Props) {
   const navigate = useNavigate();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const withdrawStartIndex = Math.max(0, (Math.max(props.pagination.page, 1) - 1) * Math.max(props.pagination.limit, 1));
   const policy = props.withdrawalPolicy;
   const policyRules = policy?.policy;
   const policyUser = policy?.user;
@@ -178,7 +179,7 @@ export function WithdrawTab(props: Props) {
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
-                // value={props.withdrawAmount}
+                value={props.withdrawAmount}
                 onChange={(e) => props.onWithdrawAmountChange(e.target.value)}
                 placeholder="Amount"
                 className="h-12"
@@ -260,82 +261,209 @@ export function WithdrawTab(props: Props) {
       <section className="space-y-4">
         <div className="section-title">Recent Activity</div>
         <div className="space-y-3">
-          {props.history.map((item) => (
-            <div key={item.id} className="rounded-[20px] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 py-4 sm:px-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="text-lg font-semibold text-white sm:text-[1.75rem]">
-                    {formatFundingUsd(Number(item.meta?.netAmount || item.amount || 0))}
-                  </div>
-                  {item.txn_id ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--accent-yellow)]">
-                      <span className="break-all">Txn ID: {item.txn_id}</span>
-                      <CopyAction
-                        value={item.txn_id}
-                        copyKey={`withdraw-${item.id}-txn-id`}
-                        copiedKey={copiedKey}
-                        onCopy={copyValue}
-                      />
+          {props.history.map((item, index) => (
+            <div key={item.id} className="rounded-[18px] border border-[rgba(255,255,255,0.10)] bg-[var(--bg-card)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] sm:px-5">
+              <div className="space-y-3 2xl:hidden">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <div className="inline-flex rounded-full border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                        S.No {withdrawStartIndex + index + 1}
+                      </div>
+                      <div className={`inline-flex w-fit shrink-0 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${getWithdrawStatusBadgeCls(item.status)}`}>
+                        {item.status}
+                      </div>
                     </div>
+                    <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
+                      <div className="text-[1.05rem] font-semibold text-white">
+                        {formatFundingUsd(getPrimaryWithdrawAmount(item))}
+                      </div>
+                      {hasMetaValue(item.meta, "requestedAmount") && getRequestedWithdrawAmount(item) !== getPrimaryWithdrawAmount(item) ? (
+                        <div className="text-[11px] text-[var(--text-muted)]">
+                          Requested {formatFundingUsd(getRequestedWithdrawAmount(item))}
+                        </div>
+                      ) : null}
+                    </div>
+                    {item.txn_id ? (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--accent-yellow)]">
+                        <span className="break-all">Txn ID: {item.txn_id}</span>
+                        <CopyAction
+                          value={item.txn_id}
+                          copyKey={`withdraw-${item.id}-txn-id-mobile`}
+                          copiedKey={copiedKey}
+                          onCopy={copyValue}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <CompactInfoRow label="Network" value={normalizeNetworkLabel(item.network)} />
+                  <CompactInfoRow label="Asset" value={item.token || "USDT"} />
+                  <CompactInfoRow label="Destination" value={shortHash(item.address)} />
+                  <CompactInfoRow label="Requested" value={formatFundingUsd(getRequestedWithdrawAmount(item))} />
+                  <CompactInfoRow label="You Receive" value={formatFundingUsd(getPrimaryWithdrawAmount(item))} />
+                  {hasMetaValue(item.meta, "adminFeeAmount") ? (
+                    <CompactInfoRow label="Admin Fee" value={formatAmountWithPercent(item.meta, "adminFeeAmount", "adminFeePercent", item.token)} />
+                  ) : null}
+                  {hasMetaValue(item.meta, "earlyPenaltyAmount") ? (
+                    <CompactInfoRow label="Early Penalty" value={formatAmountWithPercent(item.meta, "earlyPenaltyAmount", "earlyPenaltyPercent", item.token)} />
+                  ) : null}
+                  {item.txHash ? (
+                    <CompactInfoRow label="Approved Hash" value={shortHash(item.txHash)} />
+                  ) : null}
+                  {getWithdrawNote(item) ? (
+                    <CompactInfoRow label="Client Note" value={getWithdrawNote(item)} multiline />
+                  ) : null}
+                  {getStatusNote(item) ? (
+                    <CompactInfoRow label="Admin Note" value={getStatusNote(item)} multiline />
                   ) : null}
                 </div>
-                <div className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] ${getWithdrawStatusBadgeCls(item.status)}`}>
-                  {item.status}
-                </div>
               </div>
-              <div className="mt-3 space-y-3">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Destination address</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {item.explorerUrl ? (
-                      <a
-                        href={item.explorerUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-mono text-[11px] text-[var(--accent-yellow)] transition hover:text-[var(--accent-yellow-hover)]"
-                        title={item.address}
-                      >
-                        {shortHash(item.address)}
-                      </a>
-                    ) : (
-                      <span className="break-all text-sm text-[var(--text-secondary)]">{item.address}</span>
-                    )}
-                    <CopyAction
-                      value={item.address}
-                      copyKey={`withdraw-${item.id}-address`}
-                      copiedKey={copiedKey}
-                      onCopy={copyValue}
+
+              <div className="hidden 2xl:block">
+              <div className="-mx-1 overflow-x-auto pb-1 2xl:mx-0 2xl:overflow-visible">
+                <div className="flex min-w-max gap-3 px-1 2xl:grid 2xl:min-w-0 2xl:grid-cols-[minmax(260px,0.9fr)_minmax(360px,0.95fr)_minmax(280px,0.75fr)] 2xl:items-start 2xl:px-0">
+                <div className="w-[248px] min-w-[248px] space-y-2.5 2xl:min-w-0 2xl:w-auto">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between xl:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <div className="inline-flex rounded-full border border-[var(--border-soft)] bg-[var(--bg-card-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--text-muted)] sm:text-[10px]">
+                          S.No {withdrawStartIndex + index + 1}
+                        </div>
+                        <div className={`inline-flex w-fit shrink-0 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] ${getWithdrawStatusBadgeCls(item.status)}`}>
+                          {item.status}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                        <div className="text-lg font-semibold text-white sm:text-[1.65rem]">
+                          {formatFundingUsd(getPrimaryWithdrawAmount(item))}
+                        </div>
+                        {hasMetaValue(item.meta, "requestedAmount") && getRequestedWithdrawAmount(item) !== getPrimaryWithdrawAmount(item) ? (
+                          <div className="text-xs text-[var(--text-muted)] sm:text-sm">
+                            Requested {formatFundingUsd(getRequestedWithdrawAmount(item))}
+                          </div>
+                        ) : null}
+                      </div>
+                      {item.txn_id ? (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--accent-yellow)]">
+                          <span className="break-all">Txn ID: {item.txn_id}</span>
+                          <CopyAction
+                            value={item.txn_id}
+                            copyKey={`withdraw-${item.id}-txn-id`}
+                            copiedKey={copiedKey}
+                            onCopy={copyValue}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2.5">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Destination address</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {item.explorerUrl ? (
+                          <a
+                            href={item.explorerUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-[11px] text-[var(--accent-yellow)] transition hover:text-[var(--accent-yellow-hover)]"
+                            title={item.address}
+                          >
+                            {shortHash(item.address)}
+                          </a>
+                        ) : (
+                          <span className="break-all text-sm text-[var(--text-secondary)]">{item.address}</span>
+                        )}
+                        <CopyAction
+                          value={item.address}
+                          copyKey={`withdraw-${item.id}-address`}
+                          copiedKey={copiedKey}
+                          onCopy={copyValue}
+                        />
+                      </div>
+                    </div>
+                    {item.txHash ? (
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Approved hash address</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {item.txExplorerUrl ? (
+                            <a
+                              href={item.txExplorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-[11px] text-[var(--accent-yellow)] transition hover:text-[var(--accent-yellow-hover)]"
+                              title={item.txHash}
+                            >
+                              {shortHash(item.txHash)}
+                            </a>
+                          ) : (
+                            <span className="break-all text-sm text-[var(--text-secondary)]">{item.txHash}</span>
+                          )}
+                          <CopyAction
+                            value={item.txHash}
+                            copyKey={`withdraw-${item.id}-tx-hash`}
+                            copiedKey={copiedKey}
+                            onCopy={copyValue}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="w-[252px] min-w-[252px] space-y-2.5 2xl:min-w-0 2xl:w-auto xl:self-start">
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    <HistoryMetric dense label="Network" value={normalizeNetworkLabel(item.network)} />
+                    <HistoryMetric dense label="Asset" value={item.token || "USDT"} />
+                  </div>
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    <HistoryMetric dense label="Requested" value={formatFundingUsd(getRequestedWithdrawAmount(item))} />
+                    <HistoryMetric dense label="You Receive" value={formatFundingUsd(getPrimaryWithdrawAmount(item))} />
+                    <HistoryMetric
+                      dense
+                      label="Admin Fee"
+                      value={formatAmountWithPercent(item.meta, "adminFeeAmount", "adminFeePercent", item.token)}
+                      muted={!hasMetaValue(item.meta, "adminFeeAmount")}
+                    />
+                    <HistoryMetric
+                      dense
+                      label="Early Penalty"
+                      value={formatAmountWithPercent(item.meta, "earlyPenaltyAmount", "earlyPenaltyPercent", item.token)}
+                      muted={!hasMetaValue(item.meta, "earlyPenaltyAmount")}
                     />
                   </div>
                 </div>
-                {item.txHash ? (
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Transaction hash</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {item.txExplorerUrl ? (
-                        <a
-                          href={item.txExplorerUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-[11px] text-[var(--accent-yellow)] transition hover:text-[var(--accent-yellow-hover)]"
-                          title={item.txHash}
-                        >
-                          {shortHash(item.txHash)}
-                        </a>
-                      ) : (
-                        <span className="break-all text-sm text-[var(--text-secondary)]">{item.txHash}</span>
-                      )}
-                      <CopyAction
-                        value={item.txHash}
-                        copyKey={`withdraw-${item.id}-tx-hash`}
-                        copiedKey={copiedKey}
-                        onCopy={copyValue}
-                      />
+
+                <div className={`w-[228px] min-w-[228px] space-y-2.5 2xl:min-w-0 2xl:w-auto ${!getWithdrawNote(item) && !getStatusNote(item) ? "hidden 2xl:block" : ""}`}>
+                  <div className="hidden 2xl:flex flex-wrap items-center justify-start 2xl:justify-end">
+                    <div className={`inline-flex w-fit shrink-0 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.08em] ${getWithdrawStatusBadgeCls(item.status)}`}>
+                      {item.status}
                     </div>
                   </div>
-                ) : null}
+                  <div className="grid gap-2">
+                    {getWithdrawNote(item) ? (
+                      <DetailNote
+                        label="Client Note"
+                        value={getWithdrawNote(item)}
+                      />
+                    ) : null}
+                    {getStatusNote(item) ? (
+                      <DetailNote
+                        label="Admin Note"
+                        value={getStatusNote(item)}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+                </div>
               </div>
-              <div className="mt-1 text-xs text-[var(--text-muted)]">{new Date(item.createdAt).toLocaleString()}</div>
+              </div>
+              <div className="mt-3 flex flex-col gap-1 text-xs text-[var(--text-muted)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+                <span>Requested: {new Date(item.createdAt).toLocaleString()}</span>
+              </div>
             </div>
           ))}
           {!props.history.length && <div className="text-sm text-[var(--text-muted)]">No withdraw history found.</div>}
@@ -357,6 +485,89 @@ function PolicyMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-[18px] border border-[var(--border-soft)] bg-[var(--bg-card)] p-4">
       <div className="micro-label">{label}</div>
       <div className="mt-2 text-lg font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+function HistoryMetric({
+  label,
+  value,
+  muted = false,
+  dense = false,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  dense?: boolean;
+}) {
+  return (
+    <div className={`min-w-0 rounded-[14px] border border-[var(--border-soft)] bg-[rgba(255,255,255,0.02)] ${dense ? "p-2.5" : "p-3"}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</div>
+      <div className={`break-words font-medium ${dense ? "mt-1 text-[0.92rem] leading-5" : "mt-2 text-sm"} ${muted ? "text-[var(--text-muted)]" : "text-white"}`}>{value}</div>
+    </div>
+  );
+}
+
+function DetailNote({
+  label,
+  value,
+  href,
+  copyValue,
+  copyKey,
+  copiedKey,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  href?: string;
+  copyValue?: string;
+  copyKey?: string;
+  copiedKey?: string | null;
+  onCopy?: (value: string, key: string) => void | Promise<void>;
+}) {
+  return (
+    <div className="rounded-[14px] border border-[var(--border-soft)] bg-[rgba(255,255,255,0.02)] px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</div>
+      <div className="mt-1.5 flex flex-wrap items-start gap-2">
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="break-all font-mono text-[11px] text-[var(--accent-yellow)] transition hover:text-[var(--accent-yellow-hover)]"
+            title={value}
+          >
+            {value}
+          </a>
+        ) : (
+          <div className="break-words text-[13px] leading-5 text-white">{value}</div>
+        )}
+        {copyValue && copyKey && onCopy ? (
+          <CopyAction
+            value={copyValue}
+            copyKey={copyKey}
+            copiedKey={copiedKey ?? null}
+            onCopy={onCopy}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CompactInfoRow({
+  label,
+  value,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</div>
+      <div className={`mt-1 text-white ${multiline ? "break-words text-[12px] leading-5" : "text-[0.95rem] font-medium"}`}>{value}</div>
     </div>
   );
 }
@@ -402,4 +613,54 @@ function getWithdrawStatusBadgeCls(status: string) {
 
 function shortHash(value: string) {
   return value.length > 22 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+function hasMetaValue(meta: Record<string, unknown> | undefined, key: string) {
+  return meta && meta[key] !== null && meta[key] !== undefined && meta[key] !== "";
+}
+
+function getMetaNumber(meta: Record<string, unknown> | undefined, key: string) {
+  const value = Number(meta?.[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function getPrimaryWithdrawAmount(item: WithdrawHistoryItem) {
+  return getMetaNumber(item.meta, "netAmount") ?? getMetaNumber(item.meta, "payoutAmount") ?? Number(item.amount || 0);
+}
+
+function getRequestedWithdrawAmount(item: WithdrawHistoryItem) {
+  return getMetaNumber(item.meta, "requestedAmount") ?? Number(item.amount || 0);
+}
+
+function formatAmountWithPercent(
+  meta: Record<string, unknown> | undefined,
+  amountKey: string,
+  percentKey: string,
+  asset: string
+) {
+  const amount = getMetaNumber(meta, amountKey);
+  if (amount === null || amount <= 0) return "-";
+  const percent = getMetaNumber(meta, percentKey);
+  const suffix = percent !== null && percent > 0 ? ` (${percent}%)` : "";
+  return `${formatFundingUsd(amount)} ${asset}${suffix}`.trim();
+}
+
+function getWithdrawNote(item: WithdrawHistoryItem) {
+  const userDetails = typeof item.meta?.userDetails === "string" ? item.meta.userDetails.trim() : "";
+  return userDetails || "";
+}
+
+function getStatusNote(item: WithdrawHistoryItem) {
+  const adminNotes = typeof item.meta?.adminNotes === "string" ? item.meta.adminNotes.trim() : "";
+  if (adminNotes) return adminNotes;
+  const reason = typeof item.meta?.reason === "string" ? item.meta.reason.trim() : "";
+  return reason || "";
+}
+
+function normalizeNetworkLabel(value?: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "ethereum" || normalized === "erc20" || normalized === "eth") return "ERC-20";
+  if (normalized === "bsc" || normalized === "bep20") return "BEP-20";
+  if (normalized === "tron" || normalized === "trc20") return "TRC-20";
+  return value || "--";
 }

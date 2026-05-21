@@ -9,7 +9,7 @@ import { cfg } from '../config.js';
 import { canGiveLevelIncome } from './incomeValidator.js';
 
 const DEFAULT_MLM_MINIMUM_BALANCE = 300;
-const DEFAULT_BONUS_INTERVAL_DAYS = 10;
+const DEFAULT_BONUS_INTERVAL_DAYS = 1;
 const RECURRING_SKIP_REASONS = {
   USER_NOT_ACTIVE: 'USER_NOT_ACTIVE',
   NO_ELIGIBLE_LEVEL: 'NO_ELIGIBLE_LEVEL',

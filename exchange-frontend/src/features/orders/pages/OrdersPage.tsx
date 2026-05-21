@@ -26,6 +26,52 @@ function shouldHideFrontendMirrorAdminCredit(row: OrdersAuditRow) {
   return detail.includes("bonus credited to main wallet") || remark.includes("bonus credited to main wallet");
 }
 
+function shouldPreferOrdersAuditRow(nextRow: OrdersAuditRow, currentRow: OrdersAuditRow) {
+  const nextLevel = String(nextRow.level || "").trim();
+  const currentLevel = String(currentRow.level || "").trim();
+  const nextHasLevel = nextLevel !== "" && nextLevel !== "-";
+  const currentHasLevel = currentLevel !== "" && currentLevel !== "-";
+  if (nextHasLevel !== currentHasLevel) return nextHasLevel;
+
+  const nextRef = String(nextRow.reference_id ?? nextRow.orderRefId ?? "").trim();
+  const currentRef = String(currentRow.reference_id ?? currentRow.orderRefId ?? "").trim();
+  if (nextRef !== currentRef) return nextRef.length > currentRef.length;
+
+  return String(nextRow.txn_id || "").length > String(currentRow.txn_id || "").length;
+}
+
+function dedupeOrdersAuditRows(rows: OrdersAuditRow[]) {
+  const deduped: OrdersAuditRow[] = [];
+  const promotionMap = new Map<string, number>();
+
+  rows.forEach((row) => {
+    if (row.incomeType !== "level_promotion_reward") {
+      deduped.push(row);
+      return;
+    }
+
+    const key = [
+      row.incomeType,
+      String(row.timestamp || ""),
+      Number(row.amount || 0).toFixed(2),
+    ].join("|");
+
+    const existingIndex = promotionMap.get(key);
+    if (existingIndex === undefined) {
+      promotionMap.set(key, deduped.length);
+      deduped.push(row);
+      return;
+    }
+
+    const existingRow = deduped[existingIndex];
+    if (shouldPreferOrdersAuditRow(row, existingRow)) {
+      deduped[existingIndex] = row;
+    }
+  });
+
+  return deduped;
+}
+
 export default function OrdersPage() {
   const [draftSearch, setDraftSearch] = useState("");
   const [filters, setFilters] = useState({ incomeType: "", fromDate: "", toDate: "", page: 1, limit: 50 });
@@ -58,10 +104,29 @@ export default function OrdersPage() {
   });
 
   const summary = summaryQuery.data;
+  const rawItems = listQuery.data?.items ?? [];
   const items = useMemo(
-    () => (listQuery.data?.items ?? []).filter((row) => !shouldHideFrontendMirrorAdminCredit(row)),
+    () => dedupeOrdersAuditRows(rawItems.filter((row) => !shouldHideFrontendMirrorAdminCredit(row))),
     [listQuery.data?.items]
   );
+  const adjustedSummary = useMemo(() => {
+    const visibleRawItems = rawItems.filter((row) => !shouldHideFrontendMirrorAdminCredit(row));
+    const rawPromotionTotal = visibleRawItems
+      .filter((row) => row.incomeType === "level_promotion_reward")
+      .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const dedupedPromotionTotal = items
+      .filter((row) => row.incomeType === "level_promotion_reward")
+      .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const duplicatePromotionDelta = rawPromotionTotal - dedupedPromotionTotal;
+
+    return {
+      totalSignalIncome: Number(summary?.totalSignalIncome ?? 0),
+      totalDirectIncome: Number(summary?.totalDirectIncome ?? 0),
+      totalJoinedIncome: Number(summary?.totalJoinedIncome ?? 0),
+      totalLevelIncome: Math.max(0, Number(summary?.totalLevelIncome ?? 0) - duplicatePromotionDelta),
+      totalCombinedIncome: Math.max(0, Number(summary?.totalCombinedIncome ?? 0) - duplicatePromotionDelta),
+    };
+  }, [items, rawItems, summary]);
   const pagination = listQuery.data?.pagination ?? { page: 1, limit: 50, total: 0, totalPages: 0 };
   const loading = summaryQuery.isLoading || listQuery.isLoading || listQuery.isFetching;
 
@@ -171,11 +236,11 @@ export default function OrdersPage() {
       </header>
 
       <section className="grid gap-2.5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-5">
-        <Metric label="Total Signal Income" value={formatMoney(summary?.totalSignalIncome ?? 0)} />
-        <Metric label="Total Direct Income" value={formatMoney(summary?.totalDirectIncome ?? 0)} />
-        <Metric label="Total Joined Income" value={formatMoney(summary?.totalJoinedIncome ?? 0)} />
-        <Metric label="Total Level Income" value={formatMoney(summary?.totalLevelIncome ?? 0)} />
-        <Metric label="Total Combined Income" value={formatMoney(summary?.totalCombinedIncome ?? 0)} />
+        <Metric label="Total Signal Income" value={formatMoney(adjustedSummary.totalSignalIncome)} />
+        <Metric label="Total Direct Income" value={formatMoney(adjustedSummary.totalDirectIncome)} />
+        <Metric label="Total Joined Income" value={formatMoney(adjustedSummary.totalJoinedIncome)} />
+        <Metric label="Total Level Income" value={formatMoney(adjustedSummary.totalLevelIncome)} />
+        <Metric label="Total Combined Income" value={formatMoney(adjustedSummary.totalCombinedIncome)} />
       </section>
 
       <section className={`${panelCls} p-4 sm:p-5`}>

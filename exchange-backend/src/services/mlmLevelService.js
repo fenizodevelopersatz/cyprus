@@ -4,6 +4,9 @@ import { generateGlobalTxnId } from '../utils/generateGlobalTxnId.js';
 import { getLevelManagementSettings } from './adminLevelManagement.service.js';
 import { up as ensureMlmLevelMigration } from '../../db/migrations/028_mlm_level_engine.js';
 import { up as ensureRecurringBonusStatusMigration } from '../../db/migrations/039_recurring_bonus_status.js';
+import { up as ensureMlmBonusCycleSnapshotsMigration } from '../../db/migrations/048_mlm_bonus_cycle_snapshots.js';
+import { up as ensureMlmSnapshotMembersMetaMigration } from '../../db/migrations/049_mlm_snapshot_members_meta.js';
+import { up as ensureRenameSnapshotMemberUserIdMigration } from '../../db/migrations/050_rename_snapshot_member_user_id.js';
 import { cronLogger } from '../logging/loggers.js';
 import { cfg } from '../config.js';
 import { canGiveLevelIncome } from './incomeValidator.js';
@@ -146,6 +149,7 @@ export async function getLevelRules() {
 // };
 
 let schemaReadyPromise = null;
+let snapshotMemberColumnsCache = null;
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -154,6 +158,16 @@ function toNumber(value, fallback = 0) {
 
 function toAmount(value) {
   return toNumber(value, 0).toFixed(18);
+}
+
+function parseJsonObject(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return {};
+  }
 }
 
 function normalizeStatus(value) {
@@ -179,12 +193,23 @@ async function ensureMlmSchema() {
     schemaReadyPromise = (async () => {
       await ensureMlmLevelMigration(db);
       await ensureRecurringBonusStatusMigration(db);
+      await ensureMlmBonusCycleSnapshotsMigration(db);
+      await ensureRenameSnapshotMemberUserIdMigration(db);
+      await ensureMlmSnapshotMembersMetaMigration(db);
     })().catch((error) => {
       schemaReadyPromise = null;
       throw error;
     });
   }
   await schemaReadyPromise;
+}
+
+async function getSnapshotMemberColumns(trx = db) {
+  if (!snapshotMemberColumnsCache) {
+    const columnInfo = await trx('mlm_bonus_cycle_snapshot_members').columnInfo();
+    snapshotMemberColumnsCache = new Set(Object.keys(columnInfo));
+  }
+  return snapshotMemberColumnsCache;
 }
 
 export async function ensureMlmLevelSchema() {
@@ -205,6 +230,7 @@ async function loadContext(trx = db) {
     mlmConfig,
     levels: levels.filter((level) => level.isEnabled).sort((a, b) => toNumber(a.sortOrder) - toNumber(b.sortOrder)),
     users,
+    userMap: new Map(users.map((user) => [Number(user.id), user])),
   };
 }
 
@@ -361,6 +387,122 @@ function getEligibleBalanceDetails(levelCode, metrics, minimumBalance, levelRule
     payoutEligibleBalance: actualEligibleBalance,
     usesDirectBase: false,
   };
+}
+
+function collectEligibleSnapshotMembers(rootUserId, childrenMap, minimumBalance) {
+  const members = [];
+  const queue = [...(childrenMap.get(Number(rootUserId)) || [])];
+  const visited = new Set();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) continue;
+    const currentId = Number(current.id);
+    if (!currentId || visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    if (isEligibleUser(current, minimumBalance)) {
+      members.push({
+        memberUserId: currentId,
+        walletBalance: toAmount(current.main_wallet_balance),
+      });
+    }
+
+    const children = childrenMap.get(currentId) || [];
+    for (const child of children) {
+      queue.push(child);
+    }
+  }
+
+  return members.sort((a, b) => a.memberUserId - b.memberUserId);
+}
+
+function shouldRefreshCycleSnapshot(statusRow, nextPayload) {
+  if (!nextPayload?.is_currently_qualified || !nextPayload?.current_eligible_level_code) return false;
+  if (!statusRow?.current_cycle_snapshot_id) return true;
+  if (String(statusRow?.current_eligible_level_code || '') !== String(nextPayload?.current_eligible_level_code || '')) return true;
+
+  const previousQualifiedAt = statusRow?.qualified_at ? new Date(statusRow.qualified_at).getTime() : 0;
+  const nextQualifiedAt = nextPayload?.qualified_at ? new Date(nextPayload.qualified_at).getTime() : 0;
+  if (previousQualifiedAt !== nextQualifiedAt) return true;
+
+  const previousDueAt = statusRow?.next_bonus_due_at ? new Date(statusRow.next_bonus_due_at).getTime() : 0;
+  const nextDueAt = nextPayload?.next_bonus_due_at ? new Date(nextPayload.next_bonus_due_at).getTime() : 0;
+  return previousDueAt !== nextDueAt;
+}
+
+async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, context, checkedAt) {
+  const level = matched?.level || null;
+  if (!level || !nextPayload?.is_currently_qualified) return null;
+
+  const snapshotMembers = collectEligibleSnapshotMembers(
+    userId,
+    context.childrenMap,
+    context.mlmConfig.MLM_MINIMUM_BALANCE
+  );
+  const createdAt = checkedAt || new Date();
+
+  const snapshotPayload = {
+    user_id: userId,
+    level_code: level.levelCode,
+    level_rank: toNumber(level.sortOrder),
+    bonus_percent: toNumber(level.bonusPercent).toFixed(4),
+    qualified_at: nextPayload.qualified_at ? new Date(nextPayload.qualified_at) : null,
+    next_bonus_due_at: nextPayload.next_bonus_due_at ? new Date(nextPayload.next_bonus_due_at) : null,
+    eligible_balance: toAmount(nextPayload.frozen_eligible_balance),
+    eligible_members: toNumber(nextPayload.frozen_eligible_members),
+    qualified_direct_members: toNumber(nextPayload.frozen_qualified_direct_members),
+    status: 'frozen',
+    meta: JSON.stringify({
+      minimumEligibleBalance: toAmount(context.mlmConfig.MLM_MINIMUM_BALANCE),
+      capturedAt: createdAt,
+      frozenEligibleMembers: snapshotMembers.map((member) => ({
+        user_id: member.memberUserId,
+        total_wallet_balance: toAmount(member.walletBalance),
+        created_at: createdAt,
+      })),
+    }),
+    updated_at: createdAt,
+  };
+
+  const inserted = await trx('mlm_bonus_cycle_snapshots').insert({
+    ...snapshotPayload,
+    created_at: createdAt,
+  });
+  const snapshotId = Array.isArray(inserted) ? inserted[0] : inserted;
+
+  if (snapshotMembers.length) {
+    const snapshotMemberColumns = await getSnapshotMemberColumns(trx);
+    await trx.batchInsert(
+      'mlm_bonus_cycle_snapshot_members',
+      snapshotMembers.map((member) => {
+        const payload = {
+          snapshot_id: snapshotId,
+          meta: JSON.stringify({
+            user_id: member.memberUserId,
+            wallet_balance: member.walletBalance,
+            created_at: createdAt,
+          }),
+          payout_status: 'frozen',
+          created_at: createdAt,
+          updated_at: createdAt,
+        };
+        if (snapshotMemberColumns.has('user_id')) {
+          payload.user_id = member.memberUserId;
+        }
+        if (snapshotMemberColumns.has('member_user_id')) {
+          payload.member_user_id = member.memberUserId;
+        }
+        if (snapshotMemberColumns.has('wallet_balance')) {
+          payload.wallet_balance = member.walletBalance;
+        }
+        return payload;
+      }),
+      100
+    );
+  }
+
+  return snapshotId;
 }
 
 async function upsertSummary(trx, userId, metrics) {
@@ -651,6 +793,10 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
       is_currently_qualified: false,
       qualified_at: null,
       next_bonus_due_at: null,
+      frozen_eligible_balance: toAmount(0),
+      frozen_eligible_members: 0,
+      frozen_qualified_direct_members: 0,
+      current_cycle_snapshot_id: null,
       last_checked_at: new Date(),
     });
     return { skipped: true, reason: RECURRING_SKIP_REASONS.USER_NOT_ACTIVE };
@@ -681,6 +827,10 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
       is_currently_qualified: false,
       qualified_at: null,
       next_bonus_due_at: null,
+      frozen_eligible_balance: toAmount(0),
+      frozen_eligible_members: 0,
+      frozen_qualified_direct_members: 0,
+      current_cycle_snapshot_id: null,
       last_checked_at: new Date(),
     });
     return { skipped: true, reason: RECURRING_SKIP_REASONS.NO_ELIGIBLE_LEVEL };
@@ -729,6 +879,7 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
   try {
     inserted = await trx('mlm_level_bonus_payouts').insert({
       user_id: user.id,
+      snapshot_id: statusRow?.current_cycle_snapshot_id || null,
       level_code: frozenLevel.levelCode,
       level_rank: toNumber(frozenLevel.sortOrder),
       bonus_percent: toNumber(frozenLevel.bonusPercent).toFixed(4),
@@ -746,6 +897,7 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
         frozenEligibleBalance: toAmount(baseAmount),
         frozenEligibleMembers,
         frozenQualifiedDirectMembers,
+        currentCycleSnapshotId: statusRow?.current_cycle_snapshot_id || null,
         bonusBase: bonusDetails.usesDirectBase ? 'direct' : 'team',
         recurringBonusDueAt: dueAt,
       }),
@@ -790,6 +942,20 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     });
     return { skipped: true, reason: RECURRING_SKIP_REASONS.WALLET_CREDIT_FAILED };
   }
+  if (statusRow?.current_cycle_snapshot_id) {
+    await trx('mlm_bonus_cycle_snapshots')
+      .where({ id: statusRow.current_cycle_snapshot_id })
+      .update({
+        status: 'paid',
+        updated_at: paidAt,
+      });
+    await trx('mlm_bonus_cycle_snapshot_members')
+      .where({ snapshot_id: statusRow.current_cycle_snapshot_id })
+      .update({
+        payout_status: 'paid',
+        updated_at: paidAt,
+      });
+  }
 
   await recordRecurringBonusHistory(trx, {
     user_id: user.id,
@@ -808,6 +974,7 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
       qualifiedDirectMembers: frozenQualifiedDirectMembers,
       eligibleMembers: frozenEligibleMembers,
       frozenEligibleBalance: toAmount(baseAmount),
+      currentCycleSnapshotId: statusRow?.current_cycle_snapshot_id || null,
       bonusBase: bonusDetails.usesDirectBase ? 'direct' : 'team',
     },
   });
@@ -824,6 +991,7 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
     frozen_eligible_balance: toAmount(0),
     frozen_eligible_members: 0,
     frozen_qualified_direct_members: 0,
+    current_cycle_snapshot_id: null,
   };
   await upsertUserPositionStatus(trx, user.id, {
     ...buildPositionStatusPayload({
@@ -886,6 +1054,7 @@ async function getAncestorIds(trx, userId) {
 
 async function recalculateOne(trx, userId, context) {
   const children = context.childrenMap.get(Number(userId)) || [];
+  const checkedAt = new Date();
   const metrics = computeMetrics(
     Number(userId),
     context.childrenMap,
@@ -905,8 +1074,14 @@ async function recalculateOne(trx, userId, context) {
     metrics: { ...metrics, children },
     levelRules: context.mlmConfig.LEVEL_RULES,
     bonusIntervalDays: context.mlmConfig.BONUS_INTERVAL_DAYS,
-    checkedAt: new Date(),
+    checkedAt,
   });
+  const refreshSnapshot = shouldRefreshCycleSnapshot(statusRow, statusPayload);
+  const currentCycleSnapshotId = statusPayload.is_currently_qualified
+    ? refreshSnapshot
+      ? await createFrozenCycleSnapshot(trx, userId, statusPayload, matched, context, checkedAt)
+      : statusRow?.current_cycle_snapshot_id || null
+    : null;
 
   await trx('users').where({ id: userId }).update({
     current_level_code: levelCode,
@@ -924,7 +1099,10 @@ async function recalculateOne(trx, userId, context) {
     await ensurePromotionReward(trx, userId, level, metrics);
   }
 
-  await upsertUserPositionStatus(trx, userId, statusPayload);
+  await upsertUserPositionStatus(trx, userId, {
+    ...statusPayload,
+    current_cycle_snapshot_id: currentCycleSnapshotId,
+  });
 
   return { userId: Number(userId), levelCode, levelRank };
 }
@@ -1125,6 +1303,43 @@ export async function getUserMlmDashboard(userId) {
     db('user_position_status').where({ user_id: userId }).first(),
     db('recurring_bonus_history').where({ user_id: userId }).orderBy('created_at', 'desc').limit(50),
   ]);
+  const currentSnapshotId = statusRow?.current_cycle_snapshot_id ? Number(statusRow.current_cycle_snapshot_id) : null;
+  const payoutSnapshotIds = payouts
+    .map((row) => Number(row.snapshot_id || 0))
+    .filter((value, index, array) => value > 0 && array.indexOf(value) === index);
+  const snapshotIds = [currentSnapshotId, ...payoutSnapshotIds].filter((value, index, array) => value && array.indexOf(value) === index);
+  const snapshotMembers = snapshotIds.length
+    ? await db('mlm_bonus_cycle_snapshot_members as member')
+        .whereIn('member.snapshot_id', snapshotIds)
+        .select(
+          'member.id',
+          'member.snapshot_id',
+          'member.meta',
+          'member.payout_status',
+          'member.created_at',
+        )
+        .orderBy([{ column: 'member.snapshot_id', order: 'asc' }, { column: 'member.id', order: 'asc' }])
+    : [];
+  const snapshotMembersBySnapshotId = new Map();
+  for (const row of snapshotMembers) {
+    const snapshotId = Number(row.snapshot_id);
+    const meta = parseJsonObject(row.meta);
+    const memberUserId = Number(meta.user_id || 0);
+    if (!snapshotMembersBySnapshotId.has(snapshotId)) snapshotMembersBySnapshotId.set(snapshotId, []);
+    snapshotMembersBySnapshotId.get(snapshotId).push({
+      id: Number(row.id),
+      userId: memberUserId,
+      walletBalance: String(meta.wallet_balance || '0'),
+      payoutStatus: String(row.payout_status || 'frozen'),
+      status: 'frozen',
+      levelCode: null,
+      levelRank: 0,
+      name: `User ${memberUserId}`,
+      email: '',
+      createdAt: row.created_at,
+      meta,
+    });
+  }
   const tree = await getUserTreePreview(userId, mlmConfig.MLM_MINIMUM_BALANCE);
   const levelSettings = (levelManagementSettings?.levels || [])
     .map((level) => {
@@ -1158,6 +1373,8 @@ export async function getUserMlmDashboard(userId) {
     currentCycleEligibleBalance: String(statusRow?.frozen_eligible_balance || '0'),
     currentCycleEligibleMembers: toNumber(statusRow?.frozen_eligible_members),
     currentCycleQualifiedDirectMembers: toNumber(statusRow?.frozen_qualified_direct_members),
+    currentCycleSnapshotId: currentSnapshotId,
+    currentCycleEligibleMemberDetails: snapshotMembersBySnapshotId.get(currentSnapshotId) || [],
     currentCycleProjectedPayout: toAmount(
       (toNumber(statusRow?.frozen_eligible_balance) * toNumber(
         levelSettings.find((level) => String(level.levelCode || '').trim() === String(statusRow?.current_eligible_level_code || '').trim())?.bonusPercent
@@ -1200,6 +1417,7 @@ export async function getUserMlmDashboard(userId) {
     })),
     bonusPayoutHistory: payouts.map((row) => ({
       id: row.id,
+      snapshotId: row.snapshot_id ? Number(row.snapshot_id) : null,
       levelCode: row.level_code,
       levelRank: toNumber(row.level_rank),
       bonusPercent: String(row.bonus_percent || '0'),
@@ -1211,6 +1429,7 @@ export async function getUserMlmDashboard(userId) {
       periodEndedAt: row.period_ended_at,
       status: row.status,
       createdAt: row.created_at,
+      eligibleMemberDetails: snapshotMembersBySnapshotId.get(Number(row.snapshot_id || 0)) || [],
     })),
     recurringBonusHistory: recurringHistory.map((row) => ({
       id: row.id,

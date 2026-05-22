@@ -4,6 +4,7 @@ import { getUserWalletByNetwork, listUserWallets } from './userWalletService.js'
 import { canGiveJoinReward } from './incomeValidator.js';
 import { applyWalletCreditRecord } from './walletAccountingService.js';
 import { getLevelManagementSettings } from './adminLevelManagement.service.js';
+import { recalculateMlmForUser } from './mlmLevelService.js';
 
 const NETWORK_KEYS = ['ethereum', 'bsc', 'tron'];
 const STATUS_KEYS = ['detected', 'pending', 'confirmed', 'credited'];
@@ -155,6 +156,8 @@ async function applyFirstDepositReferralRewards(
 
   const depositReferenceId = `deposit:${referenceKey}`;
 
+  const recalculationUserIds = new Set([Number(userId)]);
+
   if (
     sponsor &&
     sponsorPercent > 0 &&
@@ -183,9 +186,11 @@ async function applyFirstDepositReferralRewards(
           incomeType: 'direct_sponsor_commission',
           sourceUserId: userId,
         },
+        suppressMlmRefresh: true,
       },
       trx
     );
+    recalculationUserIds.add(Number(effectiveSponsorId));
   }
 
   if (
@@ -214,6 +219,7 @@ async function applyFirstDepositReferralRewards(
           incomeType: 'joined_commission',
           sourceUserId: effectiveSponsorId,
         },
+        suppressMlmRefresh: true,
       },
       trx
     );
@@ -225,7 +231,7 @@ async function applyFirstDepositReferralRewards(
       });
   }
 
-  return { applied: true };
+  return { applied: true, recalculationUserIds: [...recalculationUserIds] };
 }
 
 export async function upsertDetectedDeposit({
@@ -393,6 +399,7 @@ export async function creditConfirmedDeposit(depositId) {
           referenceId: row.id,
           remark: 'Successful USDT deposit credited to main wallet',
           meta: { asset: row.asset, depositId: row.id },
+          suppressMlmRefresh: true,
         },
         trx
       );
@@ -407,11 +414,16 @@ export async function creditConfirmedDeposit(depositId) {
         updated_at: now,
       });
 
-    await applyFirstDepositReferralRewards(trx, {
+    const rewardResult = await applyFirstDepositReferralRewards(trx, {
       userId: row.user_id,
       referenceKey: row.id,
       depositAmount: row.amount,
       now,
+    });
+
+    await recalculateMlmForUser(row.user_id, {
+      trx,
+      relatedUserIds: rewardResult?.recalculationUserIds ?? [],
     });
 
     return { ok: true, noop: false, depositId: row.id, status: 'credited' };

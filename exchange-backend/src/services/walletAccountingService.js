@@ -379,7 +379,7 @@ export async function recordMlmIncomeHistory(
 }
 
 export async function applyWalletCreditRecord(
-  { userId, amount, type, sourceType, referenceId = null, remark = null, meta = null, mlm = null },
+  { userId, amount, type, sourceType, referenceId = null, remark = null, meta = null, mlm = null, suppressMlmRefresh = false },
   trx = db
 ) {
   const amountBig = toBigIntAmount(amount);
@@ -418,7 +418,9 @@ export async function applyWalletCreditRecord(
     );
   }
 
-  await triggerMlmRefresh(userId, { type, sourceType }, trx);
+  if (!suppressMlmRefresh) {
+    await triggerMlmRefresh(userId, { type, sourceType }, trx);
+  }
   queueWalletRealtimeRefresh(userId, trx);
 
   return {

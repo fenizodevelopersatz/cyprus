@@ -120,9 +120,13 @@ export default function AdminReferralDetailPage() {
   }, [levelCodeOrder, mlm?.currentLevel]);
 
   const nextLevelRequirement = levelRequirements[nextLevelCode] ?? null;
-  const currentLevelRequirement = mlm?.currentLevel ? levelRequirements[mlm.currentLevel] ?? null : null;
+  const currentLevelRequirement = mlm?.currentEligibleLevel
+    ? levelRequirements[mlm.currentEligibleLevel] ?? null
+    : mlm?.currentLevel
+    ? levelRequirements[mlm.currentLevel] ?? null
+    : null;
   const currentBonusPercent = currentLevelRequirement?.bonusPercent ?? 0;
-  const currentEligibleTeamBalance = Number(mlm?.summary.teamEligibleBalance ?? 0);
+  const currentEligibleTeamBalance = Number(mlm?.currentCycleEligibleBalance ?? mlm?.summary.teamEligibleBalance ?? 0);
   const projectedPayoutAmount = Number(mlm?.currentCycleProjectedPayout ?? 0);
   const fallbackProjectedPayout = currentBonusPercent > 0 && currentEligibleTeamBalance > 0
     ? (currentEligibleTeamBalance * currentBonusPercent) / 100
@@ -132,11 +136,28 @@ export default function AdminReferralDetailPage() {
   const qualifiedDirectMembers = Number(mlm?.currentCycleQualifiedDirectMembers ?? 0);
   const eligibleMembers = Number(mlm?.currentCycleEligibleMembers ?? mlm?.summary.teamEligibleMembers ?? 0);
   const eligibleTreeUsers = useMemo(
-    () =>
-      (mlm?.tree.nodes ?? [])
+    () => {
+      const frozenMembers = mlm?.currentCycleEligibleMemberDetails ?? [];
+      if (frozenMembers.length) {
+        return frozenMembers
+          .map((member) => ({
+            id: member.userId,
+            name: member.name,
+            email: member.email,
+            walletBalance: member.walletBalance,
+            levelCode: member.levelCode,
+            levelRank: member.levelRank,
+            createdAt: member.createdAt,
+          }))
+          .sort((a, b) => a.id - b.id);
+      }
+
+      return (mlm?.tree.nodes ?? [])
         .filter((node) => !node.isRoot && node.eligible)
-        .sort((a, b) => a.id - b.id),
-    [mlm?.tree.nodes]
+        .map((node) => ({ ...node, createdAt: null }))
+        .sort((a, b) => a.id - b.id);
+    },
+    [mlm?.currentCycleEligibleMemberDetails, mlm?.tree.nodes]
   );
 
   const oneTimeRewardsTotal = useMemo(
@@ -363,7 +384,11 @@ export default function AdminReferralDetailPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-white">Eligible user IDs and wallet balances</div>
-                    <div className="mt-1 text-xs text-slate-400">Active eligible members shown from the current tree snapshot.</div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      {mlm.currentCycleEligibleMemberDetails?.length
+                        ? "Frozen eligible-member snapshot stored at cycle freeze time."
+                        : "Active eligible members shown from the current tree snapshot."}
+                    </div>
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
                     {eligibleTreeUsers.length} users
@@ -376,6 +401,9 @@ export default function AdminReferralDetailPage() {
                         <div className="min-w-0">
                           <div className="font-medium text-white">User #{node.id}</div>
                           <div className="truncate text-xs text-slate-400">{node.name || node.email || "--"}</div>
+                          {node.createdAt ? (
+                            <div className="mt-1 text-[11px] text-slate-500">Frozen {formatDateTime(String(node.createdAt))}</div>
+                          ) : null}
                         </div>
                         <div className="text-right">
                           <div className="font-semibold text-emerald-300">{formatMoneyValue(node.walletBalance)}</div>

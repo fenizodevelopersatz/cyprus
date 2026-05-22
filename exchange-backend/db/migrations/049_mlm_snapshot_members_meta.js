@@ -30,22 +30,6 @@ export async function up(knex) {
     await knex('mlm_bonus_cycle_snapshot_members').where({ id: row.id }).update({ meta: nextMeta });
   }
 
-  const refreshedColumns = await getExistingColumns();
-  if (refreshedColumns.includes('user_id')) {
-    try {
-      await knex.schema.alterTable('mlm_bonus_cycle_snapshot_members', (table) => {
-        table.dropUnique(['snapshot_id', 'user_id'], 'mlm_bonus_cycle_snapshot_members_unique');
-      });
-    } catch {}
-  }
-  if (refreshedColumns.includes('member_user_id')) {
-    try {
-      await knex.schema.alterTable('mlm_bonus_cycle_snapshot_members', (table) => {
-        table.dropUnique(['snapshot_id', 'member_user_id'], 'mlm_bonus_cycle_snapshot_members_unique');
-      });
-    } catch {}
-  }
-
   const columnsToDrop = ['member_user_id', 'wallet_balance', 'status', 'level_code', 'level_rank'];
   for (const columnName of columnsToDrop) {
     const currentColumns = await getExistingColumns();

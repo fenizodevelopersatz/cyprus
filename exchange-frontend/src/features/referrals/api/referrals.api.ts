@@ -96,6 +96,20 @@ export type ReferralDashboard = {
     currentCycleEligibleBalance?: string;
     currentCycleEligibleMembers?: number;
     currentCycleQualifiedDirectMembers?: number;
+    currentCycleSnapshotId?: number | null;
+    currentCycleEligibleMemberDetails?: Array<{
+      id: number;
+      userId: number;
+      walletBalance: string;
+      status: string;
+      payoutStatus?: string;
+      levelCode: string | null;
+      levelRank: number;
+      name: string;
+      email: string;
+      createdAt: string;
+      meta?: Record<string, unknown>;
+    }>;
     currentCycleProjectedPayout?: string;
     isCurrentlyQualified?: boolean;
     positionStatus?: {
@@ -162,6 +176,7 @@ export type ReferralDashboard = {
     }>;
     bonusPayoutHistory: Array<{
       id: number;
+      snapshotId?: number | null;
       levelCode: string;
       levelRank: number;
       bonusPercent: string;
@@ -173,6 +188,19 @@ export type ReferralDashboard = {
       periodEndedAt: string;
       status: string;
       createdAt: string;
+      eligibleMemberDetails?: Array<{
+        id: number;
+        userId: number;
+        walletBalance: string;
+        status: string;
+        payoutStatus?: string;
+        levelCode: string | null;
+        levelRank: number;
+        name: string;
+        email: string;
+        createdAt: string;
+        meta?: Record<string, unknown>;
+      }>;
     }>;
     recurringBonusHistory?: Array<{
       id: number;
@@ -328,6 +356,24 @@ const mapMlm = (value: unknown): ReferralDashboard["mlm"] => {
     currentCycleEligibleBalance: String(raw.currentCycleEligibleBalance ?? "0"),
     currentCycleEligibleMembers: toNumber(raw.currentCycleEligibleMembers),
     currentCycleQualifiedDirectMembers: toNumber(raw.currentCycleQualifiedDirectMembers),
+    currentCycleSnapshotId:
+      raw.currentCycleSnapshotId !== undefined && raw.currentCycleSnapshotId !== null ? toNumber(raw.currentCycleSnapshotId) : null,
+    currentCycleEligibleMemberDetails: ensureArray(raw.currentCycleEligibleMemberDetails).map((item) => {
+      const row = ensureRecord(item);
+      return {
+        id: toNumber(row.id),
+        userId: toNumber(row.userId),
+        walletBalance: String(row.walletBalance ?? "0"),
+        status: String(row.status ?? "inactive"),
+        payoutStatus: row.payoutStatus ? String(row.payoutStatus) : undefined,
+        levelCode: row.levelCode ? String(row.levelCode) : null,
+        levelRank: toNumber(row.levelRank),
+        name: String(row.name ?? `User ${row.userId ?? ""}`),
+        email: String(row.email ?? ""),
+        createdAt: String(row.createdAt ?? ""),
+        meta: ensureRecord(row.meta),
+      };
+    }),
     currentCycleProjectedPayout: String(raw.currentCycleProjectedPayout ?? "0"),
     isCurrentlyQualified: Boolean(raw.isCurrentlyQualified),
     positionStatus: {
@@ -446,6 +492,7 @@ const mapMlm = (value: unknown): ReferralDashboard["mlm"] => {
       const row = ensureRecord(item);
       return {
         id: toNumber(row.id),
+        snapshotId: row.snapshotId !== undefined && row.snapshotId !== null ? toNumber(row.snapshotId) : null,
         levelCode: String(row.levelCode ?? ""),
         levelRank: toNumber(row.levelRank),
         bonusPercent: String(row.bonusPercent ?? "0"),
@@ -457,6 +504,22 @@ const mapMlm = (value: unknown): ReferralDashboard["mlm"] => {
         periodEndedAt: String(row.periodEndedAt ?? ""),
         status: String(row.status ?? "SUCCESS"),
         createdAt: String(row.createdAt ?? ""),
+        eligibleMemberDetails: ensureArray(row.eligibleMemberDetails).map((memberItem) => {
+          const member = ensureRecord(memberItem);
+          return {
+            id: toNumber(member.id),
+            userId: toNumber(member.userId),
+            walletBalance: String(member.walletBalance ?? "0"),
+            status: String(member.status ?? "inactive"),
+            payoutStatus: member.payoutStatus ? String(member.payoutStatus) : undefined,
+            levelCode: member.levelCode ? String(member.levelCode) : null,
+            levelRank: toNumber(member.levelRank),
+            name: String(member.name ?? `User ${member.userId ?? ""}`),
+            email: String(member.email ?? ""),
+            createdAt: String(member.createdAt ?? ""),
+            meta: ensureRecord(member.meta),
+          };
+        }),
       };
     }),
     recurringBonusHistory: ensureArray(raw.recurringBonusHistory).map((item) => {

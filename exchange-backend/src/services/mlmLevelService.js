@@ -9,10 +9,13 @@ import { up as ensureMlmSnapshotMembersMetaMigration } from '../../db/migrations
 import { up as ensureRenameSnapshotMemberUserIdMigration } from '../../db/migrations/050_rename_snapshot_member_user_id.js';
 import { up as ensureUserPositionStatusTxnGlobalSequenceMigration } from '../../db/migrations/051_user_position_status_txn_global_sequence.js';
 import { up as ensureUserPositionStatusTxnGlobalSequenceTextMigration } from '../../db/migrations/052_user_position_status_txn_global_sequence_text.js';
+import { up as ensureMlmFlowTrackingMigration } from '../../db/migrations/053_mlm_flow_tracking.js';
+import { up as ensureUserPositionStatusFreezeMicroMigration } from '../../db/migrations/054_user_position_status_freeze_micro.js';
 import { cronLogger } from '../logging/loggers.js';
 import { cfg } from '../config.js';
 import { canGiveLevelIncome } from './incomeValidator.js';
 import { allocateGlobalTxnNumber } from '../utils/generateGlobalTxnId.js';
+import { recordMlmFlowStep } from './mlmFlowTrackingService.js';
 
 const DEFAULT_MLM_MINIMUM_BALANCE = 300;
 const DEFAULT_BONUS_INTERVAL_DAYS = 1;
@@ -163,6 +166,13 @@ function toAmount(value) {
   return toNumber(value, 0).toFixed(18);
 }
 
+function toMicroUnix(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return null;
+  return Math.trunc(time * 1000);
+}
+
 function parseJsonObject(value) {
   if (!value) return {};
   if (typeof value === 'object') return value;
@@ -201,6 +211,8 @@ async function ensureMlmSchema() {
       await ensureMlmSnapshotMembersMetaMigration(db);
       await ensureUserPositionStatusTxnGlobalSequenceMigration(db);
       await ensureUserPositionStatusTxnGlobalSequenceTextMigration(db);
+      await ensureMlmFlowTrackingMigration(db);
+      await ensureUserPositionStatusFreezeMicroMigration(db);
     })().catch((error) => {
       schemaReadyPromise = null;
       throw error;
@@ -227,7 +239,7 @@ async function loadContext(trx = db) {
     getLevelConfig(),
     getLevelManagementSettings(),
     trx('users')
-      .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank')
+      .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank', 'updated_at')
       .orderBy('id', 'asc'),
   ]);
 
@@ -275,7 +287,7 @@ async function refreshContextSubtree(trx, userId, context) {
   if (!subtreeIds.length) return;
 
   const refreshedUsers = await trx('users')
-    .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank')
+    .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank', 'updated_at')
     .whereIn('id', subtreeIds)
     .orderBy('id', 'asc');
 
@@ -373,7 +385,7 @@ async function getUserTreePreview(userId, minimumBalance) {
 
 function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
   if (memo.has(userId)) return memo.get(userId);
-  const children = childrenMap.get(userId) || [];
+  const children = childrenMap.get(userId) || [];  
   const metrics = {
     directTotalMembers: children.length,
     directEligibleMembers: 0,
@@ -387,6 +399,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
 
   for (const child of children) {
     const balance = toNumber(child.main_wallet_balance);
+    console.log('balance', balance, children, "\n");
     const eligible = isEligibleUser(child, minimumBalance);
     metrics.directTotalBalance += balance;
     metrics.teamTotalMembers += 1;
@@ -396,6 +409,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
       metrics.directEligibleBalance += balance;
       metrics.teamEligibleMembers += 1;
       metrics.teamEligibleBalance += balance;
+      console.log('metrics.teamEligibleBalance1', metrics.teamEligibleBalance, "\n");
     }
 
     const subtree = computeMetrics(Number(child.id), childrenMap, minimumBalance, memo);
@@ -403,6 +417,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
     metrics.teamEligibleMembers += subtree.teamEligibleMembers;
     metrics.teamTotalBalance += subtree.teamTotalBalance;
     metrics.teamEligibleBalance += subtree.teamEligibleBalance;
+    console.log('metrics.teamEligibleBalance2', metrics.teamEligibleBalance, "\n");
   }
 
   memo.set(userId, metrics);
@@ -430,30 +445,48 @@ function getEligibleBalanceDetails(levelCode, metrics, minimumBalance, levelRule
   };
 }
 
-function collectEligibleSnapshotMembers(rootUserId, childrenMap, minimumBalance) {
-  const members = [];
-  const queue = [...(childrenMap.get(Number(rootUserId)) || [])];
-  const visited = new Set();
+async function collectEligibleSnapshotMembers(trx, rootUserId, context) {
+  const subtreeIds = collectSubtreeUserIds(rootUserId, context.childrenMap)
+    .filter((id) => Number(id) !== Number(rootUserId));
+  if (!subtreeIds.length) return [];
 
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current) continue;
-    const currentId = Number(current.id);
-    if (!currentId || visited.has(currentId)) continue;
-    visited.add(currentId);
+  const users = await trx('users')
+    .select('id', 'status', 'main_wallet_balance', 'updated_at')
+    .whereIn('id', subtreeIds)
+    .orderBy('id', 'asc');
+  const latestLedgerRows = await trx('wallet_ledger')
+    .select('id', 'user_id', 'txn_id', 'new_balance', 'created_at', 'updated_at')
+    .whereIn('user_id', subtreeIds)
+    .where({ status: 'SUCCESS' })
+    .orderBy([{ column: 'user_id', order: 'asc' }, { column: 'id', order: 'desc' }]);
 
-    if (isEligibleUser(current, minimumBalance)) {
-      members.push({
-        memberUserId: currentId,
-        walletBalance: toAmount(current.main_wallet_balance),
-      });
-    }
-
-    const children = childrenMap.get(currentId) || [];
-    for (const child of children) {
-      queue.push(child);
+  const latestLedgerByUser = new Map();
+  for (const row of latestLedgerRows) {
+    const userId = Number(row.user_id);
+    if (!latestLedgerByUser.has(userId)) {
+      latestLedgerByUser.set(userId, row);
     }
   }
+
+  const members = users
+    .filter((user) => isEligibleUser(user, context.mlmConfig.MLM_MINIMUM_BALANCE))
+    .map((user) => {
+      const userId = Number(user.id);
+      const latestLedger = latestLedgerByUser.get(userId) || null;
+      return {
+        memberUserId: userId,
+        walletBalance: toAmount(user.main_wallet_balance),
+        userUpdatedAt: user.updated_at || null,
+        userUpdatedAtMicro: toMicroUnix(user.updated_at),
+        latestWalletTxnId: latestLedger?.txn_id || null,
+        latestWalletLedgerId: latestLedger?.id || null,
+        latestWalletLedgerBalance: latestLedger?.new_balance ? toAmount(latestLedger.new_balance) : null,
+        latestWalletLedgerCreatedAt: latestLedger?.created_at || null,
+        latestWalletLedgerUpdatedAt: latestLedger?.updated_at || null,
+        latestWalletLedgerCreatedAtMicro: toMicroUnix(latestLedger?.created_at),
+        latestWalletLedgerUpdatedAtMicro: toMicroUnix(latestLedger?.updated_at),
+      };
+    });
 
   return members.sort((a, b) => a.memberUserId - b.memberUserId);
 }
@@ -476,22 +509,33 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
   const level = matched?.level || null;
   if (!level || !nextPayload?.is_currently_qualified) return null;
 
-  const snapshotMembers = collectEligibleSnapshotMembers(
+  const snapshotMembers = await collectEligibleSnapshotMembers(
+    trx,
     userId,
-    context.childrenMap,
-    context.mlmConfig.MLM_MINIMUM_BALANCE
+    context
   );
   const createdAt = checkedAt || new Date();
+  const capturedAtMicro = toMicroUnix(createdAt);
   const snapshotEligibleBalance = toAmount(
     snapshotMembers.reduce((sum, member) => sum + toNumber(member.walletBalance), 0)
   );
   const snapshotMeta = JSON.stringify({
     minimumEligibleBalance: toAmount(context.mlmConfig.MLM_MINIMUM_BALANCE),
     capturedAt: createdAt,
+    capturedAtMicro: capturedAtMicro,
     frozenEligibleMembers: snapshotMembers.map((member) => ({
       user_id: member.memberUserId,
       total_wallet_balance: toAmount(member.walletBalance),
       created_at: createdAt,
+      main_wallet_balance_updated_at: member.userUpdatedAt,
+      main_wallet_balance_updated_at_micro: member.userUpdatedAtMicro,
+      last_wallet_txn_id: member.latestWalletTxnId,
+      last_wallet_ledger_id: member.latestWalletLedgerId,
+      last_wallet_ledger_balance: member.latestWalletLedgerBalance,
+      last_wallet_ledger_created_at: member.latestWalletLedgerCreatedAt,
+      last_wallet_ledger_created_at_micro: member.latestWalletLedgerCreatedAtMicro,
+      last_wallet_ledger_updated_at: member.latestWalletLedgerUpdatedAt,
+      last_wallet_ledger_updated_at_micro: member.latestWalletLedgerUpdatedAtMicro,
     })),
   });
   const explicitSnapshotId = nextPayload.current_cycle_snapshot_id ? Number(nextPayload.current_cycle_snapshot_id) : null;
@@ -515,6 +559,15 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
           user_id: member.memberUserId,
           wallet_balance: member.walletBalance,
           created_at: createdAt,
+          main_wallet_balance_updated_at: member.userUpdatedAt,
+          main_wallet_balance_updated_at_micro: member.userUpdatedAtMicro,
+          last_wallet_txn_id: member.latestWalletTxnId,
+          last_wallet_ledger_id: member.latestWalletLedgerId,
+          last_wallet_ledger_balance: member.latestWalletLedgerBalance,
+          last_wallet_ledger_created_at: member.latestWalletLedgerCreatedAt,
+          last_wallet_ledger_created_at_micro: member.latestWalletLedgerCreatedAtMicro,
+          last_wallet_ledger_updated_at: member.latestWalletLedgerUpdatedAt,
+          last_wallet_ledger_updated_at_micro: member.latestWalletLedgerUpdatedAtMicro,
         }),
         payout_status: 'frozen',
         updated_at: createdAt,
@@ -561,6 +614,7 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
     return {
       snapshotId: existingSnapshotId,
       eligibleBalance: snapshotEligibleBalance,
+      capturedAtMicro,
     };
   }
 
@@ -592,6 +646,7 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
   return {
     snapshotId,
     eligibleBalance: snapshotEligibleBalance,
+    capturedAtMicro,
   };
 }
 
@@ -757,6 +812,7 @@ async function upsertUserPositionStatus(trx, userId, payload) {
   const nextPayload = {
     ...payload,
     txn_global_sequence: txnGlobalSequence,
+    freeze_completed_at_micro: payload.freeze_completed_at_micro ?? toMicroUnix(payload.last_checked_at || now),
     last_checked_at: payload.last_checked_at || now,
     updated_at: now,
   };
@@ -822,6 +878,20 @@ function buildPositionStatusPayload({ statusRow, matched, metrics, levelRules, b
       ? toNumber(statusRow.frozen_qualified_direct_members)
       : toNumber(matched?.qualifiedDirectMembers)
     : 0;
+
+  console.log('[MLM freeze values]', {
+    userId: statusRow?.user_id ?? null,
+    levelCode: effectiveLevelCode,
+    effectiveIsQualified,
+    cycleLocked,
+    qualificationChanged,
+    metricsTeamEligibleBalance: toAmount(metrics.teamEligibleBalance),
+    metricsTeamEligibleMembers: toNumber(metrics.teamEligibleMembers),
+    previousFrozenEligibleBalance: statusRow?.frozen_eligible_balance ?? null,
+    previousFrozenEligibleMembers: statusRow?.frozen_eligible_members ?? null,
+    frozen_eligible_balance: frozenEligibleBalance,
+    frozen_eligible_members: frozenEligibleMembers,
+  });
 
   return {
     current_eligible_level_code: effectiveLevelCode,
@@ -1159,22 +1229,66 @@ async function getAncestorIds(trx, userId) {
   return ids;
 }
 
-async function recalculateOne(trx, userId, context) {
+async function recalculateOne(trx, userId, context, flowContext = {}) {
   await refreshContextSubtree(trx, Number(userId), context);
+  await recordMlmFlowStep(trx, {
+    userId,
+    depositId: flowContext.depositId ?? null,
+    stepKey: 'subtree_balances_reloaded',
+    txnGlobalSequence: flowContext.txnGlobalSequence ?? null,
+    meta: {
+      relatedUserIds: flowContext.relatedUserIds ?? [],
+      relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+    },
+  });
   const children = context.childrenMap.get(Number(userId)) || [];
   const checkedAt = new Date();
-  setTimeout(() => {
-    console.log("Executed after delay");
-}, 5000);
+
+
+    
   const metrics = computeMetrics(
     Number(userId),
     context.childrenMap,
     context.mlmConfig.MLM_MINIMUM_BALANCE,
     context.memo
   );
+  await recordMlmFlowStep(trx, {
+    userId,
+    depositId: flowContext.depositId ?? null,
+    stepKey: 'compute_metrics_completed',
+    txnGlobalSequence: flowContext.txnGlobalSequence ?? null,
+    meta: {
+      teamEligibleMembers: metrics.teamEligibleMembers,
+      teamEligibleBalance: toAmount(metrics.teamEligibleBalance),
+      relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+    },
+  });
   await upsertSummary(trx, userId, metrics);
 
   const matched = selectMatchedLevel(context.levels, children, metrics, context.mlmConfig.LEVEL_RULES);
+  await recordMlmFlowStep(trx, {
+    userId,
+    depositId: flowContext.depositId ?? null,
+    stepKey: 'level_achievement_completed',
+    txnGlobalSequence: flowContext.txnGlobalSequence ?? null,
+    meta: {
+      levelCode: matched?.level?.levelCode || null,
+      qualifiedDirectMembers: matched?.qualifiedDirectMembers || 0,
+      eligibleMembers: metrics.teamEligibleMembers,
+      relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+    },
+  });
+  await recordMlmFlowStep(trx, {
+    userId,
+    depositId: flowContext.depositId ?? null,
+    stepKey: 'eligible_members_completed',
+    txnGlobalSequence: flowContext.txnGlobalSequence ?? null,
+    meta: {
+      eligibleMembers: metrics.teamEligibleMembers,
+      directEligibleMembers: metrics.directEligibleMembers,
+      relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+    },
+  });
   const level = matched?.level || null;
   const levelCode = level?.levelCode || null;
   const levelRank = level ? toNumber(level.sortOrder) : 0;
@@ -1207,6 +1321,34 @@ async function recalculateOne(trx, userId, context) {
         }
     : null;
   const currentCycleSnapshotId = snapshotResult?.snapshotId || null;
+  if (snapshotResult?.eligibleBalance !== undefined) {
+    await recordMlmFlowStep(trx, {
+      userId,
+      depositId: flowContext.depositId ?? null,
+      stepKey: 'frozen_eligible_balance_completed',
+      txnGlobalSequence: flowContext.txnGlobalSequence ?? null,
+      meta: {
+        snapshotId: currentCycleSnapshotId,
+        frozenEligibleBalance: snapshotResult.eligibleBalance,
+        capturedAtMicro: snapshotResult.capturedAtMicro ?? null,
+        relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+      },
+    });
+    const payoutAmount = level
+      ? toAmount((toNumber(snapshotResult.eligibleBalance) * toNumber(level.bonusPercent)) / 100)
+      : toAmount(0);
+    await recordMlmFlowStep(trx, {
+      userId,
+      depositId: flowContext.depositId ?? null,
+      stepKey: 'payout_amount_completed',
+      txnGlobalSequence: flowContext.txnGlobalSequence ?? null,
+      meta: {
+        levelCode: level?.levelCode || null,
+        payoutAmount,
+        relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+      },
+    });
+  }
 
   await trx('users').where({ id: userId }).update({
     current_level_code: levelCode,
@@ -1228,6 +1370,18 @@ async function recalculateOne(trx, userId, context) {
     ...statusPayload,
     frozen_eligible_balance: snapshotResult?.eligibleBalance ?? statusPayload.frozen_eligible_balance,
     current_cycle_snapshot_id: currentCycleSnapshotId,
+    freeze_completed_at_micro: snapshotResult?.capturedAtMicro ?? toMicroUnix(checkedAt),
+  });
+  await recordMlmFlowStep(trx, {
+    userId,
+    depositId: flowContext.depositId ?? null,
+    stepKey: 'status_history_snapshot_completed',
+    txnGlobalSequence: snapshotResult?.txnGlobalSequence ?? null,
+    meta: {
+      currentCycleSnapshotId,
+      frozenEligibleBalance: snapshotResult?.eligibleBalance ?? statusPayload.frozen_eligible_balance,
+      relatedTxnGlobalSequences: flowContext.relatedTxnGlobalSequences ?? [],
+    },
   });
 
   return { userId: Number(userId), levelCode, levelRank };
@@ -1339,7 +1493,7 @@ async function runAllDueMlmBonusPayouts() {
   });
 }
 
-export async function recalculateMlmForUser(userId, { trx = null, relatedUserIds = [] } = {}) {
+export async function recalculateMlmForUser(userId, { trx = null, relatedUserIds = [], flowContext = {} } = {}) {
   if (!userId) return [];
   const execute = async (conn) => {
     const base = await loadContext(conn);
@@ -1369,7 +1523,7 @@ export async function recalculateMlmForUser(userId, { trx = null, relatedUserIds
 
     const results = [];
     for (const targetId of orderedIds) {
-      results.push(await recalculateOne(conn, targetId, context));
+      results.push(await recalculateOne(conn, targetId, context, flowContext));
     }
     return results;
   };

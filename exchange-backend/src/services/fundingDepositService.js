@@ -5,6 +5,7 @@ import { canGiveJoinReward } from './incomeValidator.js';
 import { applyWalletCreditRecord } from './walletAccountingService.js';
 import { getLevelManagementSettings } from './adminLevelManagement.service.js';
 import { recalculateMlmForUser } from './mlmLevelService.js';
+import { recordMlmFlowStep } from './mlmFlowTrackingService.js';
 
 const NETWORK_KEYS = ['ethereum', 'bsc', 'tron'];
 const STATUS_KEYS = ['detected', 'pending', 'confirmed', 'credited'];
@@ -157,6 +158,7 @@ async function applyFirstDepositReferralRewards(
   const depositReferenceId = `deposit:${referenceKey}`;
 
   const recalculationUserIds = new Set([Number(userId)]);
+  const flowEvents = [];
 
   if (
     sponsor &&
@@ -169,7 +171,7 @@ async function applyFirstDepositReferralRewards(
     }))
   ) {
     const sponsorAmount = String((firstDepositAmount * sponsorPercent) / 100);
-    await applyWalletCreditRecord(
+    const sponsorCreditResult = await applyWalletCreditRecord(
       {
         userId: effectiveSponsorId,
         amount: sponsorAmount,
@@ -190,6 +192,12 @@ async function applyFirstDepositReferralRewards(
       },
       trx
     );
+    flowEvents.push({
+      stepKey: 'sponsor_commission_credited',
+      userId: effectiveSponsorId,
+      txnGlobalSequence: sponsorCreditResult?.txnId || null,
+      meta: { sourceUserId: userId, newBalance: String(sponsorCreditResult?.newBalance || 0) },
+    });
     recalculationUserIds.add(Number(effectiveSponsorId));
   }
 
@@ -203,7 +211,7 @@ async function applyFirstDepositReferralRewards(
     }))
   ) {
     const joinAmount = String((firstDepositAmount * joinPercent) / 100);
-    await applyWalletCreditRecord(
+    const joinedCreditResult = await applyWalletCreditRecord(
       {
         userId,
         amount: joinAmount,
@@ -223,6 +231,12 @@ async function applyFirstDepositReferralRewards(
       },
       trx
     );
+    flowEvents.push({
+      stepKey: 'joined_commission_credited',
+      userId,
+      txnGlobalSequence: joinedCreditResult?.txnId || null,
+      meta: { sponsorUserId: effectiveSponsorId, newBalance: String(joinedCreditResult?.newBalance || 0) },
+    });
     await trx('users')
       .where({ id: userId })
       .update({
@@ -231,7 +245,7 @@ async function applyFirstDepositReferralRewards(
       });
   }
 
-  return { applied: true, recalculationUserIds: [...recalculationUserIds] };
+  return { applied: true, recalculationUserIds: [...recalculationUserIds], flowEvents };
 }
 
 export async function upsertDetectedDeposit({
@@ -277,6 +291,7 @@ export async function upsertDetectedDeposit({
   const safeConfirmations = Number(confirmations || 0);
   const nextStatus = deriveStatus(safeConfirmations, safeTarget, false);
   const now = new Date();
+  let depositCreditTxnSequence = null;
 
   return withTx(async (trx) => {
     const existing = await trx('deposits')
@@ -390,7 +405,7 @@ export async function creditConfirmedDeposit(depositId) {
     );
 
     if (String(row.asset).toUpperCase() === 'USDT') {
-      await applyWalletCreditRecord(
+      const depositCreditResult = await applyWalletCreditRecord(
         {
           userId: row.user_id,
           amount: row.amount,
@@ -403,6 +418,21 @@ export async function creditConfirmedDeposit(depositId) {
         },
         trx
       );
+      await recordMlmFlowStep(trx, {
+        userId: row.user_id,
+        depositId: row.id,
+        stepKey: 'deposit_credited',
+        txnGlobalSequence: depositCreditResult?.txnId || null,
+        meta: { amount: String(row.amount), asset: row.asset },
+      });
+      depositCreditTxnSequence = depositCreditResult?.txnId || null;
+      await recordMlmFlowStep(trx, {
+        userId: row.user_id,
+        depositId: row.id,
+        stepKey: 'depositor_wallet_updated',
+        txnGlobalSequence: depositCreditResult?.txnId || null,
+        meta: { newBalance: String(depositCreditResult?.newBalance || 0) },
+      });
     }
 
     await trx('deposits')
@@ -420,10 +450,28 @@ export async function creditConfirmedDeposit(depositId) {
       depositAmount: row.amount,
       now,
     });
+    const relatedTxnGlobalSequences = [
+      depositCreditTxnSequence,
+      ...(rewardResult?.flowEvents ?? []).map((event) => event.txnGlobalSequence || null),
+    ].filter(Boolean);
+    for (const event of rewardResult?.flowEvents ?? []) {
+      await recordMlmFlowStep(trx, {
+        userId: event.userId ?? row.user_id,
+        depositId: row.id,
+        stepKey: event.stepKey,
+        txnGlobalSequence: event.txnGlobalSequence ?? null,
+        meta: event.meta ?? null,
+      });
+    }
 
     await recalculateMlmForUser(row.user_id, {
       trx,
       relatedUserIds: rewardResult?.recalculationUserIds ?? [],
+      flowContext: {
+        depositId: row.id,
+        relatedUserIds: rewardResult?.recalculationUserIds ?? [],
+        relatedTxnGlobalSequences,
+      },
     });
 
     return { ok: true, noop: false, depositId: row.id, status: 'credited' };

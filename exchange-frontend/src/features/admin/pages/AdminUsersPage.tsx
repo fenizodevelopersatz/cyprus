@@ -29,6 +29,35 @@ const balanceFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const getWalletAdjustErrorMessage = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return "Unable to adjust wallet balance.";
+  }
+
+  const responseMessage =
+    "response" in error &&
+    error.response &&
+    typeof error.response === "object" &&
+    "data" in error.response &&
+    error.response.data &&
+    typeof error.response.data === "object" &&
+    "message" in error.response.data &&
+    typeof error.response.data.message === "string"
+      ? error.response.data.message
+      : null;
+
+  const rawMessage =
+    responseMessage ||
+    ("message" in error && typeof error.message === "string" ? error.message : null) ||
+    "Unable to adjust wallet balance.";
+
+  if (rawMessage === "INSUFFICIENT_MAIN_WALLET_BALANCE") {
+    return "Insufficient main wallet balance for this withdrawal adjustment.";
+  }
+
+  return rawMessage;
+};
+
 const generateWalletOrderId = (action: "deposit" | "withdraw") => {
   const alphabet = "abcdef0123456789";
   const randomPart = Array.from({ length: 24 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
@@ -288,8 +317,9 @@ export default function AdminUsersPage() {
     };
   });
   const formatBalance = (value: number) => balanceFormatter.format(Number.isFinite(value) ? value : 0);
-  const walletMutationError =
-    walletAdjustMutation.error instanceof Error ? walletAdjustMutation.error.message : null;
+  const walletMutationError = walletAdjustMutation.error
+    ? getWalletAdjustErrorMessage(walletAdjustMutation.error)
+    : null;
 
   const withdrawalItems: AdminWithdrawal[] = Array.isArray(withdrawalsQuery.data)
     ? withdrawalsQuery.data

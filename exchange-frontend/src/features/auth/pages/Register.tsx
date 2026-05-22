@@ -20,6 +20,7 @@ export default function Register() {
   const [referralCode, setReferralCode] = useState("");
   const [mode, setMode] = useState<Mode>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [didPrefillReferral, setDidPrefillReferral] = useState(false);
   const register = useAuth((s) => s.register);
   const loginWithGoogle = useAuth((s) => s.loginWithGoogle);
   const nav = useNavigate();
@@ -27,13 +28,15 @@ export default function Register() {
   useSystemStatus();
 
   useEffect(() => {
+    if (didPrefillReferral) return;
     const stateReferral = (loc.state as { referralCode?: string } | null)?.referralCode;
     const storedReferral = sessionStorage.getItem("pendingReferralCode") || sessionStorage.getItem("inviteReferralCode");
     const nextReferral = stateReferral || storedReferral;
-    if (nextReferral && !referralCode) {
+    if (nextReferral) {
       setReferralCode(nextReferral);
     }
-  }, [loc.state, referralCode]);
+    setDidPrefillReferral(true);
+  }, [didPrefillReferral, loc.state]);
 
   const passwordValidationMessage = (() => {
     const trimmed = password.trim();

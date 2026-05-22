@@ -441,6 +441,27 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
     context.mlmConfig.MLM_MINIMUM_BALANCE
   );
   const createdAt = checkedAt || new Date();
+  const snapshotEligibleBalance = toAmount(
+    snapshotMembers.reduce((sum, member) => sum + toNumber(member.walletBalance), 0)
+  );
+  const existingSnapshotId = nextPayload.current_cycle_snapshot_id
+    ? Number(nextPayload.current_cycle_snapshot_id)
+    : null;
+  if (existingSnapshotId) {
+    const existingSnapshot = await trx('mlm_bonus_cycle_snapshots').where({ id: existingSnapshotId }).first();
+    if (existingSnapshot) {
+      await trx('mlm_bonus_cycle_snapshots').where({ id: existingSnapshotId }).update({
+        eligible_balance: snapshotEligibleBalance,
+        eligible_members: toNumber(nextPayload.frozen_eligible_members),
+        qualified_direct_members: toNumber(nextPayload.frozen_qualified_direct_members),
+        updated_at: createdAt,
+      });
+      return {
+        snapshotId: existingSnapshotId,
+        eligibleBalance: snapshotEligibleBalance,
+      };
+    }
+  }
 
   const snapshotPayload = {
     user_id: userId,
@@ -449,7 +470,7 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
     bonus_percent: toNumber(level.bonusPercent).toFixed(4),
     qualified_at: nextPayload.qualified_at ? new Date(nextPayload.qualified_at) : null,
     next_bonus_due_at: nextPayload.next_bonus_due_at ? new Date(nextPayload.next_bonus_due_at) : null,
-    eligible_balance: toAmount(nextPayload.frozen_eligible_balance),
+    eligible_balance: snapshotEligibleBalance,
     eligible_members: toNumber(nextPayload.frozen_eligible_members),
     qualified_direct_members: toNumber(nextPayload.frozen_qualified_direct_members),
     status: 'frozen',
@@ -502,7 +523,10 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
     );
   }
 
-  return snapshotId;
+  return {
+    snapshotId,
+    eligibleBalance: snapshotEligibleBalance,
+  };
 }
 
 async function upsertSummary(trx, userId, metrics) {
@@ -1077,11 +1101,25 @@ async function recalculateOne(trx, userId, context) {
     checkedAt,
   });
   const refreshSnapshot = shouldRefreshCycleSnapshot(statusRow, statusPayload);
-  const currentCycleSnapshotId = statusPayload.is_currently_qualified
+  const snapshotResult = statusPayload.is_currently_qualified
     ? refreshSnapshot
-      ? await createFrozenCycleSnapshot(trx, userId, statusPayload, matched, context, checkedAt)
-      : statusRow?.current_cycle_snapshot_id || null
+      ? await createFrozenCycleSnapshot(
+          trx,
+          userId,
+          {
+            ...statusPayload,
+            current_cycle_snapshot_id: statusRow?.current_cycle_snapshot_id || null,
+          },
+          matched,
+          context,
+          checkedAt
+        )
+      : {
+          snapshotId: statusRow?.current_cycle_snapshot_id || null,
+          eligibleBalance: statusRow?.frozen_eligible_balance ?? statusPayload.frozen_eligible_balance,
+        }
     : null;
+  const currentCycleSnapshotId = snapshotResult?.snapshotId || null;
 
   await trx('users').where({ id: userId }).update({
     current_level_code: levelCode,
@@ -1101,6 +1139,7 @@ async function recalculateOne(trx, userId, context) {
 
   await upsertUserPositionStatus(trx, userId, {
     ...statusPayload,
+    frozen_eligible_balance: snapshotResult?.eligibleBalance ?? statusPayload.frozen_eligible_balance,
     current_cycle_snapshot_id: currentCycleSnapshotId,
   });
 

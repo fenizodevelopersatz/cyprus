@@ -7,9 +7,12 @@ import { up as ensureRecurringBonusStatusMigration } from '../../db/migrations/0
 import { up as ensureMlmBonusCycleSnapshotsMigration } from '../../db/migrations/048_mlm_bonus_cycle_snapshots.js';
 import { up as ensureMlmSnapshotMembersMetaMigration } from '../../db/migrations/049_mlm_snapshot_members_meta.js';
 import { up as ensureRenameSnapshotMemberUserIdMigration } from '../../db/migrations/050_rename_snapshot_member_user_id.js';
+import { up as ensureUserPositionStatusTxnGlobalSequenceMigration } from '../../db/migrations/051_user_position_status_txn_global_sequence.js';
+import { up as ensureUserPositionStatusTxnGlobalSequenceTextMigration } from '../../db/migrations/052_user_position_status_txn_global_sequence_text.js';
 import { cronLogger } from '../logging/loggers.js';
 import { cfg } from '../config.js';
 import { canGiveLevelIncome } from './incomeValidator.js';
+import { allocateGlobalTxnNumber } from '../utils/generateGlobalTxnId.js';
 
 const DEFAULT_MLM_MINIMUM_BALANCE = 300;
 const DEFAULT_BONUS_INTERVAL_DAYS = 1;
@@ -196,6 +199,8 @@ async function ensureMlmSchema() {
       await ensureMlmBonusCycleSnapshotsMigration(db);
       await ensureRenameSnapshotMemberUserIdMigration(db);
       await ensureMlmSnapshotMembersMetaMigration(db);
+      await ensureUserPositionStatusTxnGlobalSequenceMigration(db);
+      await ensureUserPositionStatusTxnGlobalSequenceTextMigration(db);
     })().catch((error) => {
       schemaReadyPromise = null;
       throw error;
@@ -243,6 +248,42 @@ function buildChildrenMap(users) {
     childrenMap.get(sponsorId).push(user);
   }
   return childrenMap;
+}
+
+function collectSubtreeUserIds(rootUserId, childrenMap) {
+  const ids = [];
+  const queue = [Number(rootUserId)];
+  const visited = new Set();
+
+  while (queue.length) {
+    const currentId = Number(queue.shift());
+    if (!currentId || visited.has(currentId)) continue;
+    visited.add(currentId);
+    ids.push(currentId);
+
+    const children = childrenMap.get(currentId) || [];
+    for (const child of children) {
+      queue.push(Number(child.id));
+    }
+  }
+
+  return ids;
+}
+
+async function refreshContextSubtree(trx, userId, context) {
+  const subtreeIds = collectSubtreeUserIds(userId, context.childrenMap);
+  if (!subtreeIds.length) return;
+
+  const refreshedUsers = await trx('users')
+    .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank')
+    .whereIn('id', subtreeIds)
+    .orderBy('id', 'asc');
+
+  const refreshedById = new Map(refreshedUsers.map((user) => [Number(user.id), user]));
+  context.users = context.users.map((user) => refreshedById.get(Number(user.id)) || user);
+  context.userMap = new Map(context.users.map((user) => [Number(user.id), user]));
+  context.childrenMap = buildChildrenMap(context.users);
+  context.memo = new Map();
 }
 
 async function getUserTreePreview(userId, minimumBalance) {
@@ -444,23 +485,83 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
   const snapshotEligibleBalance = toAmount(
     snapshotMembers.reduce((sum, member) => sum + toNumber(member.walletBalance), 0)
   );
-  const existingSnapshotId = nextPayload.current_cycle_snapshot_id
-    ? Number(nextPayload.current_cycle_snapshot_id)
-    : null;
-  if (existingSnapshotId) {
-    const existingSnapshot = await trx('mlm_bonus_cycle_snapshots').where({ id: existingSnapshotId }).first();
-    if (existingSnapshot) {
-      await trx('mlm_bonus_cycle_snapshots').where({ id: existingSnapshotId }).update({
-        eligible_balance: snapshotEligibleBalance,
-        eligible_members: toNumber(nextPayload.frozen_eligible_members),
-        qualified_direct_members: toNumber(nextPayload.frozen_qualified_direct_members),
+  const snapshotMeta = JSON.stringify({
+    minimumEligibleBalance: toAmount(context.mlmConfig.MLM_MINIMUM_BALANCE),
+    capturedAt: createdAt,
+    frozenEligibleMembers: snapshotMembers.map((member) => ({
+      user_id: member.memberUserId,
+      total_wallet_balance: toAmount(member.walletBalance),
+      created_at: createdAt,
+    })),
+  });
+  const explicitSnapshotId = nextPayload.current_cycle_snapshot_id ? Number(nextPayload.current_cycle_snapshot_id) : null;
+  const cycleIdentitySnapshot = await trx('mlm_bonus_cycle_snapshots')
+    .where({
+      user_id: userId,
+      level_code: level.levelCode,
+      qualified_at: nextPayload.qualified_at ? new Date(nextPayload.qualified_at) : null,
+      next_bonus_due_at: nextPayload.next_bonus_due_at ? new Date(nextPayload.next_bonus_due_at) : null,
+      status: 'frozen',
+    })
+    .orderBy('id', 'desc')
+    .first();
+  const existingSnapshotId = explicitSnapshotId || cycleIdentitySnapshot?.id || null;
+
+  const updateSnapshotMembers = async (snapshotId) => {
+    const snapshotMemberColumns = await getSnapshotMemberColumns(trx);
+    for (const member of snapshotMembers) {
+      const memberPayload = {
+        meta: JSON.stringify({
+          user_id: member.memberUserId,
+          wallet_balance: member.walletBalance,
+          created_at: createdAt,
+        }),
+        payout_status: 'frozen',
         updated_at: createdAt,
-      });
-      return {
-        snapshotId: existingSnapshotId,
-        eligibleBalance: snapshotEligibleBalance,
       };
+      if (snapshotMemberColumns.has('user_id')) {
+        memberPayload.user_id = member.memberUserId;
+      }
+      if (snapshotMemberColumns.has('member_user_id')) {
+        memberPayload.member_user_id = member.memberUserId;
+      }
+      if (snapshotMemberColumns.has('wallet_balance')) {
+        memberPayload.wallet_balance = member.walletBalance;
+      }
+      const existingMember = snapshotMemberColumns.has('user_id')
+        ? await trx('mlm_bonus_cycle_snapshot_members')
+            .where({ snapshot_id: snapshotId, user_id: member.memberUserId })
+            .first()
+        : snapshotMemberColumns.has('member_user_id')
+        ? await trx('mlm_bonus_cycle_snapshot_members')
+            .where({ snapshot_id: snapshotId, member_user_id: member.memberUserId })
+            .first()
+        : null;
+      if (existingMember) {
+        await trx('mlm_bonus_cycle_snapshot_members').where({ id: existingMember.id }).update(memberPayload);
+      } else {
+        await trx('mlm_bonus_cycle_snapshot_members').insert({
+          snapshot_id: snapshotId,
+          created_at: createdAt,
+          ...memberPayload,
+        });
+      }
     }
+  };
+
+  if (existingSnapshotId) {
+    await trx('mlm_bonus_cycle_snapshots').where({ id: existingSnapshotId }).update({
+      eligible_balance: snapshotEligibleBalance,
+      eligible_members: toNumber(nextPayload.frozen_eligible_members),
+      qualified_direct_members: toNumber(nextPayload.frozen_qualified_direct_members),
+      meta: snapshotMeta,
+      updated_at: createdAt,
+    });
+    await updateSnapshotMembers(existingSnapshotId);
+    return {
+      snapshotId: existingSnapshotId,
+      eligibleBalance: snapshotEligibleBalance,
+    };
   }
 
   const snapshotPayload = {
@@ -474,15 +575,7 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
     eligible_members: toNumber(nextPayload.frozen_eligible_members),
     qualified_direct_members: toNumber(nextPayload.frozen_qualified_direct_members),
     status: 'frozen',
-    meta: JSON.stringify({
-      minimumEligibleBalance: toAmount(context.mlmConfig.MLM_MINIMUM_BALANCE),
-      capturedAt: createdAt,
-      frozenEligibleMembers: snapshotMembers.map((member) => ({
-        user_id: member.memberUserId,
-        total_wallet_balance: toAmount(member.walletBalance),
-        created_at: createdAt,
-      })),
-    }),
+    meta: snapshotMeta,
     updated_at: createdAt,
   };
 
@@ -493,34 +586,7 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
   const snapshotId = Array.isArray(inserted) ? inserted[0] : inserted;
 
   if (snapshotMembers.length) {
-    const snapshotMemberColumns = await getSnapshotMemberColumns(trx);
-    await trx.batchInsert(
-      'mlm_bonus_cycle_snapshot_members',
-      snapshotMembers.map((member) => {
-        const payload = {
-          snapshot_id: snapshotId,
-          meta: JSON.stringify({
-            user_id: member.memberUserId,
-            wallet_balance: member.walletBalance,
-            created_at: createdAt,
-          }),
-          payout_status: 'frozen',
-          created_at: createdAt,
-          updated_at: createdAt,
-        };
-        if (snapshotMemberColumns.has('user_id')) {
-          payload.user_id = member.memberUserId;
-        }
-        if (snapshotMemberColumns.has('member_user_id')) {
-          payload.member_user_id = member.memberUserId;
-        }
-        if (snapshotMemberColumns.has('wallet_balance')) {
-          payload.wallet_balance = member.walletBalance;
-        }
-        return payload;
-      }),
-      100
-    );
+    await updateSnapshotMembers(snapshotId);
   }
 
   return {
@@ -684,8 +750,13 @@ async function getUserPositionStatus(trx, userId) {
 async function upsertUserPositionStatus(trx, userId, payload) {
   const now = new Date();
   const existing = await getUserPositionStatus(trx, userId);
+  const txnGlobalSequenceNumber = payload.txn_global_sequence
+    ? String(payload.txn_global_sequence).replace(/^TXN-FREEZ-/i, '')
+    : String(await allocateGlobalTxnNumber(trx));
+  const txnGlobalSequence = `TXN-FREEZ-${txnGlobalSequenceNumber.padStart(6, '0')}`;
   const nextPayload = {
     ...payload,
+    txn_global_sequence: txnGlobalSequence,
     last_checked_at: payload.last_checked_at || now,
     updated_at: now,
   };
@@ -1089,8 +1160,12 @@ async function getAncestorIds(trx, userId) {
 }
 
 async function recalculateOne(trx, userId, context) {
+  await refreshContextSubtree(trx, Number(userId), context);
   const children = context.childrenMap.get(Number(userId)) || [];
   const checkedAt = new Date();
+  setTimeout(() => {
+    console.log("Executed after delay");
+}, 5000);
   const metrics = computeMetrics(
     Number(userId),
     context.childrenMap,

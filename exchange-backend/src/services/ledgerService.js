@@ -191,7 +191,7 @@ export async function creditDeposit(userId, asset, amount, trx = null) {
   return withTx(async (innerTrx) => execute(innerTrx));
 }
 
-export async function creditBonus(userId, asset, amount, { reason } = {}, trx = null) {
+export async function creditBonus(userId, asset, amount, { reason, suppressMlmRefresh = false } = {}, trx = null) {
   if (!userId || !asset) throw new Error('Invalid bonus payload');
   const amountBig = toBigIntAmount(amount);
   if (amountBig <= 0n) throw new Error('Bonus amount must be positive');
@@ -230,6 +230,7 @@ export async function creditBonus(userId, asset, amount, { reason } = {}, trx = 
                 incomeType: classification.sourceType,
               }
             : null,
+          suppressMlmRefresh,
         },
         conn
       );

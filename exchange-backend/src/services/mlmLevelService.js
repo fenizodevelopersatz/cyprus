@@ -589,7 +589,13 @@ async function ensurePromotionReward(trx, userId, level, metrics) {
   }
 
   if (toNumber(level.promotionRewardUsdt) > 0) {
-    await creditBonus(userId, 'USDT', String(level.promotionRewardUsdt), { reason: 'mlm_level_promotion_reward' }, trx);
+    await creditBonus(
+      userId,
+      'USDT',
+      String(level.promotionRewardUsdt),
+      { reason: 'mlm_level_promotion_reward', suppressMlmRefresh: true },
+      trx
+    );
     await trx('user_level_history')
       .where({ user_id: userId, level: toNumber(level.sortOrder) })
       .update({ is_reward_given: true, updated_at: now });
@@ -948,7 +954,13 @@ async function processRecurringBonusPayment(trx, user, matched, metrics, statusR
   });
 
   try {
-    await creditBonus(user.id, 'USDT', bonusAmount.toFixed(18), { reason: 'mlm_level_bonus' }, trx);
+    await creditBonus(
+      user.id,
+      'USDT',
+      bonusAmount.toFixed(18),
+      { reason: 'mlm_level_bonus', suppressMlmRefresh: true },
+      trx
+    );
   } catch (error) {
     await trx('mlm_level_bonus_payouts').where({ id: payoutId }).del();
     await recordRecurringBonusHistory(trx, {

@@ -24,7 +24,7 @@ export const useReferralData = () => {
   const [dashboard, setDashboard] = useState<ReferralDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [refreshIndex, setRefreshIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [updatingPromo, setUpdatingPromo] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [history, setHistory] = useState<ReferralIncomeHistoryItem[]>([]);
@@ -33,8 +33,21 @@ export const useReferralData = () => {
   const [historyError, setHistoryError] = useState<string>();
   const [historyPage, setHistoryPage] = useState(1);
 
+  const loadDashboard = useCallback(async () => {
+    const data = await fetchReferralDashboard();
+    setDashboard(data);
+    setError(undefined);
+  }, []);
+
+  const loadHistory = useCallback(async (page: number, limit: number) => {
+    const payload = await fetchReferralIncomeHistory({ page, limit });
+    setHistory(payload.items);
+    setHistoryPagination(payload.pagination);
+    setHistoryError(undefined);
+  }, []);
+
   const refresh = useCallback(() => {
-    setRefreshIndex((index) => index + 1);
+    setRefreshing(true);
   }, []);
 
   useEffect(() => {
@@ -42,10 +55,8 @@ export const useReferralData = () => {
     setLoading(true);
     (async () => {
       try {
-        const data = await fetchReferralDashboard();
+        await loadDashboard();
         if (cancelled) return;
-        setDashboard(data);
-        setError(undefined);
       } catch (err) {
         if (cancelled) return;
         setError(parseError(err));
@@ -57,18 +68,15 @@ export const useReferralData = () => {
     return () => {
       cancelled = true;
     };
-  }, [refreshIndex]);
+  }, [loadDashboard]);
 
   useEffect(() => {
     let cancelled = false;
     setHistoryLoading(true);
     (async () => {
       try {
-        const payload = await fetchReferralIncomeHistory({ page: historyPage, limit: historyPagination.limit });
+        await loadHistory(historyPage, historyPagination.limit);
         if (cancelled) return;
-        setHistory(payload.items);
-        setHistoryPagination(payload.pagination);
-        setHistoryError(undefined);
       } catch (err) {
         if (cancelled) return;
         setHistoryError(parseError(err));
@@ -80,7 +88,36 @@ export const useReferralData = () => {
     return () => {
       cancelled = true;
     };
-  }, [historyPage, refreshIndex, historyPagination.limit]);
+  }, [historyPage, historyPagination.limit, loadHistory]);
+
+  useEffect(() => {
+    if (!refreshing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setHistoryLoading(true);
+        await Promise.all([
+          loadDashboard(),
+          loadHistory(historyPage, historyPagination.limit),
+        ]);
+      } catch (err) {
+        if (cancelled) return;
+        const message = parseError(err);
+        setError(message);
+        setHistoryError(message);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setHistoryLoading(false);
+          setRefreshing(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshing, loadDashboard, loadHistory, historyPage, historyPagination.limit]);
 
   const promoActive = dashboard?.primaryCode.promoActive ?? false;
 
@@ -145,6 +182,7 @@ export const useReferralData = () => {
       historyError,
       historyPage,
       setHistoryPage,
+      refreshing,
     }),
     [
       dashboard,
@@ -158,6 +196,7 @@ export const useReferralData = () => {
       historyPagination,
       loading,
       promoActive,
+      refreshing,
       refresh,
       setPromoActive,
       updatingPromo,

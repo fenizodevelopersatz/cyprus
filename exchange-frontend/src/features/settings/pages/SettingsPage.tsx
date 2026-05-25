@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Input from "../../../ui/Input";
 import Button from "../../../ui/Button";
@@ -1080,15 +1080,30 @@ function SettingsDateField({
   onChange: (value: string) => void;
 }) {
   const inputId = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const displayValue = formatSettingsDateValue(value);
+  const openPicker = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.click();
+    }
+  };
 
   return (
-    <div className="relative min-w-0 overflow-hidden rounded-[10px] border border-[rgba(148,163,184,0.26)] bg-[var(--bg-input)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[rgba(255,255,255,0.8)] focus-within:shadow-[0_0_0_3px_rgba(255,255,255,0.08)]">
+    <div
+      className="relative min-w-0 overflow-hidden rounded-[10px] border border-[rgba(148,163,184,0.26)] bg-[var(--bg-input)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[rgba(255,255,255,0.8)] focus-within:shadow-[0_0_0_3px_rgba(255,255,255,0.08)]"
+      onClick={openPicker}
+    >
       <div className={`pointer-events-none flex h-10 items-center px-3 text-sm ${displayValue ? "text-white" : "text-[var(--text-muted)]"}`}>
         {displayValue || "Select date of birth"}
       </div>
       <input
         id={inputId}
+        ref={inputRef}
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}

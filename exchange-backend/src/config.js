@@ -84,6 +84,7 @@ export const cfg = {
       .filter(Boolean),
     bonusPayoutCronEnabled: String(process.env.MLM_BONUS_PAYOUT_CRON_ENABLED ?? 'true').toLowerCase() !== 'false',
     bonusPayoutIntervalMinutes: Number(process.env.MLM_BONUS_PAYOUT_INTERVAL_MINUTES || 30),
+    flowTrackingEnabled: String(process.env.MLM_FLOW_TRACKING_ENABLED || '').toLowerCase() === 'true',
   },
   exchange: {
     minNotionalOverride: Number.isFinite(EXCHANGE_MIN_NOTIONAL) ? EXCHANGE_MIN_NOTIONAL : 0,

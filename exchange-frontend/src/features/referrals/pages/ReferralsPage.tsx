@@ -162,6 +162,7 @@ export default function ReferralsPage() {
     historyError,
     historyPage,
     setHistoryPage,
+    refreshing,
   } = useReferralData();
 
   const metrics = dashboard?.metrics ?? [];
@@ -745,8 +746,8 @@ export default function ReferralsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3 lg:justify-end">
           <Button variant="ghost" size="xs" onClick={refresh} disabled={loading}>
-              Refresh
-            </Button>
+            <RefreshButtonLabel loading={refreshing} label="Refresh" />
+          </Button>
         </div>
       </header>
 
@@ -1019,7 +1020,7 @@ export default function ReferralsPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
-              Refresh
+              <RefreshButtonLabel loading={refreshing} label="Refresh" />
             </Button>
             <Button variant="ghost" size="sm" onClick={exportCsv} disabled={exporting}>
               {exporting ? "Preparing..." : "Export CSV"}
@@ -1161,5 +1162,32 @@ export default function ReferralsPage() {
       )}
       </div>
     </div>
+  );
+}
+
+function RefreshButtonLabel({ loading, label }: { loading: boolean; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {loading ? <RefreshSpinner /> : null}
+      <span>{loading ? "Reloading..." : label}</span>
+    </span>
+  );
+}
+
+function RefreshSpinner() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 animate-spin"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
   );
 }

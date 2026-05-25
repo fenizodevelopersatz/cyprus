@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { cfg } from '../config.js';
 
 function toMicroTimestamp(date = new Date()) {
   const iso = date.toISOString();
@@ -18,6 +19,7 @@ export async function recordMlmFlowStep(
     completedAt = new Date(),
   }
 ) {
+  if (!cfg.mlm?.flowTrackingEnabled) return null;
   if (!stepKey) return null;
 
   const payload = {

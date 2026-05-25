@@ -73,6 +73,8 @@ export default function AdminReferralDetailPage() {
   const historyPagination = historyQuery.data?.pagination ?? { page: 1, totalPages: 1, total: 0, limit: 10 };
   const mlm = dashboard?.mlm;
   const primary = dashboard?.primaryCode;
+  const dashboardRefreshing = dashboardQuery.isFetching;
+  const historyRefreshing = historyQuery.isFetching;
   const fallbackReferralCode = userQuery.data?.referralCode?.trim() || "";
   const fallbackReferralUrl =
     userQuery.data?.referralUrl?.trim() ||
@@ -246,8 +248,8 @@ export default function AdminReferralDetailPage() {
                   {primary?.updatedAt ? ` | Last updated ${formatDateTime(primary.updatedAt)}` : ""}
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => void dashboardQuery.refetch()}>
-                Refresh
+              <Button variant="ghost" size="sm" onClick={() => void dashboardQuery.refetch()} disabled={dashboardRefreshing}>
+                <RefreshButtonLabel loading={dashboardRefreshing} label="Refresh" />
               </Button>
             </div>
 
@@ -462,8 +464,8 @@ export default function AdminReferralDetailPage() {
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                  <Button size="sm" className="w-full" onClick={() => void dashboardQuery.refetch()}>
-                    Refresh referral hub
+                  <Button size="sm" className="w-full" onClick={() => void dashboardQuery.refetch()} disabled={dashboardRefreshing}>
+                    <RefreshButtonLabel loading={dashboardRefreshing} label="Refresh referral hub" />
                   </Button>
                   <Button variant="ghost" size="sm" className="w-full" onClick={() => void exportCsv()} disabled={exporting}>
                     {exporting ? "Preparing..." : "Export CSV"}
@@ -480,8 +482,8 @@ export default function AdminReferralDetailPage() {
                 <p className="text-xs text-slate-300/70">Paginated unilevel income ledger for the selected user referrals and join rewards.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => void historyQuery.refetch()}>
-                  Refresh
+                <Button variant="ghost" size="sm" onClick={() => void historyQuery.refetch()} disabled={historyRefreshing}>
+                  <RefreshButtonLabel loading={historyRefreshing} label="Refresh" />
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => void exportCsv()} disabled={exporting}>
                   {exporting ? "Preparing..." : "Export CSV"}
@@ -639,6 +641,33 @@ function MetricTile({
       </div>
       {helper ? <div className="mt-3 text-xs text-slate-400">{helper}</div> : null}
     </div>
+  );
+}
+
+function RefreshButtonLabel({ loading, label }: { loading: boolean; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {loading ? <RefreshSpinner /> : null}
+      <span>{loading ? "Reloading..." : label}</span>
+    </span>
+  );
+}
+
+function RefreshSpinner() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 animate-spin"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
   );
 }
 

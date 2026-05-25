@@ -211,7 +211,9 @@ async function ensureMlmSchema() {
       await ensureMlmSnapshotMembersMetaMigration(db);
       await ensureUserPositionStatusTxnGlobalSequenceMigration(db);
       await ensureUserPositionStatusTxnGlobalSequenceTextMigration(db);
-      await ensureMlmFlowTrackingMigration(db);
+      if (cfg.mlm?.flowTrackingEnabled) {
+        await ensureMlmFlowTrackingMigration(db);
+      }
       await ensureUserPositionStatusFreezeMicroMigration(db);
     })().catch((error) => {
       schemaReadyPromise = null;
@@ -526,16 +528,6 @@ async function createFrozenCycleSnapshot(trx, userId, nextPayload, matched, cont
     frozenEligibleMembers: snapshotMembers.map((member) => ({
       user_id: member.memberUserId,
       total_wallet_balance: toAmount(member.walletBalance),
-      created_at: createdAt,
-      main_wallet_balance_updated_at: member.userUpdatedAt,
-      main_wallet_balance_updated_at_micro: member.userUpdatedAtMicro,
-      last_wallet_txn_id: member.latestWalletTxnId,
-      last_wallet_ledger_id: member.latestWalletLedgerId,
-      last_wallet_ledger_balance: member.latestWalletLedgerBalance,
-      last_wallet_ledger_created_at: member.latestWalletLedgerCreatedAt,
-      last_wallet_ledger_created_at_micro: member.latestWalletLedgerCreatedAtMicro,
-      last_wallet_ledger_updated_at: member.latestWalletLedgerUpdatedAt,
-      last_wallet_ledger_updated_at_micro: member.latestWalletLedgerUpdatedAtMicro,
     })),
   });
   const explicitSnapshotId = nextPayload.current_cycle_snapshot_id ? Number(nextPayload.current_cycle_snapshot_id) : null;
@@ -1645,6 +1637,7 @@ export async function getUserMlmDashboard(userId) {
     status: normalizeStatus(user?.status),
     mainWalletBalance: String(user?.main_wallet_balance || '0'),
     minimumEligibleBalance: mlmConfig.MLM_MINIMUM_BALANCE,
+    bonusIntervalDays: toNumber(mlmConfig.BONUS_INTERVAL_DAYS, DEFAULT_BONUS_INTERVAL_DAYS),
     rewardApplicable: normalizeStatus(user?.status) === 'active' && toNumber(user?.current_level_rank) > 0,
     currentEligibleLevel: statusRow?.current_eligible_level_code || user?.current_level_code || null,
     currentEligibleLevelOrder: toNumber(statusRow?.current_eligible_level_order),

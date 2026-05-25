@@ -88,6 +88,7 @@ export type ReferralDashboard = {
     status: string;
     mainWalletBalance: string;
     minimumEligibleBalance: number;
+    bonusIntervalDays?: number;
     rewardApplicable: boolean;
     currentEligibleLevel?: string | null;
     currentEligibleLevelOrder?: number;
@@ -348,6 +349,7 @@ const mapMlm = (value: unknown): ReferralDashboard["mlm"] => {
     status: String(raw.status ?? "inactive"),
     mainWalletBalance: String(raw.mainWalletBalance ?? "0"),
     minimumEligibleBalance: toNumber(raw.minimumEligibleBalance, 300),
+    bonusIntervalDays: toNumber(raw.bonusIntervalDays, 10),
     rewardApplicable: Boolean(raw.rewardApplicable),
     currentEligibleLevel: raw.currentEligibleLevel ? String(raw.currentEligibleLevel) : null,
     currentEligibleLevelOrder: toNumber(raw.currentEligibleLevelOrder),

@@ -159,6 +159,7 @@ type DashboardMlmSnapshot = {
   promotionReward: number;
   birthdayReward: number;
   minimumEligibleBalance: number;
+  bonusIntervalDays: number;
   lastUpdatedAt?: string | null;
 };
 
@@ -187,6 +188,7 @@ export default function Dashboard() {
     promotionReward: 0,
     birthdayReward: 0,
     minimumEligibleBalance: 300,
+    bonusIntervalDays: 10,
     lastUpdatedAt: null,
   });
 
@@ -251,9 +253,11 @@ export default function Dashboard() {
   const topMoverSublabelClass = featuredTicker?.changePct >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]";
   const topMoverPercentClass = featuredTicker?.changePct >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]";
   const mlmLastUpdatedLabel = mlmSnapshot.lastUpdatedAt ? formatRelativeTime(mlmSnapshot.lastUpdatedAt) : "auto refresh 15s";
+  const bonusIntervalDays = Math.max(1, Number(mlmSnapshot.bonusIntervalDays || 10));
+  const salaryCardLabel = `Salary / ${bonusIntervalDays} Days`;
   const tenDaySalarySublabel = mlmSnapshot.tenDaySalaryNextDueAt
-    ? `Qualify now, first recurring pay after 10 days. Next payout ${formatShortDate(mlmSnapshot.tenDaySalaryNextDueAt)}.`
-    : "Qualify now, first recurring pay after 10 days.";
+    ? `Qualify now, first recurring pay after ${bonusIntervalDays} days. Next payout ${formatShortDate(mlmSnapshot.tenDaySalaryNextDueAt)}.`
+    : `Qualify now, first recurring pay after ${bonusIntervalDays} days.`;
   useEffect(() => {
     let active = true;
 
@@ -327,6 +331,7 @@ export default function Dashboard() {
           promotionReward: incomeTotals.promotionReward || promotionHistoryTotal || Number(reward) || 0,
           birthdayReward: incomeTotals.birthdayReward,
           minimumEligibleBalance: Number(dashboard.mlm.minimumEligibleBalance) || 300,
+          bonusIntervalDays: Math.max(1, Number(dashboard.mlm.bonusIntervalDays) || 10),
           lastUpdatedAt:
             dashboard.mlm.summary?.lastCalculatedAt ??
             dashboard.mlm.positionStatus?.lastCheckedAt ??
@@ -346,6 +351,7 @@ export default function Dashboard() {
           promotionReward: prev.promotionReward || getOneTimePromotionReward(currentLevelRank),
           birthdayReward: prev.birthdayReward,
           minimumEligibleBalance: prev.minimumEligibleBalance || 300,
+          bonusIntervalDays: prev.bonusIntervalDays || 10,
           lastUpdatedAt: prev.lastUpdatedAt ?? new Date().toISOString(),
         }));
       }
@@ -668,7 +674,7 @@ export default function Dashboard() {
           <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} valueClassName="text-[var(--success)]" compact />
           <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} valueClassName="text-[var(--success)]" compact />
           <MetricCard
-            label="Salary / 10 Days"
+            label={salaryCardLabel}
             value={formatMlmMoney(mlmSnapshot.tenDaySalary)}
             sublabel={tenDaySalarySublabel}
             valueClassName="text-[var(--success)]"
@@ -921,7 +927,7 @@ export default function Dashboard() {
         <MetricCard label="Trading Profit" value={formatMlmMoney(tradingProfit)} valueClassName="text-[var(--success)]" />
         <MetricCard label="Referral Reward" value={formatMlmMoney(mlmSnapshot.referralReward)} valueClassName="text-[var(--success)]" />
         <MetricCard
-          label="Salary / 10 Days"
+          label={salaryCardLabel}
           value={formatMlmMoney(mlmSnapshot.tenDaySalary)}
           sublabel={tenDaySalarySublabel}
           valueClassName="text-[var(--success)]"

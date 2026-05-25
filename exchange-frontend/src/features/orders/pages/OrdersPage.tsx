@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Button from "../../../ui/Button";
 import Input from "../../../ui/Input";
@@ -344,17 +344,32 @@ function DateField({
   onChange: (value: string) => void;
 }) {
   const inputId = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const displayValue = formatDateInputValue(value);
+  const openPicker = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.click();
+    }
+  };
 
   return (
     <label htmlFor={inputId} className="min-w-0 space-y-1">
       <span className="block pl-1 text-[9px] uppercase tracking-[0.14em] text-slate-400">{label}</span>
-      <div className="relative min-w-0 overflow-hidden rounded-[10px] border border-[rgba(148,163,184,0.26)] bg-[var(--bg-input)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[rgba(148,163,184,0.52)] focus-within:shadow-[0_0_0_3px_rgba(148,163,184,0.12)]">
+      <div
+        className="relative min-w-0 overflow-hidden rounded-[10px] border border-[rgba(148,163,184,0.26)] bg-[var(--bg-input)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition focus-within:border-[rgba(148,163,184,0.52)] focus-within:shadow-[0_0_0_3px_rgba(148,163,184,0.12)]"
+        onClick={openPicker}
+      >
         <div className={`pointer-events-none flex h-10 items-center px-3 text-[11px] sm:text-[13px] ${displayValue ? "text-white" : "text-[var(--text-muted)]"}`}>
           {displayValue || "Select date"}
         </div>
         <input
           id={inputId}
+          ref={inputRef}
           type="date"
           value={value}
           onChange={(event) => onChange(event.target.value)}

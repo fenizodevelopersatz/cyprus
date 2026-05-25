@@ -89,10 +89,10 @@ function orderByGlobalTxnSequence(query, alias = null) {
       [col, col]
     )
     .orderByRaw(
-      `COALESCE(CAST(SUBSTRING_INDEX(??, '-', -1) AS UNSIGNED), ??) ASC`,
+      `COALESCE(CAST(SUBSTRING_INDEX(??, '-', -1) AS UNSIGNED), ??) DESC`,
       [col, idCol]
     )
-    .orderBy(idCol, 'asc');
+    .orderBy(idCol, 'desc');
 }
 
 function buildHistoryTxnId(category, number, fallbackId) {

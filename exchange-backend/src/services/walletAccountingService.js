@@ -311,6 +311,7 @@ async function mutateMainWalletBalance(
   const userUpdate = { updated_at: new Date() };
   if ('main_wallet_balance' in user) userUpdate.main_wallet_balance = newBalance;
   if ('wallet_main_balance' in user) userUpdate.wallet_main_balance = newBalance;
+  console.log('userUpdate-123456789->', userUpdate, "\n");
   await trx('users').where({ id: userId }).update(userUpdate);
 
   const latestLedger = await trx('wallet_ledger').where({ id: ledgerEntry.ledgerId }).first('new_balance');
@@ -418,9 +419,9 @@ export async function applyWalletCreditRecord(
     );
   }
 
-  if (!suppressMlmRefresh) {
-    await triggerMlmRefresh(userId, { type, sourceType }, trx);
-  }
+  // if (!suppressMlmRefresh) {
+  //   await triggerMlmRefresh(userId, { type, sourceType }, trx);
+  // }
   queueWalletRealtimeRefresh(userId, trx);
 
   return {

@@ -399,7 +399,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
 
   for (const child of children) {
     const balance = toNumber(child.main_wallet_balance);
-    console.log('balance', balance, children, "\n");
+    // console.log('balance', balance, children, "\n");
     const eligible = isEligibleUser(child, minimumBalance);
     metrics.directTotalBalance += balance;
     metrics.teamTotalMembers += 1;
@@ -409,7 +409,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
       metrics.directEligibleBalance += balance;
       metrics.teamEligibleMembers += 1;
       metrics.teamEligibleBalance += balance;
-      console.log('metrics.teamEligibleBalance1', metrics.teamEligibleBalance, "\n");
+      // console.log('metrics.teamEligibleBalance1', metrics.teamEligibleBalance, "\n");
     }
 
     const subtree = computeMetrics(Number(child.id), childrenMap, minimumBalance, memo);
@@ -417,7 +417,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
     metrics.teamEligibleMembers += subtree.teamEligibleMembers;
     metrics.teamTotalBalance += subtree.teamTotalBalance;
     metrics.teamEligibleBalance += subtree.teamEligibleBalance;
-    console.log('metrics.teamEligibleBalance2', metrics.teamEligibleBalance, "\n");
+    // console.log('metrics.teamEligibleBalance2', metrics.teamEligibleBalance, "\n");
   }
 
   memo.set(userId, metrics);
@@ -879,19 +879,19 @@ function buildPositionStatusPayload({ statusRow, matched, metrics, levelRules, b
       : toNumber(matched?.qualifiedDirectMembers)
     : 0;
 
-  console.log('[MLM freeze values]', {
-    userId: statusRow?.user_id ?? null,
-    levelCode: effectiveLevelCode,
-    effectiveIsQualified,
-    cycleLocked,
-    qualificationChanged,
-    metricsTeamEligibleBalance: toAmount(metrics.teamEligibleBalance),
-    metricsTeamEligibleMembers: toNumber(metrics.teamEligibleMembers),
-    previousFrozenEligibleBalance: statusRow?.frozen_eligible_balance ?? null,
-    previousFrozenEligibleMembers: statusRow?.frozen_eligible_members ?? null,
-    frozen_eligible_balance: frozenEligibleBalance,
-    frozen_eligible_members: frozenEligibleMembers,
-  });
+  // console.log('[MLM freeze values]', {
+  //   userId: statusRow?.user_id ?? null,
+  //   levelCode: effectiveLevelCode,
+  //   effectiveIsQualified,
+  //   cycleLocked,
+  //   qualificationChanged,
+  //   metricsTeamEligibleBalance: toAmount(metrics.teamEligibleBalance),
+  //   metricsTeamEligibleMembers: toNumber(metrics.teamEligibleMembers),
+  //   previousFrozenEligibleBalance: statusRow?.frozen_eligible_balance ?? null,
+  //   previousFrozenEligibleMembers: statusRow?.frozen_eligible_members ?? null,
+  //   frozen_eligible_balance: frozenEligibleBalance,
+  //   frozen_eligible_members: frozenEligibleMembers,
+  // });
 
   return {
     current_eligible_level_code: effectiveLevelCode,

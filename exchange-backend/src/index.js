@@ -20,6 +20,11 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = createWs(server);
 
+function isSuppressedBinanceHandshakeError(errorLike) {
+  const message = errorLike instanceof Error ? errorLike.message : String(errorLike || '');
+  return message.includes('WebSocket was closed before the connection was established');
+}
+
 startMarketTicker(io);
 startFuturesTicker(io);
 startBinanceSync().catch((err) => {
@@ -55,8 +60,16 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
+  if (isSuppressedBinanceHandshakeError(reason)) {
+    errorLogger.warn({ err: reason, event: 'suppressed_unhandled_rejection' }, 'suppressed_unhandled_rejection');
+    return;
+  }
   errorLogger.error({ err: reason, event: 'unhandled_rejection' }, 'unhandled_rejection');
 });
 process.on('uncaughtException', (err) => {
+  if (isSuppressedBinanceHandshakeError(err)) {
+    errorLogger.warn({ err, event: 'suppressed_uncaught_exception' }, 'suppressed_uncaught_exception');
+    return;
+  }
   errorLogger.fatal({ err, event: 'uncaught_exception' }, 'uncaught_exception');
 });

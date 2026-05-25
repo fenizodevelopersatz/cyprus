@@ -12,6 +12,7 @@ import {
 import { audit } from './auditService.js';
 import { applyWalletCreditRecord, applyWalletDebitRecord } from './walletAccountingService.js';
 import { applyFirstDepositReferralRewards } from './fundingDepositService.js';
+import { recalculateMlmForUser } from './mlmLevelService.js';
 import { getUserSipLiabilities } from './sipService.js';
 import { getSignalAssetByNetwork, listSignalAssets } from './signalAssetService.js';
 import { provisionUserWallets, getUserWalletByNetwork, listUserWallets, findWalletOwnerByAddress } from './userWalletService.js';
@@ -932,6 +933,7 @@ export async function adminAdjustBalance({
         { description: `Admin credit ${asset}`, meta: { userId, reviewerId, memo, namespace: normalizedNamespace } }
       );
       if (String(asset).toUpperCase() === 'USDT' && normalizedNamespace === 'spot:available') {
+        const manualDepositReferenceKey = normalizeManualDepositReferenceKey(orderId);
         await applyWalletCreditRecord(
           {
             userId,
@@ -941,19 +943,27 @@ export async function adminAdjustBalance({
             referenceId: orderId || null,
             remark: memo || 'Admin credited main wallet balance',
             meta: { reviewerId, namespace: normalizedNamespace, orderId: orderId || null },
+            suppressMlmRefresh: true,
           },
           trx
         );
 
-        const manualDepositReferenceKey = normalizeManualDepositReferenceKey(orderId);
+        let rewardResult = null;
         if (manualDepositReferenceKey) {
-          await applyFirstDepositReferralRewards(trx, {
+          rewardResult = await applyFirstDepositReferralRewards(trx, {
             userId,
             referenceKey: manualDepositReferenceKey,
             depositAmount: formatUnits(amountBig, 18),
             now: new Date(),
           });
         }
+        await recalculateMlmForUser(userId, {
+          trx,
+          relatedUserIds: rewardResult?.recalculationUserIds ?? [],
+          flowContext: {
+            relatedUserIds: rewardResult?.recalculationUserIds ?? [],
+          },
+        });
       }
     } else {
       await journal(

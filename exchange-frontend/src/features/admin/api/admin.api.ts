@@ -796,6 +796,31 @@ export type AdminIncomeLedgerRow = {
   updated_at?: string;
 };
 
+export type AdminUserOrdersAuditRow = {
+  id: number | string;
+  txn_id: string;
+  order_id?: string | null;
+  incomeType: string;
+  amount: number;
+  status: string;
+  sourceUser?: string | null;
+  sourceUserEmail?: string | null;
+  sourceUserName?: string | null;
+  sourceUserLabel?: string | null;
+  source_user_id?: number | string | null;
+  level?: string | null;
+  reference_id?: string | number | null;
+  signal_token?: string | null;
+  batch_token?: string | null;
+  symbol?: string | null;
+  asset?: string | null;
+  remark?: string | null;
+  referenceDetails?: string | null;
+  orderRefId?: string | number | null;
+  createdAt?: string;
+  timestamp?: string;
+};
+
 export type AdminIncomeLedgerSummary = {
   totalDirectSponsorIncome: number;
   totalJoinedIncome: number;
@@ -1171,6 +1196,20 @@ export async function fetchAdminUsers(params?: {
 export async function fetchAdminUser(userId: string | number) {
   const { data } = await api.get(ADMIN_ENDPOINTS.users.get(userId));
   return unwrap<AdminUser>(data);
+}
+
+export async function fetchAdminUserOrdersAudit(params: {
+  userId: string | number;
+  page?: number;
+  limit?: number;
+  search?: string;
+  incomeType?: string;
+  fromDate?: string;
+  toDate?: string;
+}) {
+  const { userId, ...query } = params;
+  const { data } = await api.get(ADMIN_ENDPOINTS.users.ordersAudit(userId, query));
+  return unwrap<PaginatedResult<AdminUserOrdersAuditRow>>(data);
 }
 
 export async function fetchAdminReferralDashboard(userId: string | number) {

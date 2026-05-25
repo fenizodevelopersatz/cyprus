@@ -402,6 +402,20 @@ export const ADMIN_ENDPOINTS = {
       return toAbsolute(`/admin/users${q}`);
     },
     get: (userId: string | number) => toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}`),
+    ordersAudit: (
+      userId: string | number,
+      params?: { page?: number; limit?: number; search?: string; incomeType?: string; fromDate?: string; toDate?: string }
+    ) => {
+      const qs = new URLSearchParams();
+      if (params?.page) qs.set("page", String(params.page));
+      if (params?.limit) qs.set("limit", String(params.limit));
+      if (params?.search) qs.set("search", params.search);
+      if (params?.incomeType) qs.set("incomeType", params.incomeType);
+      if (params?.fromDate) qs.set("fromDate", params.fromDate);
+      if (params?.toDate) qs.set("toDate", params.toDate);
+      const q = qs.toString() ? `?${qs.toString()}` : "";
+      return toAbsolute(`/admin/users/${encodeURIComponent(String(userId))}/orders-audit${q}`);
+    },
     balances: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/balances`),
     overview: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/overview`),
     depositAddresses: (userId: string) => toAbsolute(`/admin/wallet/users/${encodeURIComponent(userId)}/deposit-addresses`),

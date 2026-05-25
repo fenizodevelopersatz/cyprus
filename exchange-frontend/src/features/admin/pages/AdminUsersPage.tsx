@@ -8,8 +8,8 @@ import {
   adminAdjustBalance,
   approveAdminUserTelegramAccess,
   fetchAdminBalances,
-  fetchAdminIncomeLedger,
-  type AdminIncomeLedgerRow,
+  fetchAdminUserOrdersAudit,
+  type AdminUserOrdersAuditRow,
   fetchAdminUserWalletDeposits,
   fetchAdminUserOverview,
   fetchAdminUserWalletWithdrawals,
@@ -194,12 +194,12 @@ export default function AdminUsersPage() {
     enabled: Boolean(selectedUser),
   });
   const incomeLedgerQuery = useQuery({
-    queryKey: ["admin", "user", selectedUser?.id, "income-ledger", transactionPage],
+    queryKey: ["admin", "user", selectedUser?.id, "orders-audit"],
     queryFn: () =>
-      fetchAdminIncomeLedger({
+      fetchAdminUserOrdersAudit({
+        userId: String(selectedUser?.id),
         page: 1,
-        limit: 100,
-        search: String(selectedUser?.id || ""),
+        limit: 200,
       }),
     enabled: Boolean(selectedUser),
   });
@@ -324,9 +324,7 @@ export default function AdminUsersPage() {
   const withdrawalItems: AdminWithdrawal[] = Array.isArray(withdrawalsQuery.data)
     ? withdrawalsQuery.data
     : withdrawalsQuery.data?.items ?? [];
-  const incomeLedgerItems: AdminIncomeLedgerRow[] = (incomeLedgerQuery.data?.items ?? []).filter(
-    (item) => String(item.userId ?? item.primary_user_id ?? "") === String(selectedUser?.id ?? "")
-  );
+  const incomeLedgerItems: AdminUserOrdersAuditRow[] = incomeLedgerQuery.data?.items ?? [];
   const successfulWithdrawalItems = withdrawalItems.filter((item) => {
     const status = String(item.status ?? "").toLowerCase();
     return status === "success" || status === "approved" || status === "completed";
@@ -335,7 +333,6 @@ export default function AdminUsersPage() {
     (acc, row) => {
       const amount = Number(row.amount || 0);
       const type = String(row.incomeType || "").toLowerCase();
-      acc.total += amount;
       if (type === "signal_income") acc.signal += amount;
       else if (type === "direct_sponsor_commission") acc.direct += amount;
       else if (type === "joined_commission") acc.sponsor += amount;
@@ -343,7 +340,7 @@ export default function AdminUsersPage() {
       else if (type === "level_bonus_10day") acc.tenDay += amount;
       return acc;
     },
-    { total: 0, signal: 0, direct: 0, sponsor: 0, level: 0, tenDay: 0 }
+    { signal: 0, direct: 0, sponsor: 0, level: 0, tenDay: 0 }
   );
   const unifiedTransactions = [
     ...incomeLedgerItems.map((row) => ({
@@ -354,14 +351,14 @@ export default function AdminUsersPage() {
       amountLabel: `$${Number(row.amount || 0).toFixed(2)}`,
       amountValue: Number(row.amount || 0),
       status: row.status,
-      timestamp: row.event_at || row.createdAt || "",
+      timestamp: row.timestamp || row.createdAt || "",
       primaryMetaLabel: "Txn ID",
       primaryMetaValue: row.txn_id || "-",
       secondaryMetaLabel: "Reference",
-      secondaryMetaValue: String(row.reference ?? row.reference_id ?? row.order_id ?? "-"),
+      secondaryMetaValue: String(row.referenceDetails ?? row.orderRefId ?? row.reference_id ?? row.order_id ?? "-"),
       secondaryMetaHref: undefined,
       tertiaryMetaLabel: "Source User",
-      tertiaryMetaValue: row.sourceUser || "-",
+      tertiaryMetaValue: row.sourceUserLabel || row.sourceUser || "-",
       quaternaryMetaLabel: "Level",
       quaternaryMetaValue: row.level || "-",
       badgeClass: "bg-emerald-500/20 text-emerald-100",
@@ -1011,13 +1008,14 @@ export default function AdminUsersPage() {
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-              <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
                 <SummaryMetric label="Deposits" value={String(depositItems.length)} accent="cyan" />
                 <SummaryMetric label="Withdraw Success" value={String(successfulWithdrawalItems.length)} accent="amber" />
                 <SummaryMetric label="Sponsor Income" value={`$${incomeTotals.sponsor.toFixed(2)}`} accent="emerald" />
                 <SummaryMetric label="Direct Income" value={`$${incomeTotals.direct.toFixed(2)}`} accent="violet" />
                 <SummaryMetric label="Level Income" value={`$${incomeTotals.level.toFixed(2)}`} accent="sky" />
-                <SummaryMetric label="10 Days + Signal" value={`$${(incomeTotals.tenDay + incomeTotals.signal).toFixed(2)}`} accent="pink" />
+                <SummaryMetric label="10-Day Income" value={`$${incomeTotals.tenDay.toFixed(2)}`} accent="pink" />
+                <SummaryMetric label="Signal Income" value={`$${incomeTotals.signal.toFixed(2)}`} accent="emerald" />
               </div>
 
               <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -1143,9 +1141,9 @@ function formatIncomeTypeLabel(value?: string) {
     case "joined_commission":
       return "Sponsor Income";
     case "level_promotion_reward":
-      return "Level Income";
+      return "Level Reward";
     case "level_bonus_10day":
-      return "10 Days Once";
+      return "10-Day Income";
     case "admin_adjustment_credit":
       return "admin_deposit";
     case "admin_adjustment_debit":

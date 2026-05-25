@@ -103,6 +103,260 @@ function mapAdminUserRow(req, row) {
   };
 }
 
+const ADMIN_AUDIT_INCOME_TYPES = new Set([
+  'signal_income',
+  'direct_sponsor_commission',
+  'joined_commission',
+  'level_bonus_10day',
+  'level_promotion_reward',
+  'admin_adjustment_credit',
+  'admin_adjustment_debit',
+]);
+
+const normalizeAuditText = (value) => String(value ?? '').trim().toLowerCase();
+const formatAuditDateKey = (value) => new Date(value || Date.now()).toISOString().slice(0, 10).replace(/-/g, '');
+const buildAuditTxnId = (prefix, eventAt, id) =>
+  `${prefix}-${formatAuditDateKey(eventAt)}-${String(Number(id) || 0).padStart(6, '0')}`;
+
+async function hasColumn(tableName, columnName) {
+  const row = await db('information_schema.columns')
+    .where({
+      table_schema: db.raw('DATABASE()'),
+      table_name: tableName,
+      column_name: columnName,
+    })
+    .first('column_name');
+  return !!row;
+}
+
+function buildAdminAuditTxnId(row) {
+  if (row.txn_id) {
+    if (row.kind === 'admin_adjustment_credit') return String(row.txn_id).replace(/^TXN-FEE-/i, 'TXN-ADEP-');
+    if (row.kind === 'admin_adjustment_debit') return String(row.txn_id).replace(/^TXN-FEE-/i, 'TXN-AWDR-');
+    return row.txn_id;
+  }
+  if (row.kind === 'signal_income') return buildAuditTxnId('SIG', row.createdAt, row.id);
+  if (row.kind === 'direct_sponsor_commission') return buildAuditTxnId('DIR', row.createdAt, row.id);
+  if (row.kind === 'joined_commission') return buildAuditTxnId('JIN', row.createdAt, row.id);
+  if (row.kind === 'level_bonus_10day') return buildAuditTxnId('LVB', row.createdAt, row.id);
+  if (row.kind === 'level_promotion_reward') return buildAuditTxnId('LVR', row.createdAt, row.id);
+  if (row.kind === 'admin_adjustment_credit') return buildAuditTxnId('AVC', row.createdAt, row.id);
+  if (row.kind === 'admin_adjustment_debit') return buildAuditTxnId('AVD', row.createdAt, row.id);
+  return buildAuditTxnId('INC', row.createdAt, row.id);
+}
+
+function buildAdminAuditOrderRef(row) {
+  if (row.kind === 'signal_income') return row.order_id || row.signal_token || row.batch_token || null;
+  if (row.kind === 'direct_sponsor_commission' || row.kind === 'joined_commission') return row.reference_id || null;
+  if (row.kind === 'level_bonus_10day' || row.kind === 'level_promotion_reward') return row.level_code || row.reference_id || null;
+  if (row.kind === 'admin_adjustment_credit' || row.kind === 'admin_adjustment_debit') return row.reference_id || null;
+  return row.reference_id || null;
+}
+
+function buildAdminAuditReferenceDetails(row) {
+  if (row.kind === 'signal_income') {
+    return `${row.symbol || 'BTCUSDT'} | signal code ${row.signal_token || row.batch_token || '-'}${row.order_id ? ` | order ${row.order_id}` : ''}`;
+  }
+  if (row.kind === 'direct_sponsor_commission') return `first deposit ref ${row.reference_id || '-'}`;
+  if (row.kind === 'joined_commission') return `first deposit ref ${row.reference_id || '-'}`;
+  if (row.kind === 'level_bonus_10day') return `level cycle ${row.level_code || row.reference_id || '-'}`;
+  if (row.kind === 'level_promotion_reward') return `level reward ref ${row.reference_id || row.level_code || '-'}`;
+  if (row.kind === 'admin_adjustment_credit') {
+    return `admin virtual deposit${row.reference_id ? ` | order ${row.reference_id}` : ''}${row.asset ? ` | asset ${row.asset}` : ''}`;
+  }
+  if (row.kind === 'admin_adjustment_debit') {
+    return `admin virtual withdrawal${row.reference_id ? ` | order ${row.reference_id}` : ''}${row.asset ? ` | asset ${row.asset}` : ''}`;
+  }
+  return row.reference_id ? String(row.reference_id) : '-';
+}
+
+function filterAdminAuditRows(rows, { incomeType, search, fromDate, toDate }) {
+  return rows.filter((row) => {
+    if (incomeType && row.incomeType !== incomeType) return false;
+    if (search) {
+      const haystack = [
+        row.txn_id,
+        row.order_id,
+        row.orderRefId,
+        row.signal_token,
+        row.batch_token,
+        row.sourceUser,
+        row.sourceUserLabel,
+        row.referenceDetails,
+        row.level,
+        row.reference_id,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+    if (fromDate && new Date(row.timestamp) < new Date(fromDate)) return false;
+    if (toDate && new Date(row.timestamp) > new Date(toDate)) return false;
+    return true;
+  });
+}
+
+async function loadAdminOrdersAuditRows(userId) {
+  const [
+    hasUserSignalTxnId,
+    hasUserSignalOrderId,
+    hasMlmIncomeTxnId,
+    hasWalletTxnId,
+    hasWalletSourceUserId,
+    hasWalletAsset,
+    hasWalletRemark,
+    hasMlmAchievementTxnId,
+    hasMlmBonusTxnId,
+  ] = await Promise.all([
+    hasColumn('user_signal_logs', 'txn_id'),
+    hasColumn('user_signal_logs', 'order_id'),
+    hasColumn('mlm_income_history', 'txn_id'),
+    hasColumn('wallet_ledger', 'txn_id'),
+    hasColumn('wallet_ledger', 'source_user_id'),
+    hasColumn('wallet_ledger', 'asset'),
+    hasColumn('wallet_ledger', 'remark'),
+    hasColumn('mlm_level_achievements', 'txn_id'),
+    hasColumn('mlm_level_bonus_payouts', 'txn_id'),
+  ]);
+
+  const [signals, directs, joins, levelBonuses, levelRewards, adminWalletAdjustments] = await Promise.all([
+    db('user_signal_logs as usl')
+      .select(
+        'usl.id',
+        hasUserSignalTxnId ? 'usl.txn_id' : db.raw('NULL as txn_id'),
+        hasUserSignalOrderId ? 'usl.order_id' : db.raw('NULL as order_id'),
+        'usl.batch_token',
+        'usl.signal_token',
+        'usl.symbol',
+        'usl.trade_status',
+        'usl.slot_time_snapshot',
+        'usl.status',
+        'usl.profit_amount',
+        'usl.total_return_usdt',
+        'usl.created_at as createdAt',
+        db.raw("'signal_income' as kind"),
+        db.raw('NULL as reference_id'),
+        db.raw('NULL as source_user_email'),
+        db.raw('NULL as source_user_name'),
+        db.raw('NULL as source_user_id'),
+        db.raw('NULL as level_code')
+      )
+      .where({ user_id: userId })
+      .where('usl.trade_status', 'CLOSED'),
+    db('mlm_income_history as m')
+      .leftJoin('users as u', 'm.source_user_id', 'u.id')
+      .leftJoin('user_profiles as up', 'u.id', 'up.user_id')
+      .select(
+        'm.id',
+        hasMlmIncomeTxnId ? 'm.txn_id' : db.raw('NULL as txn_id'),
+        'm.reference_id',
+        'm.income_type as kind',
+        'm.amount',
+        'm.status',
+        'm.created_at as createdAt',
+        'u.email as source_user_email',
+        'up.display_name as source_user_name',
+        'm.source_user_id'
+      )
+      .where('m.user_id', userId)
+      .whereIn('m.income_type', ['direct_sponsor_commission', 'joined_commission']),
+    db('mlm_level_bonus_payouts as bp')
+      .select(
+        'bp.id',
+        hasMlmBonusTxnId ? 'bp.txn_id' : db.raw('NULL as txn_id'),
+        'bp.level_code',
+        db.raw("'level_bonus_10day' as kind"),
+        'bp.payout_amount as amount',
+        'bp.status',
+        'bp.created_at as createdAt',
+        db.raw('NULL as reference_id'),
+        db.raw('NULL as source_user_email'),
+        db.raw('NULL as source_user_name'),
+        db.raw('NULL as source_user_id')
+      )
+      .where('bp.user_id', userId),
+    db('mlm_level_achievements as ma')
+      .select(
+        'ma.id',
+        hasMlmAchievementTxnId ? 'ma.txn_id' : db.raw('NULL as txn_id'),
+        'ma.level_code',
+        db.raw("'level_promotion_reward' as kind"),
+        'ma.promotion_reward_amount as amount',
+        db.raw("'SUCCESS' as status"),
+        'ma.created_at as createdAt',
+        db.raw('NULL as reference_id'),
+        db.raw('NULL as source_user_email'),
+        db.raw('NULL as source_user_name'),
+        db.raw('NULL as source_user_id')
+      )
+      .where('ma.user_id', userId),
+    db('wallet_ledger as wl')
+      .select(
+        'wl.id',
+        hasWalletTxnId ? 'wl.txn_id' : db.raw('NULL as txn_id'),
+        'wl.reference_id',
+        'wl.type as kind',
+        'wl.credit',
+        'wl.debit',
+        'wl.status',
+        hasWalletRemark ? 'wl.remark' : db.raw('NULL as remark'),
+        'wl.created_at as createdAt',
+        hasWalletAsset ? 'wl.asset' : db.raw("'USDT' as asset"),
+        hasWalletSourceUserId ? 'wl.source_user_id' : db.raw('NULL as source_user_id'),
+        db.raw('NULL as source_user_email'),
+        db.raw('NULL as source_user_name'),
+        db.raw('NULL as level_code')
+      )
+      .where('wl.user_id', userId)
+      .whereIn('wl.type', ['admin_adjustment_credit', 'admin_adjustment_debit']),
+  ]);
+
+  const asRows = (value) => (Array.isArray(value) ? value : []);
+
+  return [
+    ...asRows(signals),
+    ...asRows(directs),
+    ...asRows(joins),
+    ...asRows(levelBonuses),
+    ...asRows(levelRewards),
+    ...asRows(adminWalletAdjustments),
+  ]
+    .filter((row) => ADMIN_AUDIT_INCOME_TYPES.has(row.kind))
+    .map((row) => ({
+      id: row.id,
+      txn_id: buildAdminAuditTxnId(row),
+      order_id: row.order_id || null,
+      incomeType: row.kind,
+      amount:
+        row.kind === 'admin_adjustment_debit'
+          ? -Math.abs(Number(row.debit ?? row.amount ?? 0))
+          : Number(row.profit_amount ?? row.total_earned ?? row.amount ?? row.credit ?? 0),
+      status: String(row.status || 'SUCCESS'),
+      sourceUser: row.source_user_email || null,
+      sourceUserEmail: row.source_user_email || null,
+      sourceUserName: row.source_user_name || null,
+      sourceUserLabel: row.source_user_name
+        ? row.source_user_email
+          ? `${row.source_user_name} (${row.source_user_email})`
+          : row.source_user_name
+        : row.source_user_email || (row.kind.startsWith('admin_adjustment_') ? 'Admin' : null),
+      source_user_id: row.source_user_id || null,
+      level: row.level_code || null,
+      reference_id: row.reference_id || null,
+      signal_token: row.signal_token || null,
+      batch_token: row.batch_token || null,
+      symbol: row.symbol || null,
+      asset: row.asset || null,
+      remark: row.remark || null,
+      referenceDetails: buildAdminAuditReferenceDetails(row),
+      orderRefId: buildAdminAuditOrderRef(row),
+      createdAt: row.createdAt,
+      timestamp: row.createdAt,
+    }))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
 router.get('/', guard, async (req, res) => {
   await ensureMlmLevelSchema();
   await ensureTelegramAccessSchema();
@@ -446,6 +700,36 @@ router.get('/:id', guard, async (req, res) => {
 
   if (!row) return fail(res, 'User not found', 404);
   return ok(res, mapAdminUserRow(req, row));
+});
+
+router.get('/:id/orders-audit', guard, async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!Number.isFinite(userId) || userId <= 0) return fail(res, 'Invalid user ID', 400);
+  try {
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
+    const search = normalizeAuditText(req.query.search);
+    const incomeType = normalizeAuditText(req.query.incomeType);
+    const fromDate = req.query.fromDate ? `${req.query.fromDate} 00:00:00` : null;
+    const toDate = req.query.toDate ? `${req.query.toDate} 23:59:59` : null;
+
+    let rows = await loadAdminOrdersAuditRows(userId);
+    rows = filterAdminAuditRows(rows, { incomeType, search, fromDate, toDate });
+
+    const total = rows.length;
+    const items = rows.slice((page - 1) * limit, (page - 1) * limit + limit);
+    ok(res, {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    fail(res, err.message || 'Failed to load user orders audit history', err.status || 400);
+  }
 });
 
 router.patch('/:id/status', guard, async (req, res) => {

@@ -29,6 +29,8 @@ const balanceFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const formatBalanceValue = (value: number) => balanceFormatter.format(Number.isFinite(value) ? value : 0);
+
 const getWalletAdjustErrorMessage = (error: unknown) => {
   if (!error || typeof error !== "object") {
     return "Unable to adjust wallet balance.";
@@ -190,7 +192,7 @@ export default function AdminUsersPage() {
 
   const withdrawalsQuery = useQuery({
     queryKey: ["admin", "user", selectedUser?.id, "withdrawals"],
-    queryFn: () => fetchAdminUserWalletWithdrawals({ userId: String(selectedUser?.id), limit: 100 }),
+    queryFn: () => fetchAdminUserWalletWithdrawals({ userId: String(selectedUser?.id), status: "all", limit: 100 }),
     enabled: Boolean(selectedUser),
   });
   const incomeLedgerQuery = useQuery({
@@ -316,7 +318,7 @@ export default function AdminUsersPage() {
       tone: networkCardTone[key] || "border-white/10 bg-white/5 text-slate-300/80",
     };
   });
-  const formatBalance = (value: number) => balanceFormatter.format(Number.isFinite(value) ? value : 0);
+  const formatBalance = (value: number) => formatBalanceValue(value);
   const walletMutationError = walletAdjustMutation.error
     ? getWalletAdjustErrorMessage(walletAdjustMutation.error)
     : null;
@@ -328,6 +330,10 @@ export default function AdminUsersPage() {
   const successfulWithdrawalItems = withdrawalItems.filter((item) => {
     const status = String(item.status ?? "").toLowerCase();
     return status === "success" || status === "approved" || status === "completed";
+  });
+  const pendingWithdrawalItems = withdrawalItems.filter((item) => {
+    const status = String(item.status ?? "").toLowerCase();
+    return status === "pending";
   });
   const incomeTotals = incomeLedgerItems.reduce(
     (acc, row) => {
@@ -383,12 +389,12 @@ export default function AdminUsersPage() {
       quaternaryMetaValue: item.network || item.networkKey || "-",
       badgeClass: "bg-cyan-500/20 text-cyan-100",
     })),
-    ...successfulWithdrawalItems.map((item) => ({
+    ...withdrawalItems.map((item) => ({
       id: `withdrawal-${item.id}`,
       kind: "withdrawal" as const,
       category: "withdrawal",
-      title: "Withdraw Success",
-      amountLabel: `${item.amount} ${item.asset}`,
+      title: formatWithdrawalTitle(item.status),
+      amountLabel: `${formatBalance(getAdminWithdrawalDisplayAmount(item))} ${item.asset}`,
       amountValue: Number(item.amount || 0),
       status: item.status,
       timestamp: item.confirmedAt || item.updatedAt || item.createdAt || item.requestedAt || "",
@@ -401,7 +407,16 @@ export default function AdminUsersPage() {
       tertiaryMetaValue: item.address || item.to || "-",
       quaternaryMetaLabel: "Network",
       quaternaryMetaValue: item.chain || "-",
-      badgeClass: "bg-amber-500/20 text-amber-100",
+      detailRows: getAdminWithdrawalFinancialDetails(item),
+      note: getAdminWithdrawalUserDetails(item),
+      noteLabel: getAdminWithdrawalUserDetails(item) ? "User request details" : undefined,
+      adminNote: getAdminWithdrawalStatusNote(item),
+      adminNoteLabel: getAdminWithdrawalStatusNote(item)
+        ? String(item.status || "").trim().toLowerCase() === "rejected"
+          ? "Rejection reason"
+          : "Admin notes"
+        : undefined,
+      badgeClass: getWithdrawalBadgeClass(item.status),
     })),
   ].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
   const unifiedPagination = {
@@ -1038,7 +1053,12 @@ export default function AdminUsersPage() {
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
               <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
                 <SummaryMetric label="Deposits" value={String(depositItems.length)} accent="cyan" />
-                <SummaryMetric label="Withdraw Success" value={String(successfulWithdrawalItems.length)} accent="amber" />
+                <SummaryMetric
+                  label="Withdraw Success"
+                  value={String(successfulWithdrawalItems.length)}
+                  accent="amber"
+                  helperText={`${pendingWithdrawalItems.length} pending request${pendingWithdrawalItems.length === 1 ? "" : "s"}`}
+                />
                 <SummaryMetric label="Sponsor Income" value={`$${incomeTotals.sponsor.toFixed(2)}`} accent="emerald" />
                 <SummaryMetric label="Direct Income" value={`$${incomeTotals.direct.toFixed(2)}`} accent="violet" />
                 <SummaryMetric label="Level Income" value={`$${incomeTotals.level.toFixed(2)}`} accent="sky" />
@@ -1120,6 +1140,28 @@ export default function AdminUsersPage() {
                             <div className="mt-1 break-all text-slate-300">{item.quaternaryMetaValue}</div>
                           </div>
                         </div>
+                        {"detailRows" in item && Array.isArray(item.detailRows) && item.detailRows.length > 0 ? (
+                          <div className="grid gap-2 rounded-2xl border border-cyan-400/10 bg-cyan-500/5 p-3 text-xs text-slate-300 lg:grid-cols-2">
+                            {item.detailRows.map((detail) => (
+                              <div key={`${item.id}-${detail.label}`}>
+                                <div className="uppercase tracking-[0.2em] text-slate-500">{detail.label}</div>
+                                <div className="mt-1 text-slate-100">{detail.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {"note" in item && item.note ? (
+                          <div className="rounded-2xl border border-cyan-400/10 bg-cyan-500/10 px-3 py-2 text-xs whitespace-pre-wrap text-cyan-100">
+                            <span className="mr-2 uppercase tracking-[0.2em] text-cyan-200/80">{item.noteLabel || "Note"}</span>
+                            {item.note}
+                          </div>
+                        ) : null}
+                        {"adminNote" in item && item.adminNote ? (
+                          <div className="rounded-2xl border border-amber-400/10 bg-amber-500/10 px-3 py-2 text-xs whitespace-pre-wrap text-amber-100">
+                            <span className="mr-2 uppercase tracking-[0.2em] text-amber-200/80">{item.adminNoteLabel || "Admin note"}</span>
+                            {item.adminNote}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="shrink-0 text-xs text-slate-500">
                         {item.timestamp ? new Date(item.timestamp).toLocaleString() : "-"}
@@ -1186,11 +1228,13 @@ function SummaryMetric({
   value,
   accent,
   description,
+  helperText,
 }: {
   label: string;
   value: string;
   accent: MetricAccent;
   description?: string;
+  helperText?: string;
 }) {
   const accentMap: Record<MetricAccent, string> = {
     cyan: "border-cyan-400/20 bg-cyan-500/10 text-cyan-200/80",
@@ -1216,8 +1260,94 @@ function SummaryMetric({
         ) : null}
       </div>
       <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+      {helperText ? <div className="mt-1 text-[11px] text-white/60">{helperText}</div> : null}
     </div>
   );
 }
 
 type MetricAccent = "cyan" | "amber" | "emerald" | "violet" | "sky" | "pink";
+
+function formatWithdrawalTitle(status?: string) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "pending") return "Withdraw Request";
+  if (normalized === "rejected" || normalized === "failed" || normalized === "cancelled") return "Withdraw Rejected";
+  if (normalized === "approved" || normalized === "success" || normalized === "completed") return "Withdraw Success";
+  return "Withdrawal";
+}
+
+function getWithdrawalBadgeClass(status?: string) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "pending") return "bg-violet-500/20 text-violet-100";
+  if (normalized === "rejected" || normalized === "failed" || normalized === "cancelled") return "bg-rose-500/20 text-rose-100";
+  return "bg-amber-500/20 text-amber-100";
+}
+
+function getAdminWithdrawalDisplayAmount(item: AdminWithdrawal) {
+  const payoutAmount = Number(item.meta?.payoutAmount);
+  if (Number.isFinite(payoutAmount) && payoutAmount > 0) return payoutAmount;
+  const netAmount = Number(item.meta?.netAmount);
+  if (Number.isFinite(netAmount) && netAmount > 0) return netAmount;
+  return Number(item.amount || 0);
+}
+
+function getAdminWithdrawalUserDetails(item: AdminWithdrawal) {
+  return typeof item.meta?.userDetails === "string" && String(item.meta.userDetails).trim()
+    ? String(item.meta.userDetails).trim()
+    : "";
+}
+
+function getAdminWithdrawalStatusNote(item: AdminWithdrawal) {
+  if (typeof item.adminNotes === "string" && item.adminNotes.trim()) return item.adminNotes.trim();
+  if (typeof item.meta?.adminNotes === "string" && String(item.meta.adminNotes).trim()) {
+    return String(item.meta.adminNotes).trim();
+  }
+  if (typeof item.meta?.reason === "string" && String(item.meta.reason).trim()) {
+    return String(item.meta.reason).trim();
+  }
+  return "";
+}
+
+function getAdminWithdrawalFinancialDetails(item: AdminWithdrawal) {
+  const meta = item.meta || {};
+  const requestedAmount = Number(meta.requestedAmount);
+  const payoutAmount = Number(meta.payoutAmount);
+  const netAmount = Number(meta.netAmount);
+  const adminFeeAmount = Number(meta.adminFeeAmount);
+  const adminFeePercent = Number(meta.adminFeePercent);
+  const earlyPenaltyAmount = Number(meta.earlyPenaltyAmount);
+  const earlyPenaltyPercent = Number(meta.earlyPenaltyPercent);
+  const isRejected = String(item.status || "").trim().toLowerCase() === "rejected";
+  const returnedAmount = isRejected
+    ? Number.isFinite(requestedAmount) && requestedAmount > 0
+      ? requestedAmount
+      : Number(item.amount || 0)
+    : null;
+
+  const details: Array<{ label: string; value: string }> = [];
+
+  if (Number.isFinite(requestedAmount) && requestedAmount > 0) {
+    details.push({ label: "Requested", value: `${formatBalanceValue(requestedAmount)} ${item.asset || ""}`.trim() });
+  }
+  if (Number.isFinite(netAmount) && netAmount > 0) {
+    details.push({ label: "Net amount", value: `${formatBalanceValue(netAmount)} ${item.asset || ""}`.trim() });
+  } else if (Number.isFinite(payoutAmount) && payoutAmount > 0) {
+    details.push({ label: "Paid amount", value: `${formatBalanceValue(payoutAmount)} ${item.asset || ""}`.trim() });
+  }
+  if (Number.isFinite(adminFeeAmount) && adminFeeAmount > 0) {
+    details.push({
+      label: "Admin fee",
+      value: `${formatBalanceValue(adminFeeAmount)} ${item.asset || ""}${Number.isFinite(adminFeePercent) && adminFeePercent > 0 ? ` (${adminFeePercent}%)` : ""}`.trim(),
+    });
+  }
+  if (Number.isFinite(earlyPenaltyAmount) && earlyPenaltyAmount > 0) {
+    details.push({
+      label: "Penalty",
+      value: `${formatBalanceValue(earlyPenaltyAmount)} ${item.asset || ""}${Number.isFinite(earlyPenaltyPercent) && earlyPenaltyPercent > 0 ? ` (${earlyPenaltyPercent}%)` : ""}`.trim(),
+    });
+  }
+  if (returnedAmount !== null) {
+    details.push({ label: "Returned on reject", value: `${formatBalanceValue(returnedAmount)} ${item.asset || ""}`.trim() });
+  }
+
+  return details;
+}

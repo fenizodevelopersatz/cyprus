@@ -92,6 +92,8 @@ router.get(
   }),
   async (req, res) => {
     const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
+    const includeAllStatuses = status === 'all';
+    const normalizedStatus = includeAllStatuses ? undefined : status;
     const limit = Number(req.query.limit);
     const page = Number(req.query.page);
     const userId = req.query.userId ? Number(req.query.userId) : undefined;
@@ -100,8 +102,8 @@ router.get(
       ok(
         res,
         await adminListWithdrawals({
-          status: status || undefined,
-          statuses: status ? undefined : processedStatuses,
+          status: normalizedStatus || undefined,
+          statuses: normalizedStatus || includeAllStatuses ? undefined : processedStatuses,
           page: Number.isFinite(page) ? page : undefined,
           limit: Number.isFinite(limit) ? limit : undefined,
           userId,

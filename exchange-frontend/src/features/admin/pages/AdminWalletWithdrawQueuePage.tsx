@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Button from "../../../ui/Button";
@@ -7,19 +7,18 @@ import {
   adminApproveWithdrawal,
   adminRejectWithdrawal,
   fetchAdminWalletWithdrawQueue,
-  fetchAdminWalletWithdrawQueueLiveBalances,
   type AdminWithdrawal,
-  type AdminWalletLiveBalances,
 } from "../api/admin.api";
 
 const panelCls = "rounded-2xl border border-white/10 bg-white/5 p-4";
-type BalanceAccent = "emerald" | "cyan" | "amber" | "violet";
 type StatusTone = "emerald" | "cyan" | "violet" | "slate";
-type WalletLinkInfo = Pick<AdminWalletLiveBalances["wallets"][number], "address" | "label" | "explorerUrl">;
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
 
 export default function AdminWalletWithdrawQueuePage() {
   const queryClient = useQueryClient();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [refreshState, setRefreshState] = useState<"idle" | "refreshing" | "done">("idle");
+  const [refreshTick, setRefreshTick] = useState(0);
   const [filters, setFilters] = useState({
     userId: "",
     network: "",
@@ -59,28 +58,30 @@ export default function AdminWalletWithdrawQueuePage() {
         limit: sanitizedFilters.limit,
         eligibleOnly: sanitizedFilters.eligibleOnly,
       }),
-    refetchInterval: 10000,
+    refetchInterval: AUTO_REFRESH_MS,
     retry: false,
-  });
-
-  const liveBalancesQuery = useQuery({
-    queryKey: ["admin", "admin-wallet-withdraw-queue", "live-balances"],
-    queryFn: fetchAdminWalletWithdrawQueueLiveBalances,
-    refetchInterval: 15000,
   });
 
   const items = queueQuery.data?.items ?? [];
   const pagination = queueQuery.data?.pagination ?? { page: 1, limit: filters.limit, total: 0, totalPages: 0 };
-  const liveBalances = liveBalancesQuery.data;
-  const walletByNetwork = useMemo(
-    () =>
-      (liveBalances?.wallets ?? []).reduce<Record<string, AdminWalletLiveBalances["wallets"][number]>>((acc, wallet) => {
-        const normalized = normalizeNetworkKey(wallet.network);
-        if (normalized) acc[normalized] = wallet;
-        return acc;
-      }, {}),
-    [liveBalances?.wallets]
-  );
+  const isManualRefreshRunning = refreshState === "refreshing";
+
+  useEffect(() => {
+    if (!isManualRefreshRunning) return;
+    if (queueQuery.isFetching) return;
+    if (queueQuery.isError) {
+      setRefreshState("idle");
+      return;
+    }
+
+    setRefreshState("done");
+    const timer = window.setTimeout(() => {
+      setRefreshState("idle");
+      setRefreshTick((current) => current + 1);
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [isManualRefreshRunning, queueQuery.isError, queueQuery.isFetching]);
 
   const approveMutation = useMutation({
     mutationFn: async ({ id, txHash }: { id: string | number; txHash?: string }) =>
@@ -116,16 +117,6 @@ export default function AdminWalletWithdrawQueuePage() {
     rejectMutation.mutate({ id: modal.item.id, reason });
   };
 
-  const liveCards: Array<{ label: string; value: string; accent: BalanceAccent }> = useMemo(
-    () => [
-      { label: "Total USDT", value: liveBalances?.totalUsdt ?? "0", accent: "emerald" },
-      { label: "USDT ERC-20", value: liveBalances?.totalErc20 ?? "0", accent: "cyan" },
-      { label: "USDT BEP-20", value: liveBalances?.totalBep20 ?? "0", accent: "amber" },
-      { label: "USDT TRC-20", value: liveBalances?.totalTrc20 ?? "0", accent: "violet" },
-    ],
-    [liveBalances]
-  );
-
   const copyValue = async (value: string, key: string) => {
     if (!value || typeof navigator === "undefined" || !navigator.clipboard) return;
     await navigator.clipboard.writeText(value);
@@ -133,33 +124,48 @@ export default function AdminWalletWithdrawQueuePage() {
     window.setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
   };
 
+  const handleRefresh = async () => {
+    setRefreshState("refreshing");
+    try {
+      await queueQuery.refetch();
+    } catch {
+      setRefreshState("idle");
+    }
+  };
+
+  const refreshLabel =
+    refreshState === "refreshing"
+      ? "Refreshing..."
+      : refreshState === "done"
+        ? "Refreshed"
+        : `Auto refresh every ${Math.floor(AUTO_REFRESH_MS / 60000)} min`;
+
   return (
     <div className="space-y-4">
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-white">Admin Wallet Withdraw Queue</h2>
-          <p className="text-sm text-slate-300/80">Pending withdrawals with live treasury balances, approval send flow, and queue filters.</p>
+          <p className="text-sm text-slate-300/80">Pending manual withdrawals with approval send flow and queue filters.</p>
         </div>
-        <div className="text-xs text-slate-400">
-          {filters.eligibleOnly ? "Active + KYC verified users only" : "All queue users"}
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <span>{filters.eligibleOnly ? "Active + KYC verified users only" : "All queue users"}</span>
+          <span
+            key={refreshTick}
+            className={`rounded-full border px-2.5 py-1 text-[11px] ${
+              refreshState === "refreshing"
+                ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
+                : refreshState === "done"
+                  ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                  : "border-white/10 bg-white/5 text-slate-300"
+            }`}
+          >
+            {refreshLabel}
+          </span>
+          <Button size="xs" variant="secondary" onClick={() => void handleRefresh()} disabled={queueQuery.isFetching}>
+            {queueQuery.isFetching ? "Reloading..." : "Refresh"}
+          </Button>
         </div>
       </header>
-
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {liveCards.map((card) => (
-          <BalanceCard
-            key={card.label}
-            label={card.label}
-            value={formatAmount(card.value, 2)}
-            accent={card.accent}
-            loading={liveBalancesQuery.isLoading}
-            wallet={resolveWalletForCard(card.label, walletByNetwork)}
-            copiedKey={copiedKey}
-            copyKey={`wallet-${normalizeNetworkKeyFromLabel(card.label) || card.label.toLowerCase()}`}
-            onCopy={copyValue}
-          />
-        ))}
-      </section>
 
       <section className={panelCls}>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -466,56 +472,6 @@ export default function AdminWalletWithdrawQueuePage() {
   );
 }
 
-function BalanceCard({
-  label,
-  value,
-  accent,
-  loading,
-  wallet,
-  copiedKey,
-  copyKey,
-  onCopy,
-}: {
-  label: string;
-  value: string;
-  accent: BalanceAccent;
-  loading: boolean;
-  wallet?: WalletLinkInfo | null;
-  copiedKey: string | null;
-  copyKey: string;
-  onCopy: (address: string, key: string) => void | Promise<void>;
-}) {
-  const accentMap: Record<BalanceAccent, string> = {
-    emerald: "border-emerald-400/20 bg-emerald-500/10 text-emerald-200/80",
-    cyan: "border-cyan-400/20 bg-cyan-500/10 text-cyan-200/80",
-    amber: "border-amber-400/20 bg-amber-500/10 text-amber-200/80",
-    violet: "border-violet-400/20 bg-violet-500/10 text-violet-200/80",
-  };
-
-  return (
-    <div className={`rounded-2xl border p-4 ${accentMap[accent]}`}>
-      <div className="text-[11px] uppercase tracking-[0.24em]">{label}</div>
-      <div className="mt-2 text-2xl font-semibold text-white">{loading ? "Loading..." : value}</div>
-      {wallet?.address ? (
-        <div className="mt-3">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live wallet address</div>
-          <div className="mt-2 flex items-start gap-2">
-            <a
-              href={toExternalUrl(wallet.explorerUrl)}
-              target="_blank"
-              rel="noreferrer"
-            className="min-w-0 flex-1 break-all font-mono text-[11px] text-cyan-300 hover:text-cyan-200"
-          >
-            {wallet.address}
-          </a>
-            <InlineCopyAction value={wallet.address || ""} copyKey={copyKey} copiedKey={copiedKey} onCopy={onCopy} />
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function DetailBlock({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
@@ -608,17 +564,6 @@ function getTxHashValidationMessage(network: string | undefined) {
   return "Enter a valid transaction hash.";
 }
 
-function resolveWalletForCard(
-  label: string,
-  walletByNetwork: Record<string, WalletLinkInfo>
-) {
-  const normalizedLabel = label.toLowerCase();
-  if (normalizedLabel.includes("erc-20")) return walletByNetwork.erc20 ?? null;
-  if (normalizedLabel.includes("bep-20")) return walletByNetwork.bep20 ?? null;
-  if (normalizedLabel.includes("trc-20")) return walletByNetwork.trc20 ?? null;
-  return null;
-}
-
 function toExternalUrl(value?: string | null) {
   return value && /^https?:\/\//i.test(value) ? value : "#";
 }
@@ -629,14 +574,6 @@ function normalizeNetworkLabel(value?: string) {
   if (normalized === "bsc") return "BEP-20";
   if (normalized === "tron") return "TRC-20";
   return value || "--";
-}
-
-function normalizeNetworkKeyFromLabel(label: string) {
-  const normalizedLabel = label.toLowerCase();
-  if (normalizedLabel.includes("erc-20")) return "erc20";
-  if (normalizedLabel.includes("bep-20")) return "bep20";
-  if (normalizedLabel.includes("trc-20")) return "trc20";
-  return "";
 }
 
 function hasMetaValue(meta: Record<string, unknown> | undefined, key: string) {

@@ -1,4 +1,4 @@
-import { Interface, JsonRpcProvider, formatUnits, id } from 'ethers';
+import { Interface, formatUnits, id } from 'ethers';
 import { db } from '../db.js';
 import {
   creditConfirmedDeposit,
@@ -9,6 +9,7 @@ import {
 } from './fundingDepositService.js';
 import { bscLogger, cronLogger, depositLogger, ethereumLogger, tronLogger } from '../logging/loggers.js';
 import { getTronClient } from '../utils/tron.js';
+import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
 
 const ERC20_TRANSFER_TOPIC = id('Transfer(address,address,uint256)');
 const ERC20_INTERFACE = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
@@ -185,7 +186,16 @@ async function processDetectedDeposit(payload) {
 
 async function pollEvmDeposits(config) {
   const networkLogger = getNetworkLogger(config.network);
-  const provider = new JsonRpcProvider(config.rpcUrl);
+  const provider = await createLoggedRpcProvider({
+    rpcUrl: config.rpcUrl,
+    network: config.network,
+    service: 'deposit_monitor',
+    logger: networkLogger,
+    extra: {
+      walletNetwork: config.walletNetwork,
+      contractAddress: config.contractAddress,
+    },
+  });
   const latestBlock = await provider.getBlockNumber();
   const scanState = await getOrCreateScanState(config.walletNetwork, latestBlock);
   const watchedAddresses = await getAddressMap(config.walletNetwork);

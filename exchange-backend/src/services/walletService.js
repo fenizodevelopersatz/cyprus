@@ -1,4 +1,4 @@
-import { HDNodeWallet, JsonRpcProvider, formatUnits, isAddress, parseUnits } from 'ethers';
+import { HDNodeWallet, formatUnits, isAddress, parseUnits } from 'ethers';
 import QRCode from 'qrcode';
 import { db, withTx } from '../db.js';
 import { cfg } from '../config.js';
@@ -20,6 +20,7 @@ import { generateGlobalTxnId } from '../utils/generateGlobalTxnId.js';
 import { getWithdrawalPolicyContext } from './withdrawalPolicy.service.js';
 import { buildAddressExplorerUrl, buildExplorerUrl, normalizeFundingNetwork } from './fundingMirror.service.js';
 import { toAbsoluteProfilePhotoUrl } from './userService.js';
+import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
 
 const SUPPORTED_CHAINS = ['ETH', 'BSC'];
 const NETWORK_CHAIN_MAP = {
@@ -167,14 +168,19 @@ function requireChain(chain) {
   return mapped;
 }
 
-function getProvider(chain) {
+async function getProvider(chain) {
   const rpcUrl =
     (cfg.custodial?.rpcUrls && cfg.custodial.rpcUrls[chain]) ||
     process.env[`${chain}_RPC_URL`];
   if (!rpcUrl) {
     throw new Error(`${chain} RPC URL not configured`);
   }
-  return new JsonRpcProvider(rpcUrl);
+  return createLoggedRpcProvider({
+    rpcUrl,
+    network: chain.toLowerCase(),
+    service: 'wallet_service',
+    extra: { chain },
+  });
 }
 
 function getMasterNode() {
@@ -283,7 +289,7 @@ export async function handleInboundTx({ chain, txHash }) {
   const normalizedChain = requireChain(chain);
   if (!txHash) throw new Error('txHash required');
 
-  const provider = getProvider(normalizedChain);
+  const provider = await getProvider(normalizedChain);
   const receipt = await provider.getTransactionReceipt(txHash);
   if (!receipt) throw new Error('Transaction not found');
   if (receipt.status !== 1) throw new Error('Transaction failed');

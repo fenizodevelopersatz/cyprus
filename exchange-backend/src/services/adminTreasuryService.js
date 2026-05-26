@@ -1,10 +1,11 @@
-import { Contract, JsonRpcProvider, Wallet, formatUnits, parseUnits } from 'ethers';
+import { Contract, Wallet, formatUnits, parseUnits } from 'ethers';
 import { db, withTx } from '../db.js';
 import { decryptText } from '../utils/crypto.js';
 import { buildAddressExplorerUrl, buildExplorerUrl, normalizeFundingNetwork } from './fundingMirror.service.js';
 import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 import { buildFundingTxnId } from './txnIdService.js';
 import { getTronClient, getTronOwnerAddress } from '../utils/tron.js';
+import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -76,7 +77,12 @@ async function getEvmUsdtBalance(provider, contractAddress, address) {
 
 async function transferEvmUsdt({ network, fromPrivateKey, to, amount }) {
   const config = await getAdminWalletConfig(network);
-  const provider = new JsonRpcProvider(config.rpcUrl);
+  const provider = await createLoggedRpcProvider({
+    rpcUrl: config.rpcUrl,
+    network,
+    service: 'admin_treasury_transfer',
+    extra: { contractAddress: config.contractAddress },
+  });
   const signer = new Wallet(fromPrivateKey, provider);
   const contract = new Contract(config.contractAddress, ERC20_ABI, signer);
   const tx = await contract.transfer(to, amount);
@@ -430,7 +436,15 @@ async function getNetworkTreasuryBalance(network) {
     return formatUnits(raw, config.decimals);
   }
 
-  const provider = new JsonRpcProvider(config.rpcUrl);
+  const provider = await createLoggedRpcProvider({
+    rpcUrl: config.rpcUrl,
+    network,
+    service: 'admin_treasury_balance',
+    extra: {
+      contractAddress: config.contractAddress,
+      adminWallet: config.adminWallet,
+    },
+  });
   const raw = await getEvmUsdtBalance(provider, config.contractAddress, config.adminWallet);
   return formatUnits(raw, config.decimals);
 }

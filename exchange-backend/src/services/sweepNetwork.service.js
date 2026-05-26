@@ -1,9 +1,10 @@
-import { Contract, JsonRpcProvider, Wallet, formatUnits, parseUnits } from 'ethers';
+import { Contract, Wallet, formatUnits, parseUnits } from 'ethers';
 import { db } from '../db.js';
 import { getModuleLogger } from '../logging/loggers.js';
 import { decryptPrivateKey, encryptPrivateKey } from '../utils/crypto.js';
 import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 import { getTronClient, normalizeTronHost } from '../utils/tron.js';
+import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
 
 const sweepLogger = getModuleLogger('custodial_sweep');
 
@@ -304,7 +305,16 @@ export async function getEvmProvider(network) {
     err.status = 400;
     throw err;
   }
-  return new JsonRpcProvider(config.rpcUrl);
+  return createLoggedRpcProvider({
+    rpcUrl: config.rpcUrl,
+    network: config.network,
+    service: 'sweep_network',
+    logger: sweepLogger,
+    extra: {
+      assetNetwork: config.assetNetwork,
+      tokenContract: config.tokenContract,
+    },
+  });
 }
 
 export async function getTokenBalanceRaw(address, network, privateKey = '') {

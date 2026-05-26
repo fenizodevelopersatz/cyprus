@@ -56,6 +56,7 @@ import { swaggerSpec, mountDocs } from './openapi.js';
 import { db } from './db.js';
 import { appLogger } from './logging/loggers.js';
 import { requestContextMiddleware, requestLogger } from './logging/requestLogger.js';
+import { RPC_ERROR_LOG_PATH } from './utils/rpcDiagnostics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..');
@@ -347,6 +348,18 @@ export function createApp() {
   });
 
   app.get('/__health', (req, res) => res.json({ ok: true }));
+
+  if (String(process.env.NODE_ENV || '').toLowerCase() !== 'production') {
+    app.get('/api/logs/rpc-errors.log', (req, res) => {
+      if (!fs.existsSync(RPC_ERROR_LOG_PATH)) {
+        return res.status(404).json({ message: 'RPC error log not found' });
+      }
+
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.sendFile(RPC_ERROR_LOG_PATH);
+    });
+  }
 
   app.use(celebrateErrors());
   app.use(errorHandler);

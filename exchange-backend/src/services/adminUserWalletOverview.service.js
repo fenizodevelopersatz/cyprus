@@ -1,9 +1,10 @@
-import { Contract, JsonRpcProvider, formatUnits } from 'ethers';
+import { Contract, formatUnits } from 'ethers';
 import { getTronClient } from '../utils/tron.js';
 import { buildAddressExplorerUrl } from './fundingMirror.service.js';
 import { listUserWallets } from './userWalletService.js';
 import { getUserWalletSummary } from './walletAccountingService.js';
 import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
+import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
 
 const ERC20_ABI = ['function balanceOf(address owner) view returns (uint256)'];
 
@@ -18,8 +19,13 @@ function toPlainAmount(value, fallback = '0') {
   return String(value);
 }
 
-async function fetchEvmWalletBalances({ address, rpcUrl, contractAddress, tokenDecimals, nativeDecimals }) {
-  const provider = new JsonRpcProvider(rpcUrl);
+async function fetchEvmWalletBalances({ address, rpcUrl, contractAddress, tokenDecimals, nativeDecimals, network }) {
+  const provider = await createLoggedRpcProvider({
+    rpcUrl,
+    network,
+    service: 'admin_user_wallet_overview',
+    extra: { address, contractAddress },
+  });
   const [nativeRaw, tokenRaw] = await Promise.all([
     provider.getBalance(address),
     new Contract(contractAddress, ERC20_ABI, provider).balanceOf(address),
@@ -89,6 +95,7 @@ export async function fetchNetworkOverview(walletRow, meta) {
     } else {
       balances = await fetchEvmWalletBalances({
         address: walletRow.address,
+        network: meta.key,
         rpcUrl:
           assetConfig?.rpcUrl ||
           process.env[meta.key === 'ethereum' ? 'ETH_RPC_URL' : 'BSC_RPC_URL'] ||

@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ADMIN_DASHBOARD_WS_PATH, API_BASE_URL } from "../../../app/apiRoutes";
 import Button from "../../../ui/Button";
 import { useAdminAuth } from "../state/AdminAuthProvider";
-import { fetchAdminKycSidebarSummary, fetchAdminSettings } from "../api/admin.api";
+import { fetchAdminKycSidebarSummary, fetchAdminSettings, type AdminKycSidebarSummary } from "../api/admin.api";
 
 type NavEntry = {
   label: string;
@@ -15,6 +15,17 @@ type NavEntry = {
 };
 
 const ADMIN_KYC_LAST_READ_KEY = "admin:kyc:last-read-at";
+const KYC_SUMMARY_REFRESH_MS = 10 * 60 * 1000;
+
+type AdminSocketPayload = {
+  type?: string;
+  event?: string;
+  data?: {
+    kyc?: AdminKycSidebarSummary | null;
+    detail?: unknown;
+    sentAt?: string;
+  };
+};
 
 const buildAdminDashboardWsUrl = (token: string) => {
   try {
@@ -142,8 +153,8 @@ export default function AdminShell() {
   const kycSummaryQuery = useQuery({
     queryKey: ["admin", "kyc", "sidebar-summary"],
     queryFn: fetchAdminKycSidebarSummary,
-    staleTime: 10_000,
-    refetchInterval: 30_000,
+    staleTime: KYC_SUMMARY_REFRESH_MS,
+    refetchInterval: KYC_SUMMARY_REFRESH_MS,
   });
 
   const pendingKycItems = kycSummaryQuery.data?.items ?? [];
@@ -169,8 +180,29 @@ export default function AdminShell() {
     const connect = () => {
       try {
         socket = new WebSocket(url);
-        socket.onmessage = () => {
-          queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
+        socket.onmessage = (message) => {
+          try {
+            const payload = JSON.parse(String(message.data || "{}")) as AdminSocketPayload;
+            const eventName = payload.event || payload.type;
+            const kycSummary = payload.data?.kyc;
+
+            if (eventName === "admin:dashboard:ready" && kycSummary) {
+              queryClient.setQueryData(["admin", "kyc", "sidebar-summary"], kycSummary);
+              return;
+            }
+
+            if (eventName !== "admin:kyc:queue-updated") return;
+
+            if (kycSummary) {
+              queryClient.setQueryData(["admin", "kyc", "sidebar-summary"], kycSummary);
+            } else {
+              queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
+            }
+            queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "requests"] });
+            queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "request"] });
+          } catch {
+            queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
+          }
         };
         socket.onclose = () => {
           socket = null;

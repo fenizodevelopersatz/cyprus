@@ -167,7 +167,7 @@ router.post(
     } catch (err) {
       const message = err.message || 'Unable to submit documents';
       const status =
-        ['DOCUMENT_TYPE_REQUIRED', 'PRIMARY_DOCUMENT_REQUIRED', 'SECONDARY_DOCUMENT_REQUIRED', 'ONLY_JPG_JPEG_PNG_ALLOWED', 'INVALID_IMAGE_FILE'].includes(err.message)
+        ['DOCUMENT_TYPE_REQUIRED', 'PRIMARY_DOCUMENT_REQUIRED', 'SECONDARY_DOCUMENT_REQUIRED', 'DATE_OF_BIRTH_REQUIRED', 'DATE_OF_BIRTH_MUST_BE_18_PLUS', 'ONLY_JPG_JPEG_PNG_ALLOWED', 'INVALID_IMAGE_FILE'].includes(err.message)
           ? 400
           : err.code === 'LIMIT_FILE_SIZE'
             ? 400
@@ -177,6 +177,10 @@ router.post(
           ? 'Only JPG, JPEG, and PNG images are allowed.'
           : err.message === 'SECONDARY_DOCUMENT_REQUIRED'
             ? 'Secondary image is required for this document type.'
+            : err.message === 'DATE_OF_BIRTH_REQUIRED'
+              ? 'Date of birth is required.'
+              : err.message === 'DATE_OF_BIRTH_MUST_BE_18_PLUS'
+                ? 'You must be at least 18 years old.'
             : err.message === 'INVALID_IMAGE_FILE'
               ? 'Uploaded image is invalid or empty.'
           : err.code === 'LIMIT_FILE_SIZE'

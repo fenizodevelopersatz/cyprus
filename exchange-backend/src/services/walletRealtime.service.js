@@ -38,11 +38,19 @@ export function queueWalletRealtimeRefresh(userId, trx = null) {
 
 export async function getWalletRealtimeSnapshot(userId) {
   const { getMainWalletBalanceBig } = await import('./walletAccountingService.js');
+  const { getFundingSummary } = await import('./fundingSummary.service.js');
   const balanceBig = await getMainWalletBalanceBig(userId);
   const amount = formatUnits(balanceBig, 18);
+  const fundingSummary = await getFundingSummary(userId).catch(() => null);
+
   return {
     mainWalletBalance: amount,
     main_wallet_balance: amount,
+    withdrawWalletBalance: fundingSummary?.withdrawWalletBalance ?? amount,
+    withdraw_wallet_balance: fundingSummary?.withdrawWalletBalance ?? amount,
+    withdrawWalletBreakdown: fundingSummary?.withdrawWalletBreakdown ?? null,
+    adminAdjustmentBalance: fundingSummary?.adminAdjustmentBalance ?? null,
+    balance: fundingSummary?.balance ?? undefined,
     updatedAt: new Date().toISOString(),
   };
 }

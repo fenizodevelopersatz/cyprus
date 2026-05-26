@@ -130,6 +130,31 @@ function canonicalKycDocumentType(type) {
   return normalized;
 }
 
+function isAdultDateOfBirth(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return false;
+
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  if (!Number.isFinite(day) || !Number.isFinite(month) || !Number.isFinite(year)) return false;
+
+  const dob = new Date(year, month - 1, day);
+  if (
+    dob.getFullYear() !== year ||
+    dob.getMonth() !== month - 1 ||
+    dob.getDate() !== day
+  ) {
+    return false;
+  }
+
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 18);
+  return dob <= cutoff;
+}
+
 async function getApprovedRequiredDocumentTypesForUser(userId) {
   const rows = await db('kyc_documents')
     .where({ user_id: userId })
@@ -608,6 +633,8 @@ export async function getKycQueueSidebarSummary() {
 export async function submitKycDocuments(userId, { documentType, primary, secondary, notes, dateOfBirth }) {
   if (!documentType) throw new Error('DOCUMENT_TYPE_REQUIRED');
   if (!primary) throw new Error('PRIMARY_DOCUMENT_REQUIRED');
+  if (!String(dateOfBirth || '').trim()) throw new Error('DATE_OF_BIRTH_REQUIRED');
+  if (!isAdultDateOfBirth(dateOfBirth)) throw new Error('DATE_OF_BIRTH_MUST_BE_18_PLUS');
 
   const status = await getKycStatus(userId);
   const normalizedDocumentType = normalizeDocType(documentType);
@@ -622,9 +649,7 @@ export async function submitKycDocuments(userId, { documentType, primary, second
   if (requiresSecondaryDocument && !secondary) {
     throw new Error('SECONDARY_DOCUMENT_REQUIRED');
   }
-  if (dateOfBirth !== undefined && dateOfBirth !== null && String(dateOfBirth).trim()) {
-    await updateProfile(userId, { date_of_birth: dateOfBirth });
-  }
+  await updateProfile(userId, { date_of_birth: dateOfBirth });
   assertValidKycImageFile(primary);
   assertValidKycImageFile(secondary);
 

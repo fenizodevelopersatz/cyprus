@@ -422,7 +422,19 @@ export default function AdminUsersPage() {
           <div className="text-xs uppercase tracking-[0.3em] text-slate-400">Users</div>
           <h2 className="text-2xl font-semibold text-white">{telegramOnlyView ? "Telegram users" : "Directory & controls"}</h2>
         </div>
-        <form onSubmit={submitSearch} className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={userQuery.isFetching}
+            onClick={() => {
+              void userQuery.refetch();
+            }}
+          >
+            {userQuery.isFetching ? "Refreshing..." : "Refresh"}
+          </Button>
+          <form onSubmit={submitSearch} className="flex gap-2">
           <input
             className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm focus:border-emerald-400/60 focus:outline-none"
             placeholder="Search email or ID"
@@ -432,7 +444,8 @@ export default function AdminUsersPage() {
           <Button type="submit" size="sm">
             Search
           </Button>
-        </form>
+          </form>
+        </div>
       </header>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -486,6 +499,7 @@ export default function AdminUsersPage() {
                 <th className="pb-2">Registered</th>
                 {!telegramOnlyView ? <th className="pb-2">KYC</th> : null}
                 <th className="pb-2">Status</th>
+                {!telegramOnlyView ? <th className="pb-2">Wallets</th> : null}
                 <th className="pb-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -586,6 +600,20 @@ export default function AdminUsersPage() {
                       {user.status ?? "unknown"}
                     </span>
                   </td>
+                  {!telegramOnlyView ? (
+                    <td className="py-2 text-xs">
+                      <div className="flex min-w-[140px] flex-col gap-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-400">Main</span>
+                          <span className="font-medium text-white">{formatBalance(Number(user.mainWalletBalance || 0))}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-emerald-300/80">Investment</span>
+                          <span className="font-medium text-emerald-200">{formatBalance(Number(user.investmentBalance || 0))}</span>
+                        </div>
+                      </div>
+                    </td>
+                  ) : null}
                   <td className="py-2 text-right">
                     <div className="flex justify-end gap-2">
                       {!telegramOnlyView ? (

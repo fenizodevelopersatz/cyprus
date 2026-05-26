@@ -176,10 +176,16 @@ export default function AdminShell() {
     let closedByUser = false;
     let reconnectTimer: number | null = null;
     let socket: WebSocket | null = null;
+    let abandonedWhileConnecting = false;
 
     const connect = () => {
       try {
         socket = new WebSocket(url);
+        abandonedWhileConnecting = false;
+        socket.onopen = () => {
+          if (closedByUser || !abandonedWhileConnecting) return;
+          socket?.close();
+        };
         socket.onmessage = (message) => {
           try {
             const payload = JSON.parse(String(message.data || "{}")) as AdminSocketPayload;
@@ -222,7 +228,14 @@ export default function AdminShell() {
     return () => {
       closedByUser = true;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      if (!socket) return;
+      if (socket.readyState === WebSocket.CONNECTING) {
+        abandonedWhileConnecting = true;
+        return;
+      }
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
   }, [queryClient]);
 

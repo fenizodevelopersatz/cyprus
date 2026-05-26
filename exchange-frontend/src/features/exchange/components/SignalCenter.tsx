@@ -708,7 +708,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
         <InfoLine label="Your MLM level" value={String(walletSummary.userLevel)} />
         <InfoLine label="Latest balance basis" value={currencyFormatter.format(mainWalletBalanceBasis)} />
         <InfoLine label="Investment per trade %" value={`${walletSummary.investmentPerTradePercent}%`} />
-        <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} />
+        {/* <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} /> */}
         <InfoLine label="Signal validity" value={`${walletSummary.signalValidityMinutes} minutes`} />
       </div>
     </div>
@@ -944,7 +944,7 @@ export default function SignalCenter({ marketSocketStatus = "idle", compact = fa
             <InfoLine label="Your MLM level" value={String(walletSummary.userLevel)} />
             <InfoLine label="Latest balance basis" value={currencyFormatter.format(mainWalletBalanceBasis)} />
             <InfoLine label="Investment per trade %" value={`${walletSummary.investmentPerTradePercent}%`} />
-            <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} />
+            {/* <InfoLine label="Profit per trade %" value={`${walletSummary.dailyPercentPerTrade}%`} /> */}
             <InfoLine label="Signal validity" value={`${walletSummary.signalValidityMinutes} minutes`} />
           </div>
 

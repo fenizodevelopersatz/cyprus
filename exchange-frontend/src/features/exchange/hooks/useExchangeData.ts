@@ -172,6 +172,7 @@ export const useExchangeData = (initialSymbol?: string): ExchangeHookState => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<number | undefined>(undefined);
+  const abandonConnectingSocketRef = useRef(false);
 
   const selectSymbol = useCallback((nextSymbol: string) => {
     setSymbol((prev) => (prev === nextSymbol ? prev : nextSymbol));
@@ -248,7 +249,11 @@ export const useExchangeData = (initialSymbol?: string): ExchangeHookState => {
         window.clearTimeout(reconnectRef.current);
       }
       if (wsRef.current) {
-        wsRef.current.close();
+        if (wsRef.current.readyState === WebSocket.CONNECTING) {
+          abandonConnectingSocketRef.current = true;
+        } else if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.close();
+        }
       }
     };
   }, []);
@@ -262,15 +267,24 @@ export const useExchangeData = (initialSymbol?: string): ExchangeHookState => {
       window.clearTimeout(reconnectRef.current);
     }
     if (wsRef.current) {
-      wsRef.current.close();
+      if (wsRef.current.readyState === WebSocket.CONNECTING) {
+        abandonConnectingSocketRef.current = true;
+      } else if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
     }
 
     setWsStatus("connecting");
     let closedByUser = false;
     const socket = new WebSocket(url);
+    abandonConnectingSocketRef.current = false;
     wsRef.current = socket;
 
     socket.onopen = () => {
+      if (abandonConnectingSocketRef.current) {
+        socket.close();
+        return;
+      }
       setWsStatus("open");
       const token = getStoredAccessToken();
       socket.send(
@@ -407,7 +421,13 @@ export const useExchangeData = (initialSymbol?: string): ExchangeHookState => {
 
     return () => {
       closedByUser = true;
-      socket.close();
+      if (socket.readyState === WebSocket.CONNECTING) {
+        abandonConnectingSocketRef.current = true;
+        return;
+      }
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
   }, [symbol]);
 

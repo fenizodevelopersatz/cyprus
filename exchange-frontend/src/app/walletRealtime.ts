@@ -4,6 +4,16 @@ import { getStoredAccessToken } from "../features/auth/state/session.storage";
 type WalletSummary = {
   mainWalletBalance?: string;
   main_wallet_balance?: string;
+  withdrawWalletBalance?: string;
+  withdraw_wallet_balance?: string;
+  withdrawWalletBreakdown?: {
+    directDepositTotal?: string;
+    adminAdjustmentTotal?: string;
+    tradeProfitTotal?: string;
+    tenDaySalaryTotal?: string;
+    activeWithdrawalTotal?: string;
+  } | null;
+  adminAdjustmentBalance?: string | null;
   balance?: {
     total?: string;
     breakdown?: Record<string, string>;
@@ -17,6 +27,7 @@ const listeners = new Set<WalletRealtimeListener>();
 
 let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
+let abandonSocketWhileConnecting = false;
 
 const clearReconnectTimer = () => {
   if (reconnectTimer !== null) {
@@ -53,6 +64,12 @@ const connect = () => {
 
   clearReconnectTimer();
   socket = new WebSocket(url);
+  abandonSocketWhileConnecting = false;
+
+  socket.onopen = () => {
+    if (listeners.size > 0 || !abandonSocketWhileConnecting) return;
+    socket?.close();
+  };
 
   socket.onmessage = (event) => {
     try {
@@ -86,7 +103,11 @@ const connect = () => {
 const disconnectIfIdle = () => {
   if (listeners.size > 0) return;
   clearReconnectTimer();
-  if (socket && socket.readyState <= WebSocket.OPEN) {
+  if (socket?.readyState === WebSocket.CONNECTING) {
+    abandonSocketWhileConnecting = true;
+    return;
+  }
+  if (socket?.readyState === WebSocket.OPEN) {
     socket.close();
   }
   socket = null;

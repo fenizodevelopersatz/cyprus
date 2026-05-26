@@ -355,6 +355,23 @@ function formatDobForSubmit(value?: string | null) {
     : "";
 }
 
+function getAdultDobMaxDate() {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 18);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isAdultDob(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  const normalized = formatDobForPicker(raw);
+  if (!normalized) return false;
+  return normalized <= getAdultDobMaxDate();
+}
+
 function ProgressRail({ steps }: { steps: ProgressStep[] }) {
   return (
     <div className="rounded-[24px] border border-[#2c2a1e] bg-[linear-gradient(180deg,#111417,#0b0d10)] px-3 py-4 shadow-[0_22px_70px_-48px_rgba(255,214,61,0.35)] sm:rounded-[28px] sm:px-6 sm:py-5">
@@ -679,10 +696,26 @@ export default function KycCenter() {
     }
 
     const formattedDateOfBirth = formatDobForSubmit(dateOfBirth);
-    if (dateOfBirth && !formattedDateOfBirth) {
+    if (!String(dateOfBirth || "").trim()) {
+      setSubmitFeedback({
+        tone: "error",
+        text: "Date of birth is required.",
+      });
+      return;
+    }
+
+    if (!formattedDateOfBirth) {
       setSubmitFeedback({
         tone: "error",
         text: "Select a valid date of birth.",
+      });
+      return;
+    }
+
+    if (!isAdultDob(dateOfBirth)) {
+      setSubmitFeedback({
+        tone: "error",
+        text: "You must be at least 18 years old.",
       });
       return;
     }
@@ -836,9 +869,11 @@ export default function KycCenter() {
               type="date"
               value={dateOfBirth}
               onChange={(event) => setDateOfBirth(event.target.value)}
+              required
+              max={getAdultDobMaxDate()}
               className="mt-3 w-full rounded-[18px] border border-slate-500/35 bg-[#1a1f23] px-4 py-3 text-[11px] text-white outline-none transition focus:border-slate-400/60 sm:mt-4 sm:rounded-[22px] sm:py-4 sm:text-[13px]"
             />
-            <div className="mt-2 text-[11px] text-slate-400">The selected date will be saved and shown as DD-MM-YYYY.</div>
+            <div className="mt-2 text-[11px] text-slate-400">Required. Select a date at least 18 years before today.</div>
           </div>
 
           <div className="rounded-[22px] border border-white/8 bg-[#12161a] p-4 sm:rounded-[28px] sm:p-5">

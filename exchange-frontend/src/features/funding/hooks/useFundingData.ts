@@ -93,6 +93,36 @@ export function useFundingData() {
                 breakdown: nextSummary.balance.breakdown ?? current.balance.breakdown,
               }
             : current.balance,
+          withdrawWalletBalance: String(
+            nextSummary.withdrawWalletBalance ??
+              nextSummary.withdraw_wallet_balance ??
+              current.withdrawWalletBalance
+          ),
+          withdrawWalletBreakdown: nextSummary.withdrawWalletBreakdown
+            ? {
+                directDepositTotal: String(
+                  nextSummary.withdrawWalletBreakdown.directDepositTotal ??
+                    current.withdrawWalletBreakdown.directDepositTotal
+                ),
+                adminAdjustmentTotal: String(
+                  nextSummary.withdrawWalletBreakdown.adminAdjustmentTotal ??
+                    current.withdrawWalletBreakdown.adminAdjustmentTotal
+                ),
+                tradeProfitTotal: String(
+                  nextSummary.withdrawWalletBreakdown.tradeProfitTotal ??
+                    current.withdrawWalletBreakdown.tradeProfitTotal
+                ),
+                tenDaySalaryTotal: String(
+                  nextSummary.withdrawWalletBreakdown.tenDaySalaryTotal ??
+                    current.withdrawWalletBreakdown.tenDaySalaryTotal
+                ),
+                activeWithdrawalTotal: String(
+                  nextSummary.withdrawWalletBreakdown.activeWithdrawalTotal ??
+                    current.withdrawWalletBreakdown.activeWithdrawalTotal
+                ),
+              }
+            : current.withdrawWalletBreakdown,
+          adminAdjustmentBalance: String(nextSummary.adminAdjustmentBalance ?? current.adminAdjustmentBalance),
           updatedAt: nextSummary.updatedAt ?? current.updatedAt,
         };
       });

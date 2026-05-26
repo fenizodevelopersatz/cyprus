@@ -467,6 +467,7 @@ export async function requestWithdrawal({ userId, asset, amount, to, chain, memo
           referenceId: withdrawalId,
           remark: 'Withdrawal reserved from main wallet balance',
           meta: { chain: normalizedChain, to, memo: memo ? String(memo).trim() : null },
+          investment: { enabled: true, amount: amountBig },
         },
         trx
       );
@@ -872,6 +873,7 @@ export async function adminRejectWithdrawal({ withdrawalId, reason, reviewerId }
           referenceId: row.id,
           remark: 'Rejected withdrawal returned to main wallet balance',
           meta: { reviewerId, reason: normalizedReason },
+          investment: { enabled: true, amount: amountBig },
         },
         trx
       );
@@ -950,6 +952,7 @@ export async function adminAdjustBalance({
             remark: memo || 'Admin credited main wallet balance',
             meta: { reviewerId, namespace: normalizedNamespace, orderId: orderId || null },
             suppressMlmRefresh: true,
+            investment: { enabled: true, amount: amountBig },
           },
           trx
         );

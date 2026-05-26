@@ -816,6 +816,7 @@ export async function closeExpiredSignalTrades(limit = 25) {
             symbol: row.symbol,
             sellTrigger: 'AUTO_SIGNAL_EXPIRY',
           },
+          investment: { enabled: profitAmountBig > 0n, amount: profitAmountBig },
         },
         trx
       );

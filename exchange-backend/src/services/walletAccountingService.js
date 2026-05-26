@@ -1,6 +1,7 @@
 import { formatUnits, parseUnits } from 'ethers';
 import { db } from '../db.js';
 import { up as ensureWalletAccountingMigration } from '../../db/migrations/027_wallet_accounting.js';
+import { up as ensureUserInvestmentBalanceMigration } from '../../db/migrations/055_user_investment_balance.js';
 import { getAccountBalance } from './ledgerService.js';
 import { allocateGlobalTxnNumber, formatGlobalTxnId } from '../utils/generateGlobalTxnId.js';
 import { queueWalletRealtimeRefresh } from './walletRealtime.service.js';
@@ -113,7 +114,10 @@ function getWalletLedgerTxnCategory(type) {
 
 async function ensureWalletAccountingSchema() {
   if (!schemaReadyPromise) {
-    schemaReadyPromise = ensureWalletAccountingMigration(db).catch((error) => {
+    schemaReadyPromise = Promise.all([
+      ensureWalletAccountingMigration(db),
+      ensureUserInvestmentBalanceMigration(db),
+    ]).catch((error) => {
       schemaReadyPromise = null;
       throw error;
     });
@@ -142,10 +146,20 @@ async function readUserBalanceRow(userId, trx = db) {
     .first('column_name')
     .then((row) => !!row)
     .catch(() => false);
+  const hasInvestmentBalance = await trx('information_schema.columns')
+    .where({
+      table_schema: trx.raw('DATABASE()'),
+      table_name: 'users',
+      column_name: 'investment_balance',
+    })
+    .first('column_name')
+    .then((row) => !!row)
+    .catch(() => false);
 
   const columns = [];
   if (hasMainWalletBalance) columns.push('main_wallet_balance');
   if (hasWalletMainBalance) columns.push('wallet_main_balance');
+  if (hasInvestmentBalance) columns.push('investment_balance');
   if (columns.length === 0) columns.push(trx.raw('NULL as main_wallet_balance'));
 
   return trx('users').where({ id: userId }).select(columns).first();
@@ -193,6 +207,12 @@ export async function getMainWalletBalanceBig(userId, trx = db) {
     return parseUnits(String(balanceValue || '0'), DECIMALS);
   }
   return getAccountBalance({ userId, namespace: 'spot:available', asset: DEFAULT_ASSET }, trx);
+}
+
+export async function getInvestmentBalanceBig(userId, trx = db) {
+  await ensureWalletAccountingSchema();
+  const row = await readUserBalanceRow(userId, trx);
+  return parseUnits(String(row?.investment_balance || '0'), DECIMALS);
 }
 
 async function getLatestMainWalletLedgerBalance(userId, trx = db) {
@@ -331,6 +351,34 @@ async function mutateMainWalletBalance(
   };
 }
 
+async function mutateInvestmentBalance(
+  { userId, amountBig, isCredit = true },
+  trx = db
+) {
+  await ensureWalletAccountingSchema();
+
+  const user = await readUserBalanceRow(userId, trx);
+  if (!user) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  const previousBalanceBig = parseUnits(String(user.investment_balance || '0'), DECIMALS);
+  const newBalanceBig = isCredit ? previousBalanceBig + amountBig : previousBalanceBig - amountBig;
+  if (newBalanceBig < 0n) {
+    throw new Error('INSUFFICIENT_INVESTMENT_BALANCE');
+  }
+
+  await trx('users').where({ id: userId }).update({
+    investment_balance: formatUnits(newBalanceBig, DECIMALS),
+    updated_at: new Date(),
+  });
+
+  return {
+    previousBalance: formatWalletBalance(previousBalanceBig),
+    newBalance: formatWalletBalance(newBalanceBig),
+  };
+}
+
 export async function recordMlmIncomeHistory(
   {
     userId,
@@ -380,7 +428,7 @@ export async function recordMlmIncomeHistory(
 }
 
 export async function applyWalletCreditRecord(
-  { userId, amount, type, sourceType, referenceId = null, remark = null, meta = null, mlm = null, suppressMlmRefresh = false },
+  { userId, amount, type, sourceType, referenceId = null, remark = null, meta = null, mlm = null, suppressMlmRefresh = false, investment = null },
   trx = db
 ) {
   const amountBig = toBigIntAmount(amount);
@@ -419,6 +467,17 @@ export async function applyWalletCreditRecord(
     );
   }
 
+  let investmentMutation = null;
+  if (investment?.enabled) {
+    const investmentAmountBig = toBigIntAmount(investment.amount ?? amountBig);
+    if (investmentAmountBig > 0n) {
+      investmentMutation = await mutateInvestmentBalance(
+        { userId, amountBig: investmentAmountBig, isCredit: true },
+        trx
+      );
+    }
+  }
+
   // if (!suppressMlmRefresh) {
   //   await triggerMlmRefresh(userId, { type, sourceType }, trx);
   // }
@@ -429,11 +488,13 @@ export async function applyWalletCreditRecord(
     txnId: walletMutation.txnId,
     previousBalance: walletMutation.previousBalance,
     newBalance: walletMutation.newBalance,
+    previousInvestmentBalance: investmentMutation?.previousBalance ?? null,
+    newInvestmentBalance: investmentMutation?.newBalance ?? null,
   };
 }
 
 export async function applyWalletDebitRecord(
-  { userId, amount, type, sourceType, referenceId = null, remark = null, meta = null },
+  { userId, amount, type, sourceType, referenceId = null, remark = null, meta = null, investment = null },
   trx = db
 ) {
   const amountBig = toBigIntAmount(amount);
@@ -451,6 +512,17 @@ export async function applyWalletDebitRecord(
     trx
   );
 
+  let investmentMutation = null;
+  if (investment?.enabled) {
+    const investmentAmountBig = toBigIntAmount(investment.amount ?? amountBig);
+    if (investmentAmountBig > 0n) {
+      investmentMutation = await mutateInvestmentBalance(
+        { userId, amountBig: investmentAmountBig, isCredit: false },
+        trx
+      );
+    }
+  }
+
   await triggerMlmRefresh(userId, { type, sourceType }, trx);
   queueWalletRealtimeRefresh(userId, trx);
 
@@ -458,6 +530,8 @@ export async function applyWalletDebitRecord(
     ledgerId: walletMutation.ledgerId,
     previousBalance: walletMutation.previousBalance,
     newBalance: walletMutation.newBalance,
+    previousInvestmentBalance: investmentMutation?.previousBalance ?? null,
+    newInvestmentBalance: investmentMutation?.newBalance ?? null,
   };
 }
 
@@ -497,10 +571,12 @@ export async function getUserWalletSummary(userId, trx = db) {
   const totalDebits = debitRows.reduce((sum, row) => sum + toNumber(row.total), 0);
   const userBalanceValue = userRow?.main_wallet_balance ?? userRow?.wallet_main_balance ?? '0';
   const mainWalletBalance = toNumber(userBalanceValue);
+  const investmentBalance = toNumber(userRow?.investment_balance || '0');
   const totalEarnings = signalIncomeTotal + mlmIncomeTotal;
 
   return {
     mainWalletBalance,
+    investmentBalance,
     depositTotal,
     signalIncomeTotal,
     mlmIncomeTotal,

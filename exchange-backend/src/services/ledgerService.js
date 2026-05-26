@@ -231,6 +231,10 @@ export async function creditBonus(userId, asset, amount, { reason, suppressMlmRe
               }
             : null,
           suppressMlmRefresh,
+          investment: {
+            enabled: ['signal_income', 'level_bonus_10day', 'salary_reward'].includes(classification.sourceType),
+            amount: amountBig,
+          },
         },
         conn
       );

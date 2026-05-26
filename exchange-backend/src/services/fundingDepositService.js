@@ -415,6 +415,7 @@ export async function creditConfirmedDeposit(depositId) {
           remark: 'Successful USDT deposit credited to main wallet',
           meta: { asset: row.asset, depositId: row.id },
           suppressMlmRefresh: true,
+          investment: { enabled: true, amount: row.amount },
         },
         trx
       );

@@ -188,7 +188,7 @@ function normalizeStatus(value) {
 }
 
 function isEligibleUser(user, minimumBalance = DEFAULT_MLM_MINIMUM_BALANCE) {
-  return normalizeStatus(user.status) === 'active' && toNumber(user.main_wallet_balance) >= minimumBalance;
+  return normalizeStatus(user.status) === 'active' && toNumber(user.investment_balance) >= minimumBalance;
 }
 
 function addDays(value, days) {
@@ -241,7 +241,7 @@ async function loadContext(trx = db) {
     getLevelConfig(),
     getLevelManagementSettings(),
     trx('users')
-      .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank', 'updated_at')
+      .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'investment_balance', 'current_level_code', 'current_level_rank', 'updated_at')
       .orderBy('id', 'asc'),
   ]);
 
@@ -289,7 +289,7 @@ async function refreshContextSubtree(trx, userId, context) {
   if (!subtreeIds.length) return;
 
   const refreshedUsers = await trx('users')
-    .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank', 'updated_at')
+    .select('id', 'sponsor_id', 'status', 'main_wallet_balance', 'investment_balance', 'current_level_code', 'current_level_rank', 'updated_at')
     .whereIn('id', subtreeIds)
     .orderBy('id', 'asc');
 
@@ -309,6 +309,7 @@ async function getUserTreePreview(userId, minimumBalance) {
       'u.email',
       'u.status',
       'u.main_wallet_balance',
+      'u.investment_balance',
       'u.current_level_code',
       'u.current_level_rank',
       'profile.display_name',
@@ -356,7 +357,7 @@ async function getUserTreePreview(userId, minimumBalance) {
     const email = String(row?.email || '');
     const fallbackName = email.includes('@') ? email.split('@')[0] : `User ${id}`;
     const displayName = String(row?.display_name || '').trim() || fallbackName;
-    const walletBalance = toNumber(row?.main_wallet_balance);
+    const walletBalance = toNumber(row?.investment_balance);
     const eligible = isEligibleUser(row, minimumBalance);
     const sponsorId = row?.sponsor_id ? Number(row.sponsor_id) : null;
 
@@ -400,7 +401,7 @@ function computeMetrics(userId, childrenMap, minimumBalance, memo = new Map()) {
   };
 
   for (const child of children) {
-    const balance = toNumber(child.main_wallet_balance);
+    const balance = toNumber(child.investment_balance);
     // console.log('balance', balance, children, "\n");
     const eligible = isEligibleUser(child, minimumBalance);
     metrics.directTotalBalance += balance;
@@ -453,7 +454,7 @@ async function collectEligibleSnapshotMembers(trx, rootUserId, context) {
   if (!subtreeIds.length) return [];
 
   const users = await trx('users')
-    .select('id', 'status', 'main_wallet_balance', 'updated_at')
+    .select('id', 'status', 'main_wallet_balance', 'investment_balance', 'updated_at')
     .whereIn('id', subtreeIds)
     .orderBy('id', 'asc');
   const latestLedgerRows = await trx('wallet_ledger')
@@ -477,7 +478,7 @@ async function collectEligibleSnapshotMembers(trx, rootUserId, context) {
       const latestLedger = latestLedgerByUser.get(userId) || null;
       return {
         memberUserId: userId,
-        walletBalance: toAmount(user.main_wallet_balance),
+        walletBalance: toAmount(user.investment_balance),
         userUpdatedAt: user.updated_at || null,
         userUpdatedAtMicro: toMicroUnix(user.updated_at),
         latestWalletTxnId: latestLedger?.txn_id || null,
@@ -1566,7 +1567,7 @@ export async function getUserMlmDashboard(userId) {
     getLevelConfig(),
     getLevelManagementSettings(),
     db('users')
-      .select('id', 'status', 'main_wallet_balance', 'current_level_code', 'current_level_rank')
+      .select('id', 'status', 'main_wallet_balance', 'investment_balance', 'current_level_code', 'current_level_rank')
       .where({ id: userId })
       .first(),
     db('user_team_wallet_summary').where({ user_id: userId }).first(),
@@ -1636,6 +1637,7 @@ export async function getUserMlmDashboard(userId) {
     currentLevelRank: toNumber(user?.current_level_rank),
     status: normalizeStatus(user?.status),
     mainWalletBalance: String(user?.main_wallet_balance || '0'),
+    investmentBalance: String(user?.investment_balance || '0'),
     minimumEligibleBalance: mlmConfig.MLM_MINIMUM_BALANCE,
     bonusIntervalDays: toNumber(mlmConfig.BONUS_INTERVAL_DAYS, DEFAULT_BONUS_INTERVAL_DAYS),
     rewardApplicable: normalizeStatus(user?.status) === 'active' && toNumber(user?.current_level_rank) > 0,

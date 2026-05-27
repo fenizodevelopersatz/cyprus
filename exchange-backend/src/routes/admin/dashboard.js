@@ -221,6 +221,7 @@ router.get(
         return {
           id: row.id,
           actor: row.display_name || row.email || 'System',
+          actorEmail: row.email || null,
           action: row.action,
           metadata,
           createdAt: row.created_at,

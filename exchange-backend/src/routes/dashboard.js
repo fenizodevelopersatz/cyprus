@@ -321,6 +321,10 @@ router.get('/news', requireAuth, async (req, res) => {
   const limit = Number(req.query.limit);
   const normalized =
     Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 50) : 10;
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
   ok(res, await getNews(normalized));
 });
 

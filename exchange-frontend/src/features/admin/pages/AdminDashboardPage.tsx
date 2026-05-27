@@ -692,6 +692,7 @@ export default function AdminDashboardPage() {
             >
               <div className="min-w-0">
                 <div className="truncate font-medium text-white">{row.user}</div>
+                <div className="mt-1 truncate text-xs text-emerald-200/80">{row.email}</div>
                 <div className="mt-1 truncate text-xs text-slate-500">{row.action}</div>
               </div>
               <div className="text-slate-300">{row.ipAddress}</div>
@@ -860,6 +861,10 @@ function mapLoginAuditRow(log: AdminAuditLog) {
   const metadata = (log.metadata ?? {}) as Record<string, unknown>;
   const ipAddress =
     readText(metadata, ["ip", "ipAddress", "ip_address", "loginIp", "lastLoginIp"]) ?? "--";
+  const email =
+    log.actorEmail ??
+    readText(metadata, ["email", "userEmail", "user_email", "loginEmail"]) ??
+    "--";
   const device =
     readText(metadata, ["device", "browser", "userAgent", "user_agent"]) ?? "Unknown device";
   const location =
@@ -869,6 +874,7 @@ function mapLoginAuditRow(log: AdminAuditLog) {
   return {
     id: log.id,
     user: log.actor || "Unknown user",
+    email,
     action: log.action,
     ipAddress,
     device,

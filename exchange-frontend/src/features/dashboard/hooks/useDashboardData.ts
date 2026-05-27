@@ -217,7 +217,9 @@ export const useDashboardData = (): DashboardHookResult => {
     refetch: () => undefined,
   });
   const [refreshIndex, setRefreshIndex] = useState(0);
+  const [newsRefreshIndex, setNewsRefreshIndex] = useState(0);
   const requestIdRef = useRef(0);
+  const newsRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (MOCK) return;
@@ -254,14 +256,13 @@ export const useDashboardData = (): DashboardHookResult => {
           }
         }
 
-        const [positionsResult, ordersResult, signalHistoryResult, tickersResult, topMoversResult, promosResult, newsResult] = await Promise.allSettled([
+        const [positionsResult, ordersResult, signalHistoryResult, tickersResult, topMoversResult, promosResult] = await Promise.allSettled([
           fetchDashboardPositions(),
           fetchDashboardOrders(6),
           fetchSignalHistory(),
           fetchDashboardTickers(),
           fetchDashboardTopMovers(),
           fetchDashboardPromotions(),
-          fetchDashboardNews(),
         ]);
 
         const extract = <T,>(
@@ -284,9 +285,7 @@ export const useDashboardData = (): DashboardHookResult => {
         const tickersExtract = extract(tickersResult, "tickers", [] as DashboardTicker[]);
         const topMoversExtract = extract(topMoversResult, "topMovers", [] as DashboardTicker[]);
         const promosExtract = extract(promosResult, "promotions", [] as DashboardPromo[]);
-        const newsExtract = extract(newsResult, "news", [] as DashboardNewsArticle[]);
-
-        [positionsExtract, ordersExtract, signalHistoryExtract, tickersExtract, topMoversExtract, promosExtract, newsExtract].forEach((item) => {
+        [positionsExtract, ordersExtract, signalHistoryExtract, tickersExtract, topMoversExtract, promosExtract].forEach((item) => {
           if (item.missing) missingResources.push(item.missing);
         });
 
@@ -298,7 +297,6 @@ export const useDashboardData = (): DashboardHookResult => {
         const tickers = tickersSource;
         const movers = resolvedTopMovers.length > 0 ? resolvedTopMovers : tickersSource.slice(0, 3);
         const promos = promosExtract.value;
-        const news = newsExtract.value;
 
         const topMoverFallback =
           summary?.topMover ?? movers[0] ?? tickers[0] ?? undefined;
@@ -346,7 +344,6 @@ export const useDashboardData = (): DashboardHookResult => {
           tickers,
           movers,
           promos,
-          news,
           history: normaliseHistory(history),
           baseSymbol,
           error: undefined,
@@ -371,13 +368,49 @@ export const useDashboardData = (): DashboardHookResult => {
     if (MOCK) return;
     const timer = window.setInterval(() => {
       setRefreshIndex((index) => index + 1);
+      setNewsRefreshIndex((index) => index + 1);
     }, REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [MOCK]);
 
+  useEffect(() => {
+    if (MOCK) return;
+
+    const requestId = ++newsRequestIdRef.current;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const news = await fetchDashboardNews();
+        if (cancelled || requestId !== newsRequestIdRef.current) return;
+        setState((prev) => ({
+          ...prev,
+          news,
+          missingResources: prev.missingResources.filter((resource) => resource !== "news"),
+        }));
+      } catch (error) {
+        if (cancelled || requestId !== newsRequestIdRef.current) return;
+        if (isNotFoundError(error)) {
+          setState((prev) => ({
+            ...prev,
+            news: [],
+            missingResources: prev.missingResources.includes("news")
+              ? prev.missingResources
+              : [...prev.missingResources, "news"],
+          }));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [newsRefreshIndex]);
+
   const refetch = useCallback(() => {
     if (MOCK) return;
     setRefreshIndex((index) => index + 1);
+    setNewsRefreshIndex((index) => index + 1);
   }, []);
 
   const mockSnapshot = useMemo(() => {

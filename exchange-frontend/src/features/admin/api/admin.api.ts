@@ -418,6 +418,7 @@ export type AdminGasFundingRecord = {
 export type AdminAuditLog = {
   id: string | number;
   actor: string;
+  actorEmail?: string | null;
   action: string;
   target?: string;
   metadata?: Record<string, unknown>;

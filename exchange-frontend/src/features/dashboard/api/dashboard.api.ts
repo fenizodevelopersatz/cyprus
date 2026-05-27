@@ -264,6 +264,10 @@ export const fetchDashboardPromotions = async (): Promise<DashboardPromo[]> => {
 };
 
 export const fetchDashboardNews = async (): Promise<DashboardNewsArticle[]> => {
-  const response = await api.get(DASHBOARD_ENDPOINTS.news);
+  const response = await api.get(DASHBOARD_ENDPOINTS.news, {
+    params: {
+      _: Date.now(),
+    },
+  });
   return unwrap<DashboardNewsArticle[]>(response.data);
 };

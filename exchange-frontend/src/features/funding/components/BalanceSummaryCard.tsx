@@ -8,9 +8,10 @@ type Props = {
 };
 
 const networkMeta = [
-  { key: "ethereum", label: "ETH" },
-  { key: "bsc", label: "BSC" },
-  { key: "tron", label: "TRON" },
+  { key: "ethereum", label: "ETH", asset: "USDT" },
+  { key: "bsc", label: "BSC", asset: "USDT" },
+  { key: "tron", label: "TRON", asset: "USDT" },
+  { key: "solana", label: "SOLANA", asset: "USDC" },
 ];
 
 const formatFundingUsd = (value: string | number | null | undefined) => `$${formatMoney(value)}`;
@@ -35,13 +36,14 @@ export function BalanceSummaryCard({ total, breakdown, adminAdjustmentBalance }:
         <div className="mt-5 hidden h-px bg-[rgba(255,255,255,0.05)] sm:block" />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3 lg:max-w-[1020px]">
+      <div className="grid grid-cols-2 gap-3 lg:max-w-[1020px] xl:grid-cols-4">
         {networkMeta.map((item) => (
-          <div key={item.key} className="rounded-[18px] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 py-3.5 lg:px-4 lg:py-3">
-            <div className="flex items-center gap-3 sm:block sm:space-y-2">
-              <FundingNetworkIcon network={item.key as "ethereum" | "bsc" | "tron"} size="sm" />
+          <div key={item.key} className="min-w-0 rounded-[18px] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 py-3.5 sm:px-4 lg:py-3">
+            <div className="flex min-w-0 items-center gap-3 xl:block xl:space-y-2">
+              <FundingNetworkIcon network={item.key as "ethereum" | "bsc" | "tron" | "solana"} size="sm" />
               <div>
                 <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)] sm:text-[10px] sm:tracking-[0.12em]">{item.label}</div>
+                <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--accent-yellow)]">{item.asset}</div>
                 <span className="text-[0.82rem] font-semibold text-white sm:text-[1.25rem] sm:font-bold lg:text-[1.05rem]">{formatFundingUsd(breakdown[item.key] ?? "0")}</span>
               </div>
             </div>

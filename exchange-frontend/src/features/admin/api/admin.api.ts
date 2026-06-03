@@ -209,6 +209,7 @@ export type AdminWithdrawHistoryResponse = {
     totalErc20: string;
     totalBep20: string;
     totalTrc20: string;
+    totalSolana?: string;
   };
   pagination: { page: number; limit: number; total: number; totalPages: number };
 };
@@ -218,6 +219,7 @@ export type AdminWalletLiveBalances = {
   totalErc20: string;
   totalBep20: string;
   totalTrc20: string;
+  totalSolana?: string;
   wallets: Array<{
     network: string;
     asset: string;
@@ -318,6 +320,7 @@ export type AdminDepositSummary = {
   totalErc: string;
   totalBep: string;
   totalTrc: string;
+  totalSol?: string;
 };
 
 export type AdminTreasuryWallet = {
@@ -378,10 +381,16 @@ export type AdminSweepSummary = AdminDepositSummary & {
 export type AdminCustodialSweepRecord = {
   id: number | string;
   userId: number | string;
+  userEmail?: string | null;
+  userName?: string | null;
+  userProfilePhoto?: string | null;
+  userCreatedAt?: string | null;
   network: string;
   token: string;
   sourceWalletAddress: string;
+  sourceWalletExplorerUrl?: string | null;
   destinationAdminWalletAddress: string;
+  destinationAdminWalletExplorerUrl?: string | null;
   tokenContract?: string | null;
   depositTransactionId?: number | string | null;
   usdtAmountDecimal: string;
@@ -389,7 +398,9 @@ export type AdminCustodialSweepRecord = {
   gasAsset?: string | null;
   gasStatus: string;
   gasTopupTxHash?: string | null;
+  gasTopupExplorerUrl?: string | null;
   sweepTxHash?: string | null;
+  sweepExplorerUrl?: string | null;
   status: string;
   triggerType?: string | null;
   errorMessage?: string | null;
@@ -682,11 +693,7 @@ export type AdminSignalAsset = {
   asset: string;
   network: string;
   displayName: string;
-  networkType: "EVM" | "TRON" | string;
-  minDeposit: string | number;
-  minWithdraw: string | number;
-  withdrawFeeType: "FIXED" | "PERCENT" | string;
-  withdrawFee: string | number;
+  networkType: "EVM" | "TRON" | "SOLANA" | string;
   rpcUrl?: string | null;
   chainId?: string | null;
   contractAddress?: string | null;
@@ -694,6 +701,7 @@ export type AdminSignalAsset = {
   depositWallet?: string | null;
   hotWallet?: string | null;
   privateKey?: string | null;
+  privateKeyLast5?: string | null;
   hasPrivateKey?: boolean;
   confirmations: number;
   fullHost?: string | null;
@@ -708,11 +716,7 @@ export type AdminSignalAssetPayload = {
   asset: string;
   network: string;
   displayName: string;
-  networkType: "EVM" | "TRON";
-  minDeposit: string | number;
-  minWithdraw: string | number;
-  withdrawFeeType: "FIXED" | "PERCENT";
-  withdrawFee: string | number;
+  networkType: "EVM" | "TRON" | "SOLANA";
   rpcUrl?: string;
   chainId?: string;
   contractAddress?: string;
@@ -1719,6 +1723,19 @@ export async function createAdminSignalAsset(payload: AdminSignalAssetPayload) {
 export async function updateAdminSignalAsset(id: string | number, payload: Partial<AdminSignalAssetPayload>) {
   const { data } = await api.patch(ADMIN_ENDPOINTS.assets.update(id), payload);
   return unwrap<AdminSignalAsset>(data);
+}
+
+export async function verifyAdminSignalAssetPassword(payload: { currentPassword: string }) {
+  const { data } = await api.post(ADMIN_ENDPOINTS.assets.verifyPassword, payload);
+  return unwrap<{ verified: boolean }>(data);
+}
+
+export async function deriveAdminSignalAssetHotWallet(payload: {
+  networkType: AdminSignalAssetPayload["networkType"];
+  privateKey: string;
+}) {
+  const { data } = await api.post(ADMIN_ENDPOINTS.assets.deriveHotWallet, payload);
+  return unwrap<{ address: string; networkType: AdminSignalAssetPayload["networkType"] }>(data);
 }
 
 export async function fetchAdminKycRequests(params?: { page?: number; pageSize?: number; status?: string; search?: string }) {

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import Button from "../../../ui/Button";
 import Dialog from "../../../ui/Dialog";
+import { FundingNetworkIcon } from "../../funding/components/FundingNetworkIcon";
 import {
   adminAdjustBalance,
   approveAdminUserTelegramAccess,
@@ -104,13 +105,27 @@ const networkCardTone: Record<string, string> = {
   ethereum: "border-cyan-400/20 bg-cyan-500/10 text-cyan-200/80",
   bsc: "border-amber-400/20 bg-amber-500/10 text-amber-200/80",
   tron: "border-violet-400/20 bg-violet-500/10 text-violet-200/80",
+  solana: "border-slate-300/15 bg-slate-300/10 text-slate-200/80",
 };
 
 const networkCardLabel: Record<string, string> = {
   ethereum: "ERC-20",
   bsc: "BEP-20",
   tron: "TRC-20",
+  solana: "SOLANA",
 };
+
+type TransactionNetworkIconKey = "ethereum" | "bsc" | "tron" | "solana";
+
+function getTransactionNetworkIconKey(value?: string | number | null): TransactionNetworkIconKey | null {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized || normalized === "-") return null;
+  if (["ethereum", "eth", "erc", "erc20"].includes(normalized)) return "ethereum";
+  if (["bsc", "bnb", "bep", "bep20"].includes(normalized)) return "bsc";
+  if (["tron", "trx", "trc", "trc20"].includes(normalized)) return "tron";
+  if (["solana", "sol", "solana usdc", "usdc solana"].includes(normalized)) return "solana";
+  return null;
+}
 
 const getUserAvatarLabel = (user: AdminUser) => {
   const seed = String(user.displayName || user.name || user.email || "U").trim();
@@ -267,18 +282,28 @@ export default function AdminUsersPage() {
     Boolean(String(item.address || "").trim())
   );
   const depositItems: AdminDepositRecord[] = depositsQuery.data?.items ?? [];
-  const internalDepositsByNetwork = depositItems.reduce<Record<string, number>>((acc, item) => {
+  const depositSummary = depositsQuery.data?.summary;
+  const internalDepositsByNetworkFromItems = depositItems.reduce<Record<string, number>>((acc, item) => {
     const key = String(item.networkKey || item.network || "").trim().toLowerCase();
     if (!key) return acc;
     acc[key] = (acc[key] || 0) + Number(item.amount || 0);
     return acc;
   }, {});
+  const internalDepositsByNetwork = depositSummary
+    ? {
+        ethereum: Number(depositSummary.totalErc || 0),
+        bsc: Number(depositSummary.totalBep || 0),
+        tron: Number(depositSummary.totalTrc || 0),
+        solana: Number(depositSummary.totalSol || 0),
+      }
+    : internalDepositsByNetworkFromItems;
   const internalNetworkCards = visibleWalletNetworks.map((item) => {
     const key = String(item.network || "").toLowerCase();
     return {
       key,
       title: `Internal ${networkCardLabel[key] || String(item.walletNetwork || item.network || "").toUpperCase()}`,
       nativeAsset: item.nativeAsset,
+      tokenAsset: key === "solana" ? "USDC" : "USDT",
       nativeBalance: 0,
       usdtBalance: internalDepositsByNetwork[key] || 0,
       tone: networkCardTone[key] || "border-white/10 bg-white/5 text-slate-300/80",
@@ -313,6 +338,7 @@ export default function AdminUsersPage() {
       key,
       title: `Live ${networkCardLabel[key] || String(item.walletNetwork || item.network || "").toUpperCase()}`,
       nativeAsset: item.nativeAsset,
+      tokenAsset: item.tokenAsset || (key === "solana" ? "USDC" : "USDT"),
       nativeBalance: Number(item.nativeBalance || 0),
       usdtBalance: Number(item.tokenBalance || 0),
       tone: networkCardTone[key] || "border-white/10 bg-white/5 text-slate-300/80",
@@ -931,7 +957,7 @@ export default function AdminUsersPage() {
           setTransactionPage(1);
         }}
         title={selectedUser ? selectedUser.email : "User details"}
-        panelClassName="max-w-[94vw] xl:max-w-[1500px]"
+        panelClassName="!max-w-[calc(100vw-2rem)] 2xl:!max-w-[1840px]"
       >
         {selectedUser ? (
           <div className="max-h-[84vh] space-y-6 overflow-y-auto pr-2">
@@ -1012,8 +1038,8 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 xl:min-w-[620px]">
-                  <div className={`grid gap-3 sm:grid-cols-2 ${internalNetworkCards.length >= 3 ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+                <div className="grid gap-3 xl:min-w-[900px]">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
                       <div className="text-[11px] uppercase tracking-[0.24em] text-emerald-200/80">Internal Total USDT</div>
                       <div className="mt-2 text-2xl font-semibold text-white">{formatBalance(internalUsdtBalance)}</div>
@@ -1027,7 +1053,7 @@ export default function AdminUsersPage() {
                             <span className="text-lg font-semibold text-white">{formatBalance(card.nativeBalance)}</span>
                           </div> */}
                           <div className="flex items-center justify-between gap-3">
-                            <span>USDT</span>
+                            <span>{card.tokenAsset}</span>
                             <span className="text-lg font-semibold text-white">{formatBalance(card.usdtBalance)}</span>
                           </div>
                         </div>
@@ -1035,7 +1061,7 @@ export default function AdminUsersPage() {
                     ))}
                   </div>
 
-                  <div className={`grid gap-3 sm:grid-cols-2 ${liveNetworkCards.length >= 3 ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {liveNetworkCards.map((card) => (
                       <div key={card.key} className={`rounded-2xl border p-4 ${card.tone}`}>
                         <div className="text-[11px] uppercase tracking-[0.24em]">{card.title}</div>
@@ -1045,7 +1071,7 @@ export default function AdminUsersPage() {
                             <span className="text-lg font-semibold text-white">{formatBalance(card.nativeBalance)}</span>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <span>USDT</span>
+                            <span>{card.tokenAsset}</span>
                             <span className="text-lg font-semibold text-white">{formatBalance(card.usdtBalance)}</span>
                           </div>
                         </div>
@@ -1147,7 +1173,16 @@ export default function AdminUsersPage() {
                           </div>
                           <div>
                             <div className="uppercase tracking-[0.2em]">{item.quaternaryMetaLabel}</div>
-                            <div className="mt-1 break-all text-slate-300">{item.quaternaryMetaValue}</div>
+                            <div className="mt-1 break-all text-slate-300">
+                              {item.quaternaryMetaLabel === "Network" && getTransactionNetworkIconKey(item.quaternaryMetaValue) ? (
+                                <span className="inline-flex items-center gap-2 align-middle">
+                                  <FundingNetworkIcon network={getTransactionNetworkIconKey(item.quaternaryMetaValue)!} size="xs" />
+                                  <span>{item.quaternaryMetaValue}</span>
+                                </span>
+                              ) : (
+                                item.quaternaryMetaValue
+                              )}
+                            </div>
                           </div>
                         </div>
                         {"detailRows" in item && Array.isArray(item.detailRows) && item.detailRows.length > 0 ? (

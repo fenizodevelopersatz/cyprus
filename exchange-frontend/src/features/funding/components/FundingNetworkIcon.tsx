@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-type FundingNetworkKey = "wallet" | "usdt" | "ethereum" | "bsc" | "tron";
+type FundingNetworkKey = "wallet" | "usdt" | "ethereum" | "bsc" | "tron" | "solana";
 
 const networkIconMap: Record<FundingNetworkKey, { symbol: string; imageUrl: string; shell: string; ring: string }> = {
   wallet: {
@@ -11,27 +11,33 @@ const networkIconMap: Record<FundingNetworkKey, { symbol: string; imageUrl: stri
   },
   usdt: {
     symbol: "USDT",
-    imageUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/825.png",
+    imageUrl: "",
     shell: "from-[#30c48d] via-[#26a17b] to-[#0f6c58]",
     ring: "ring-[#30c48d]/30",
   },
   ethereum: {
     symbol: "ETH",
-    imageUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1027.png",
+    imageUrl: "/icons/networks/ethereum.svg",
     shell: "from-[#7c87ff] via-[#627eea] to-[#3946a3]",
     ring: "ring-[#9da5b7]/30",
   },
   bsc: {
     symbol: "BNB",
-    imageUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1839.png",
+    imageUrl: "/icons/networks/bsc.svg",
     shell: "from-[#f3ba2f] via-[#f0b90b] to-[#7a5b00]",
     ring: "ring-[#f0b90b]/30",
   },
   tron: {
     symbol: "TRX",
-    imageUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1958.png",
+    imageUrl: "/icons/networks/tron.svg",
     shell: "from-[#ff5168] via-[#f6465d] to-[#8b1d2d]",
     ring: "ring-[#f6465d]/30",
+  },
+  solana: {
+    symbol: "SOL",
+    imageUrl: "/icons/networks/solana.svg",
+    shell: "from-[#14f195] via-[#9945ff] to-[#00c2ff]",
+    ring: "ring-[#14f195]/30",
   },
 };
 

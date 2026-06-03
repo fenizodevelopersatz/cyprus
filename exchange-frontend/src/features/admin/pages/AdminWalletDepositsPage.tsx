@@ -9,6 +9,7 @@ import {
   type AdminCustodialSweepRecord,
 } from "../api/admin.api";
 import { formatMoneyWithSymbol } from "../../../utils/money";
+import { FundingNetworkIcon } from "../../funding/components/FundingNetworkIcon";
 
 const shellCls = "space-y-4 text-slate-100";
 const panelCls = "rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,34,0.94),rgba(7,12,24,0.98))] shadow-[0_30px_80px_-48px_rgba(45,93,255,0.35)]";
@@ -81,6 +82,21 @@ function formatDateTime(value: string | null | undefined) {
   })}`;
 }
 
+function formatRelativeTime(value: string | null | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  const diffMs = Date.now() - date.getTime();
+  const absMs = Math.abs(diffMs);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (absMs < minute) return "just now";
+  if (absMs < hour) return `${Math.round(absMs / minute)} min ${diffMs >= 0 ? "ago" : "from now"}`;
+  if (absMs < day) return `${Math.round(absMs / hour)} hr ${diffMs >= 0 ? "ago" : "from now"}`;
+  return `${Math.round(absMs / day)} day${Math.round(absMs / day) === 1 ? "" : "s"} ${diffMs >= 0 ? "ago" : "from now"}`;
+}
+
 function getStatusTone(value: string | null | undefined) {
   const normalized = String(value || "").toLowerCase();
   if (normalized.includes("failed") || normalized.includes("insufficient")) {
@@ -98,15 +114,41 @@ function getStatusTone(value: string | null | undefined) {
 function networkTone(network: string | null | undefined) {
   const normalized = String(network || "").toLowerCase();
   if (normalized === "tron") return "border-cyan-400/25 bg-cyan-400/10 text-cyan-100";
+  if (normalized === "solana") return "border-emerald-400/25 bg-emerald-400/10 text-emerald-100";
   if (normalized === "bsc") return "border-amber-400/25 bg-amber-400/10 text-amber-100";
   if (normalized === "ethereum") return "border-violet-400/25 bg-violet-400/10 text-violet-100";
   return "border-white/10 bg-white/[0.04] text-slate-200";
+}
+
+function getNetworkIconKey(network: string | null | undefined): "ethereum" | "bsc" | "tron" | "solana" | null {
+  const normalized = String(network || "").toLowerCase();
+  if (normalized === "ethereum") return "ethereum";
+  if (normalized === "bsc") return "bsc";
+  if (normalized === "tron") return "tron";
+  if (normalized === "solana") return "solana";
+  return null;
+}
+
+function getSweepAsset(network: string | null | undefined) {
+  return String(network || "").toLowerCase() === "solana" ? "USDC" : "USDT";
+}
+
+function getUserInitials(name: string | null | undefined, email: string | null | undefined, fallback: string | number) {
+  const source = String(name || email || fallback || "").trim();
+  if (!source) return "?";
+  const parts = source
+    .replace(/@.*/, "")
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return source.slice(0, 2).toUpperCase();
 }
 
 const sweepNetworkActions = [
   { key: "ethereum", label: "Run ERC20 Sweep", shortLabel: "ERC20" },
   { key: "bsc", label: "Run BEP20 Sweep", shortLabel: "BEP20" },
   { key: "tron", label: "Run TRC20 Sweep", shortLabel: "TRC20" },
+  { key: "solana", label: "Run Solana Sweep", shortLabel: "SOLANA" },
 ] as const;
 
 function MetricTile({
@@ -123,12 +165,12 @@ function MetricTile({
   to?: string;
 }) {
   const content = (
-    <div className={`rounded-[24px] border border-white/8 bg-white/[0.035] px-4 py-4 ${to ? "transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.06]" : ""}`}>
+    <div className={`flex h-full min-h-[136px] flex-col rounded-[24px] border border-white/8 bg-white/[0.035] px-4 py-4 ${to ? "transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.06]" : ""}`}>
       <div className={mutedLabelCls}>{label}</div>
-      <div className="mt-3">
+      <div className="mt-3 min-h-[2.2rem]">
         <AmountDisplay value={value} size="hero" />
       </div>
-      <div className="mt-2 text-sm text-slate-400">{note}</div>
+      <div className="mt-auto pt-2 text-sm leading-5 text-slate-400">{note}</div>
       {detail ? <div className="mt-2 break-all text-xs text-slate-500">{detail}</div> : null}
     </div>
   );
@@ -150,12 +192,12 @@ function AmountDisplay({
   const isHero = size === "hero";
 
   return (
-    <div className={`flex flex-wrap items-end gap-2 ${isHero ? "min-h-[3rem]" : ""}`}>
+    <div className={`flex flex-wrap items-end gap-2 ${isHero ? "min-h-[2.2rem]" : ""}`}>
       <span
         className={
           isHero
-            ? "text-[clamp(2rem,2.2vw,3rem)] font-black leading-none tracking-[-0.04em] text-white [text-shadow:0_0_18px_rgba(255,255,255,0.16),0_0_38px_rgba(56,189,248,0.10)]"
-            : "text-lg font-semibold leading-none tracking-[-0.03em] text-white [text-shadow:0_0_14px_rgba(56,189,248,0.10)]"
+            ? "text-[clamp(1.45rem,1.25vw,2rem)] font-extrabold leading-none text-white [text-shadow:0_0_14px_rgba(255,255,255,0.12),0_0_28px_rgba(56,189,248,0.08)]"
+            : "text-base font-semibold leading-none text-white [text-shadow:0_0_14px_rgba(56,189,248,0.10)]"
         }
       >
         {amount}
@@ -164,8 +206,8 @@ function AmountDisplay({
         <span
           className={
             isHero
-              ? "mb-1 rounded-full border border-cyan-400/20 bg-cyan-400/[0.07] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.12)]"
-              : "rounded-full border border-cyan-400/20 bg-cyan-400/[0.07] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.28em] text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.10)]"
+              ? "mb-0.5 rounded-full border border-cyan-400/20 bg-cyan-400/[0.07] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.10)]"
+              : "rounded-full border border-cyan-400/20 bg-cyan-400/[0.07] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.10)]"
           }
         >
           {symbol}
@@ -200,24 +242,126 @@ function DataBlock({
   value,
   detail,
   tone = "text-white",
+  copyValue,
+  copied,
+  onCopy,
+  explorerUrl,
 }: {
   label: string;
   value: string;
   detail?: string;
   tone?: string;
+  copyValue?: string | null;
+  copied?: boolean;
+  onCopy?: (value: string) => void;
+  explorerUrl?: string | null;
 }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-      <div className={mutedLabelCls}>{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className={mutedLabelCls}>{label}</div>
+        <div className="flex shrink-0 items-center gap-1">
+          {copyValue && onCopy ? (
+            <button
+              type="button"
+              onClick={() => onCopy(copyValue)}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-300/30 hover:bg-cyan-300/10"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          ) : null}
+          {explorerUrl ? (
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-100 transition hover:border-emerald-300/30 hover:bg-emerald-300/10"
+            >
+              Open
+            </a>
+          ) : null}
+        </div>
+      </div>
       <div className={`mt-2 break-all text-sm font-medium ${tone}`}>{value}</div>
       {detail ? <div className="mt-1 break-all text-xs text-slate-500">{detail}</div> : null}
     </div>
   );
 }
 
+function InfoPair({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="mt-1 break-all text-xs font-medium text-slate-200">{value}</div>
+    </div>
+  );
+}
+
+function UserSummaryPanel({
+  item,
+  showRetry,
+  actionBusy,
+  onRetry,
+}: {
+  item: AdminCustodialSweepRecord;
+  showRetry: boolean;
+  actionBusy: boolean;
+  onRetry: () => void;
+}) {
+  const userLabel = item.userName || item.userEmail || `User ${item.userId}`;
+  const initials = getUserInitials(item.userName, item.userEmail, item.userId);
+
+  return (
+    <aside className="flex min-h-full flex-col rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+      <div className="flex items-start gap-3">
+        <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.05] text-lg font-extrabold text-white shadow-inner shadow-white/5">
+          {item.userProfilePhoto ? (
+            <img src={item.userProfilePhoto} alt={userLabel} className="h-full w-full object-cover" />
+          ) : (
+            <span>{initials}</span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className={mutedLabelCls}>User Details</div>
+          <div className="mt-1 truncate text-base font-bold text-white">{userLabel}</div>
+          <div className="mt-1 truncate text-xs text-slate-400">{item.userEmail || "Email not available"}</div>
+          <div className="mt-2 inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-200">
+            User #{item.userId}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+        <InfoPair label="Received" value={formatDateTime(item.createdAt)} />
+        <InfoPair label="Last Update" value={formatDateTime(item.updatedAt || item.sweptAt || item.createdAt)} />
+        <InfoPair label="Site Created" value={item.userCreatedAt ? formatDateTime(item.userCreatedAt) : "--"} />
+        <InfoPair label="Deposit Row" value={item.depositTransactionId ? `#${item.depositTransactionId}` : "--"} />
+      </div>
+
+      <div className="mt-auto flex flex-col gap-3 border-t border-white/8 pt-4 sm:flex-row sm:items-center sm:justify-between xl:flex-col xl:items-stretch 2xl:flex-row 2xl:items-center">
+        <div className="text-xs leading-5 text-slate-400">
+          {showRetry ? "Manual retry is available after explorer review." : "No manual action needed for this row."}
+        </div>
+        {showRetry ? (
+          <Button
+            className="shrink-0 justify-center px-4"
+            size="sm"
+            variant="secondary"
+            onClick={onRetry}
+            disabled={actionBusy}
+          >
+            {actionBusy ? "Retrying..." : "Retry"}
+          </Button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
 export default function AdminWalletDepositsPage() {
   const [filters, setFilters] = useState({ page: 1, limit: 100, network: "", status: "", userId: "" });
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["admin", "sweep-queue", filters],
@@ -264,6 +408,7 @@ export default function AdminWalletDepositsPage() {
       ethereumUsdt: 0,
       bscUsdt: 0,
       tronUsdt: 0,
+      solanaUsdc: 0,
     };
 
     for (const item of items) {
@@ -280,6 +425,7 @@ export default function AdminWalletDepositsPage() {
       if (network === "ethereum") totals.ethereumUsdt += safeAmount;
       if (network === "bsc") totals.bscUsdt += safeAmount;
       if (network === "tron") totals.tronUsdt += safeAmount;
+      if (network === "solana") totals.solanaUsdc += safeAmount;
     }
 
     return totals;
@@ -289,6 +435,7 @@ export default function AdminWalletDepositsPage() {
       ethereum: 0,
       bsc: 0,
       tron: 0,
+      solana: 0,
       total: 0,
     };
 
@@ -301,10 +448,19 @@ export default function AdminWalletDepositsPage() {
       if (network === "ethereum") totals.ethereum += safeAmount;
       if (network === "bsc") totals.bsc += safeAmount;
       if (network === "tron") totals.tron += safeAmount;
+      if (network === "solana") totals.solana += safeAmount;
     }
 
     return totals;
   }, [items]);
+
+  const copyValue = async (key: string, value: string | null | undefined) => {
+    const text = String(value || "").trim();
+    if (!text || typeof navigator === "undefined" || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1400);
+  };
 
   return (
     <div className={shellCls}>
@@ -338,7 +494,7 @@ export default function AdminWalletDepositsPage() {
 
         <div className="grid gap-4 px-5 py-5 sm:px-6">
           <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <MetricTile
                 label="Total USDT"
                 value={formatAmount(historyStats.totalUsdt.toFixed(6))}
@@ -350,7 +506,7 @@ export default function AdminWalletDepositsPage() {
                 note="Ethereum network sweep total."
               />
               <MetricTile
-                label="BEB20"
+                label="BEP20"
                 value={formatAmount(historyStats.bscUsdt.toFixed(6))}
                 note="BSC network sweep total."
               />
@@ -358,6 +514,11 @@ export default function AdminWalletDepositsPage() {
                 label="TRC20"
                 value={formatAmount(historyStats.tronUsdt.toFixed(6))}
                 note="TRON network sweep total."
+              />
+              <MetricTile
+                label="SOLANA"
+                value={formatAmount(historyStats.solanaUsdc.toFixed(6))}
+                note="Solana network sweep total."
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -368,9 +529,9 @@ export default function AdminWalletDepositsPage() {
                 to="/admin/wallet-management/admin-wallet/gas-funding?network=ethereum"
               />
               <MetricTile
-                label="BEB-20 Gas Fee"
+                label="BEP-20 Gas Fee"
                 value={formatGas(gasStats.bsc, "BNB")}
-                note="Open BEB-20 gas funding history."
+                note="Open BEP-20 gas funding history."
                 to="/admin/wallet-management/admin-wallet/gas-funding?network=bsc"
               />
               <MetricTile
@@ -378,6 +539,12 @@ export default function AdminWalletDepositsPage() {
                 value={formatGas(gasStats.tron, "TRX")}
                 note="Open TRC-20 gas funding history."
                 to="/admin/wallet-management/admin-wallet/gas-funding?network=tron"
+              />
+              <MetricTile
+                label="Solana Gas Fee"
+                value={formatGas(gasStats.solana, "SOL")}
+                note="Open Solana gas funding history."
+                to="/admin/wallet-management/admin-wallet/gas-funding?network=solana"
               />
             </div>
 
@@ -393,7 +560,7 @@ export default function AdminWalletDepositsPage() {
                   </Button>
                 </div>
               </div>
-              <div className="mt-4 grid gap-2 md:grid-cols-3">
+              <div className="mt-4 grid gap-2 md:grid-cols-4">
                 {sweepNetworkActions.map((networkAction) => {
                   const isRunning = runEligibleMutation.isPending && runEligibleMutation.variables === networkAction.key;
                   return (
@@ -419,6 +586,7 @@ export default function AdminWalletDepositsPage() {
                   <option value="ethereum">Ethereum</option>
                   <option value="bsc">BSC</option>
                   <option value="tron">TRON</option>
+                  <option value="solana">Solana</option>
                 </select>
                 <input
                   className={inputCls}
@@ -474,6 +642,8 @@ export default function AdminWalletDepositsPage() {
             items.map((item, index) => {
               const actionBusy = retryMutation.isPending && retryMutation.variables === item.id;
               const showRetry = isFailedStatus(item.status);
+              const networkIcon = getNetworkIconKey(item.network);
+              const sweepAsset = getSweepAsset(item.network);
               const completedRow = String(item.status || "").toLowerCase().includes("confirm")
                 || String(item.status || "").toLowerCase().includes("complete")
                 || String(item.status || "").toLowerCase().includes("success");
@@ -487,7 +657,7 @@ export default function AdminWalletDepositsPage() {
                       : "border-white/10 bg-[linear-gradient(180deg,rgba(10,16,30,0.95),rgba(7,12,24,0.98))]"
                   }`}
                 >
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
                     <div className="min-w-0 space-y-4">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-slate-100">
@@ -499,7 +669,8 @@ export default function AdminWalletDepositsPage() {
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-200">
                           User {item.userId}
                         </span>
-                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${networkTone(item.network)}`}>
+                        <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${networkTone(item.network)}`}>
+                          {networkIcon ? <FundingNetworkIcon network={networkIcon} size="xs" /> : null}
                           {String(item.network || "--").toUpperCase()}
                         </span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStatusTone(item.status)}`}>
@@ -507,6 +678,12 @@ export default function AdminWalletDepositsPage() {
                         </span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${getStatusTone(item.gasStatus)}`}>
                           Gas {titleize(item.gasStatus)}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                          Received {formatRelativeTime(item.createdAt)}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                          Updated {formatRelativeTime(item.updatedAt || item.sweptAt || item.createdAt)}
                         </span>
                       </div>
 
@@ -516,16 +693,24 @@ export default function AdminWalletDepositsPage() {
                           value={shortenMiddle(item.sourceWalletAddress)}
                           detail={item.sourceWalletAddress}
                           tone="text-slate-100"
+                          copyValue={item.sourceWalletAddress}
+                          copied={copiedKey === `source-${item.id}`}
+                          onCopy={(value) => void copyValue(`source-${item.id}`, value)}
+                          explorerUrl={item.sourceWalletExplorerUrl}
                         />
                         <DataBlock
                           label="Destination Admin Wallet"
                           value={shortenMiddle(item.destinationAdminWalletAddress)}
                           detail={item.destinationAdminWalletAddress}
                           tone="text-slate-100"
+                          copyValue={item.destinationAdminWalletAddress}
+                          copied={copiedKey === `destination-${item.id}`}
+                          onCopy={(value) => void copyValue(`destination-${item.id}`, value)}
+                          explorerUrl={item.destinationAdminWalletExplorerUrl}
                         />
                         <AmountBlock
-                          label="USDT To Sweep"
-                          value={formatAmount(item.usdtAmountDecimal)}
+                          label={`${sweepAsset} To Sweep`}
+                          value={formatAmount(item.usdtAmountDecimal, sweepAsset)}
                           detail="Detected custodial balance queued for treasury transfer."
                         />
                         <AmountBlock
@@ -544,6 +729,10 @@ export default function AdminWalletDepositsPage() {
                               value={item.gasTopupTxHash ? shortenMiddle(item.gasTopupTxHash) : "--"}
                               detail={item.gasTopupTxHash || "No native gas sent yet"}
                               tone={item.gasTopupTxHash ? "text-cyan-200" : "text-slate-500"}
+                              copyValue={item.gasTopupTxHash}
+                              copied={copiedKey === `gas-${item.id}`}
+                              onCopy={(value) => void copyValue(`gas-${item.id}`, value)}
+                              explorerUrl={item.gasTopupExplorerUrl}
                             />
                             <DataBlock
                               label="Sweep Transaction"
@@ -560,6 +749,10 @@ export default function AdminWalletDepositsPage() {
                                   : formatSweepErrorDetail(item.errorMessage)
                               }
                               tone={item.errorMessage ? "text-rose-200" : item.sweepTxHash ? "text-cyan-200" : "text-slate-500"}
+                              copyValue={item.sweepTxHash}
+                              copied={copiedKey === `sweep-${item.id}`}
+                              onCopy={(value) => void copyValue(`sweep-${item.id}`, value)}
+                              explorerUrl={item.sweepExplorerUrl}
                             />
                           </div>
                         </div>
@@ -567,27 +760,12 @@ export default function AdminWalletDepositsPage() {
                       </div>
 
                     </div>
-                    {showRetry ? (
-                      <aside className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                        <div className={mutedLabelCls}>Action Rail</div>
-                        <div className="mt-3 space-y-3">
-                          <Button
-                            className="w-full justify-center"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => retryMutation.mutate(item.id)}
-                            disabled={actionBusy}
-                          >
-                            {retryMutation.isPending && retryMutation.variables === item.id ? "Retrying..." : "Retry"}
-                          </Button>
-                          <div className="rounded-2xl border border-white/8 bg-white/[0.025] px-3 py-3 text-xs text-slate-400">
-                            Retry first checks explorer API for an existing user-to-admin transfer and only re-runs the sweep if nothing is found.
-                          </div>
-                        </div>
-                      </aside>
-                    ) : (
-                      <div className="h-32" />                    
-                    )}
+                    <UserSummaryPanel
+                      item={item}
+                      showRetry={showRetry}
+                      actionBusy={actionBusy}
+                      onRetry={() => retryMutation.mutate(item.id)}
+                    />
                   </div>
                 </article>
               );

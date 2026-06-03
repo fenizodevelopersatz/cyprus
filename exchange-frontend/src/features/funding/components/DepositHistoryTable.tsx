@@ -27,7 +27,12 @@ function shortHash(value: string) {
 function networkLabel(network: DepositHistoryItem["network"]) {
   if (network === "ethereum") return "ETH";
   if (network === "bsc") return "BSC";
+  if (network === "solana") return "SOLANA";
   return "TRON";
+}
+
+function tokenLabel(item: DepositHistoryItem) {
+  return item.network === "solana" ? "USDC" : item.token;
 }
 
 export function DepositHistoryTable({ items, pagination, network, onNetworkChange, onPageChange }: Props) {
@@ -60,6 +65,7 @@ export function DepositHistoryTable({ items, pagination, network, onNetworkChang
             <option value="ethereum">Ethereum</option>
             <option value="bsc">BSC</option>
             <option value="tron">TRON</option>
+            <option value="solana">Solana</option>
           </select>
           <Link
             to="/app/orders"
@@ -109,7 +115,7 @@ export function DepositHistoryTable({ items, pagination, network, onNetworkChang
                           S.No {serialNumber}
                         </div>
                         <div className="text-[0.78rem] font-semibold leading-tight text-white sm:text-[0.95rem]">
-                          Deposit {networkLabel(item.network)} {item.token}
+                          Deposit {networkLabel(item.network)} {tokenLabel(item)}
                         </div>
                       </div>
                       <div className="mt-0.5 text-[0.74rem] text-[var(--text-muted)] sm:text-[0.8rem]">

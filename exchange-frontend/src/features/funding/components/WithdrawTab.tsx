@@ -47,6 +47,7 @@ type Props = {
   };
   networks: Array<{ network: string; label: string }>;
   selectedNetwork: string;
+  assetLabel: string;
   onSelectNetwork: (network: string) => void;
   withdrawAddress: string;
   withdrawAmount: string;
@@ -56,7 +57,7 @@ type Props = {
   onWithdrawDetailsChange: (value: string) => void;
   onSubmit: (event: React.FormEvent) => void;
   submitting: boolean;
-  message?: { tone: "success" | "error"; text: string } | null;
+  message?: { tone: "success" | "error" | "info"; text: string } | null;
   history: WithdrawHistoryItem[];
   pagination: Pagination;
   onPageChange: (page: number) => void;
@@ -80,6 +81,7 @@ export function WithdrawTab(props: Props) {
     tron: 0,
     bsc: 1,
     ethereum: 2,
+    solana: 3,
   };
   const orderedNetworks = [...props.networks].sort(
     (a, b) => (mobileNetworkOrder[a.network] ?? 99) - (mobileNetworkOrder[b.network] ?? 99)
@@ -142,27 +144,27 @@ export function WithdrawTab(props: Props) {
 
 
 
-      <section className="exchange-card p-5">
-        <div className="section-title text-[1rem]">Withdraw USDT</div>
+      <section className="exchange-card p-4 sm:p-5">
+        <div className="section-title text-[1rem]">Withdraw {props.assetLabel}</div>
         <form className="mt-4 space-y-4" onSubmit={props.onSubmit}>
           <div>
             <div className="mb-3">
               <div className="section-title text-[0.94rem] sm:text-[1.2rem]">Select Network</div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-muted)] sm:text-[11px] sm:tracking-[0.12em]">Choose the chain for your USDT wallet</div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-muted)] sm:text-[11px] sm:tracking-[0.12em]">Choose the chain for your {props.assetLabel} wallet</div>
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-4 sm:gap-3">
             {orderedNetworks.map((item) => (
               <button
                 key={item.network}
                 type="button"
                 onClick={() => props.onSelectNetwork(item.network)}
-                className={`inline-flex w-full min-w-0 items-center gap-1.5 rounded-[18px] border px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.04em] transition sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-[11px] sm:tracking-[0.08em] ${
+                className={`inline-flex w-full min-w-0 items-center gap-2 rounded-[16px] border px-2.5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.04em] transition sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-[11px] sm:tracking-[0.08em] ${
                   props.selectedNetwork === item.network
                     ? "border-[var(--border-soft)] bg-[var(--accent-yellow)] text-[#111] shadow-[0_6px_14px_rgba(252,213,53,0.14)] sm:bg-[rgba(252,213,53,0.12)] sm:text-[var(--accent-yellow)] sm:shadow-none"
                     : "border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-muted)]"
                 }`}
               >
-                <FundingNetworkIcon network={item.network as "ethereum" | "bsc" | "tron"} size="xs" />
+                <FundingNetworkIcon network={item.network as "ethereum" | "bsc" | "tron" | "solana"} size="xs" />
                 <span className="block min-w-0">
                   <span className="block truncate text-[10px] font-bold tracking-[0.04em] sm:text-[11px] sm:tracking-[0.08em] sm:font-semibold">{item.label}</span>
                 </span>
@@ -171,7 +173,7 @@ export function WithdrawTab(props: Props) {
             </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <Input value={props.withdrawAddress} onChange={(e) => props.onWithdrawAddressChange(e.target.value)} placeholder={`Address (${(props.selectedNetwork === "ethereum" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : props.selectedNetwork === "bsc" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : "TPXzKN6vjKGiTskocEYHCuEJoPFzyr1TNe")})`} className="h-12" />
+            <Input value={props.withdrawAddress} onChange={(e) => props.onWithdrawAddressChange(e.target.value)} placeholder={`Address (${props.selectedNetwork === "ethereum" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : props.selectedNetwork === "bsc" ? "0x8a49af2d126fd67a2c3eec2ce85e12e08250d436" : props.selectedNetwork === "solana" ? "CNKLbXZrC1GdzemexERLEQtjew3Kde12jHp1JAVwks1v" : "TPXzKN6vjKGiTskocEYHCuEJoPFzyr1TNe"})`} className="h-12" />
             <div className="space-y-2">
               <Input
                 type="number"
@@ -185,7 +187,7 @@ export function WithdrawTab(props: Props) {
                 className="h-12"
               />
               <div className="text-xs text-[var(--text-muted)]">
-                Maximum eligible amount: {maxWithdrawableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })} USDT
+                Maximum eligible amount: {maxWithdrawableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })} {props.assetLabel}
               </div>
             </div>
           </div>
@@ -662,5 +664,6 @@ function normalizeNetworkLabel(value?: string) {
   if (normalized === "ethereum" || normalized === "erc20" || normalized === "eth") return "ERC-20";
   if (normalized === "bsc" || normalized === "bep20") return "BEP-20";
   if (normalized === "tron" || normalized === "trc20") return "TRC-20";
+  if (normalized === "solana" || normalized === "sol") return "SOLANA";
   return value || "--";
 }

@@ -10,12 +10,13 @@ import { getLevelImageSrc, getLevelLabel } from "../../../utils/levelImages";
 import { getUserProfile } from "../../settings/api/account.api";
 import { loadWithdrawAddressBook } from "../../settings/utils/withdrawAddressBook";
 
-type DefaultWithdrawAddresses = Partial<Record<"tron" | "bsc" | "ethereum", string>>;
+type DefaultWithdrawAddresses = Partial<Record<"tron" | "bsc" | "ethereum" | "solana", string>>;
 
 function isValidWithdrawalAddress(network: string, value: string) {
   const address = value.trim();
   if (!address) return false;
   if (network === "tron") return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address);
+  if (network === "solana") return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
   if (network === "bsc" || network === "ethereum") return /^0x[a-fA-F0-9]{40}$/.test(address);
   return false;
 }
@@ -24,6 +25,7 @@ function getAddressValidationMessage(network: string) {
   if (network === "tron") return "Enter a valid TRC20 wallet address.";
   if (network === "bsc") return "Enter a valid BEP20 wallet address.";
   if (network === "ethereum") return "Enter a valid ERC20 wallet address.";
+  if (network === "solana") return "Enter a valid Solana wallet address.";
   return "Enter a valid wallet address.";
 }
 
@@ -62,6 +64,7 @@ export default function FundingPage() {
   const [defaultWithdrawAddresses, setDefaultWithdrawAddresses] = useState<DefaultWithdrawAddresses>({});
   const withdrawAmountNumber = Number(withdrawAmount || 0);
   const withdrawWalletBalanceNumber = Number(funding.summary?.withdrawWalletBalance || 0);
+  const selectedWithdrawAsset = funding.selectedNetwork === "solana" ? "USDC" : "USDT";
   const userLevelImage = getLevelImageSrc(user?.currentLevelCode, user?.currentLevelRank);
   const userLevelLabel = getLevelLabel(user?.currentLevelCode, user?.currentLevelRank);
 
@@ -80,7 +83,7 @@ export default function FundingPage() {
         const normalizedNetwork = profile.default_withdraw_wallet_network as keyof DefaultWithdrawAddresses;
         const normalizedAddress = profile.default_withdraw_wallet_address?.trim() || "";
 
-        if (normalizedAddress && (normalizedNetwork === "tron" || normalizedNetwork === "bsc" || normalizedNetwork === "ethereum")) {
+        if (normalizedAddress && (normalizedNetwork === "tron" || normalizedNetwork === "bsc" || normalizedNetwork === "ethereum" || normalizedNetwork === "solana")) {
           setDefaultWithdrawAddresses((current) => ({
             ...current,
             [normalizedNetwork]: current[normalizedNetwork] || normalizedAddress,
@@ -237,7 +240,7 @@ export default function FundingPage() {
         text: `Maximum eligible withdrawal amount is ${Math.max(0, withdrawWalletBalanceNumber).toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 3,
-        })} USDT.`,
+        })} ${selectedWithdrawAsset}.`,
       });
     }
     if (liveWithdrawalPolicy && !liveWithdrawalPolicy.user.activeUser) {
@@ -251,12 +254,14 @@ export default function FundingPage() {
       await funding.submitWithdrawal({
         address: withdrawAddress.trim(),
         amount,
-        asset: "USDT",
+        asset: selectedWithdrawAsset,
         chain:
           funding.selectedAddress.network === "ethereum"
             ? "ERC20"
             : funding.selectedAddress.network === "bsc"
             ? "BEP20"
+            : funding.selectedAddress.network === "solana"
+            ? "SOLANA"
             : "TRC20",
         details: withdrawDetails.trim() || undefined,
       });
@@ -267,7 +272,7 @@ export default function FundingPage() {
       setWithdrawMessage({ tone: "success", text: "Withdrawal request submitted." });
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : "Withdrawal failed.";
-      setWithdrawMessage({ tone: "error", text: getWithdrawalErrorMessage(rawMessage, "USDT") });
+      setWithdrawMessage({ tone: "error", text: getWithdrawalErrorMessage(rawMessage, selectedWithdrawAsset) });
     }
   }
 
@@ -337,6 +342,7 @@ export default function FundingPage() {
           withdrawalPolicy={liveWithdrawalPolicy}
           networks={funding.summary.depositAddresses.map((item) => ({ network: item.network, label: item.label }))}
           selectedNetwork={funding.selectedNetwork}
+          assetLabel={selectedWithdrawAsset}
           onSelectNetwork={handleNetworkSelect}
           withdrawAddress={withdrawAddress}
           withdrawAmount={withdrawAmount}

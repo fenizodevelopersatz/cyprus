@@ -25,7 +25,7 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 export type FundingAddress = {
-  network: "ethereum" | "bsc" | "tron";
+  network: "ethereum" | "bsc" | "tron" | "solana";
   label: string;
   address: string;
   memoTag: string | null;
@@ -89,8 +89,8 @@ export type DepositHistoryItem = {
   id: number;
   txn_id?: string;
   hash: string;
-  network: "ethereum" | "bsc" | "tron";
-  type: "ERC" | "BEP" | "TRC";
+  network: "ethereum" | "bsc" | "tron" | "solana";
+  type: "ERC" | "BEP" | "TRC" | "SOL";
   token: string;
   amount: string;
   createdAt: string;

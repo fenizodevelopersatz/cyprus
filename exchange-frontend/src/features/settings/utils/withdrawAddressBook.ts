@@ -1,4 +1,4 @@
-export type WithdrawNetworkKey = "tron" | "bsc" | "ethereum";
+export type WithdrawNetworkKey = "tron" | "bsc" | "ethereum" | "solana";
 
 export type WithdrawAddressHistoryEntry = {
   network: WithdrawNetworkKey;

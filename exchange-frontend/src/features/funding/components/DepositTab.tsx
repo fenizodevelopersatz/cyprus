@@ -25,10 +25,12 @@ type Props = {
 };
 
 export function DepositTab(props: Props) {
+  const selectedAssetLabel = props.selectedAddress?.label?.toUpperCase().includes("USDC") ? "USDC" : "USDT";
   const mobileNetworkOrder: Record<FundingAddress["network"], number> = {
     tron: 0,
     bsc: 1,
     ethereum: 2,
+    solana: 3,
   };
   const orderedAddresses = [...props.addresses].sort(
     (a, b) => (mobileNetworkOrder[a.network] ?? 99) - (mobileNetworkOrder[b.network] ?? 99)
@@ -43,19 +45,19 @@ export function DepositTab(props: Props) {
       />
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
           <div>
             <div className="section-title text-[0.94rem] sm:text-[1.2rem]">Select Network</div>
-            <div className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-muted)] sm:text-[11px] sm:tracking-[0.12em]">Choose the chain for your USDT wallet</div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-muted)] sm:text-[11px] sm:tracking-[0.12em]">Choose the chain for your {selectedAssetLabel} wallet</div>
           </div>          
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-4 sm:gap-3">
           {orderedAddresses.map((item) => (
             <button
               key={item.network}
               type="button"
               onClick={() => props.onSelectNetwork(item.network)}
-              className={`inline-flex w-full min-w-0 items-center gap-1.5 rounded-[18px] border px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.04em] transition sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-[11px] sm:tracking-[0.08em] ${
+              className={`inline-flex w-full min-w-0 items-center gap-2 rounded-[16px] border px-2.5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.04em] transition sm:gap-2.5 sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-[11px] sm:tracking-[0.08em] ${
                 props.selectedNetwork === item.network
                   ? "border-[var(--border-soft)] bg-[var(--accent-yellow)] text-[#111] shadow-[0_6px_14px_rgba(252,213,53,0.14)] sm:bg-[rgba(252,213,53,0.12)] sm:text-[var(--accent-yellow)] sm:shadow-none"
                   : "border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-muted)]"

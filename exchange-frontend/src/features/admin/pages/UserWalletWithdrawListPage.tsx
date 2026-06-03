@@ -30,6 +30,7 @@ export default function UserWalletWithdrawListPage() {
       { label: "ERC-20", value: data?.summary?.totalErc20 ?? "0" },
       { label: "BEP-20", value: data?.summary?.totalBep20 ?? "0" },
       { label: "TRC-20", value: data?.summary?.totalTrc20 ?? "0" },
+      { label: "SOLANA", value: data?.summary?.totalSolana ?? "0" },
     ],
     [data?.summary]
   );
@@ -41,7 +42,7 @@ export default function UserWalletWithdrawListPage() {
         <p className="text-sm text-slate-300/80">Processed, completed, rejected, or cancelled withdrawals only.</p>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => (
           <div key={card.label} className="rounded-2xl border border-cyan-400/15 bg-cyan-500/10 p-4">
             <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/80">{card.label}</div>
@@ -257,6 +258,7 @@ function normalizeNetworkLabel(value?: string) {
   if (normalized === "ethereum" || normalized === "erc20" || normalized === "eth") return "ERC-20";
   if (normalized === "bsc" || normalized === "bep20") return "BEP-20";
   if (normalized === "tron" || normalized === "trc20") return "TRC-20";
+  if (normalized === "solana" || normalized === "sol") return "SOLANA";
   return value || "--";
 }
 

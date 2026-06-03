@@ -12,11 +12,12 @@ type Props = {
 
 export function DepositAddressCard({ address, copied, onCopy, onRefresh, refreshing }: Props) {
   const refreshLabel = refreshing ? "Reconciling..." : "Refresh Deposits";
+  const assetLabel = address?.label?.toUpperCase().includes("USDC") ? "USDC" : "USDT";
 
   return (
-    <section className="exchange-card exchange-card-strong p-5 sm:p-6">
+    <section className="exchange-card exchange-card-strong p-4 sm:p-6">
       <div className="mx-auto flex max-w-md flex-col items-center text-center">
-        <div className="flex h-[220px] w-full max-w-[220px] items-center justify-center rounded-[22px] bg-[#f6f3ee] p-4 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] sm:h-[240px] sm:max-w-[240px] sm:rounded-[26px]">
+        <div className="flex h-[min(62vw,220px)] w-full max-w-[220px] items-center justify-center rounded-[22px] bg-[#f6f3ee] p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] sm:h-[240px] sm:max-w-[240px] sm:rounded-[26px] sm:p-4">
           <div className="flex h-full w-full items-center justify-center rounded-[18px] bg-[#223036] p-3 sm:rounded-[20px]">
             {address?.qrCode ? (
               <div className="relative h-full w-full">
@@ -35,10 +36,10 @@ export function DepositAddressCard({ address, copied, onCopy, onRefresh, refresh
           </div>
         </div>
 
-        <div className="mt-8 text-sm font-semibold uppercase tracking-[0.16em] text-[#d7c9a1] sm:text-[0.95rem] sm:text-[var(--text-muted)]">Your USDT Deposit Address</div>
+        <div className="mt-6 text-sm font-semibold uppercase tracking-[0.16em] text-[#d7c9a1] sm:mt-8 sm:text-[0.95rem] sm:text-[var(--text-muted)]">Your {assetLabel} Deposit Address</div>
 
-        <div className="mt-4 flex w-full items-center gap-3 rounded-[18px] bg-[#0d1014] p-3 sm:rounded-[18px]">
-          <div className="min-w-0 flex-1 truncate text-left font-mono text-[0.95rem] text-white">{address?.address || "-"}</div>
+        <div className="mt-4 flex w-full min-w-0 items-center gap-2 rounded-[18px] bg-[#0d1014] p-2.5 sm:gap-3 sm:p-3 sm:rounded-[18px]">
+          <div className="min-w-0 flex-1 truncate text-left font-mono text-[0.78rem] text-white sm:text-[0.95rem]">{address?.address || "-"}</div>
           <button type="button" onClick={onCopy} disabled={!address?.address} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-[var(--accent-yellow)] text-[#111] transition hover:bg-[var(--accent-yellow-hover)] sm:bg-[rgba(252,213,53,0.14)] sm:text-[var(--accent-yellow)] sm:hover:bg-[rgba(252,213,53,0.2)]">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M8 7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V7Zm-4 4a2 2 0 0 1 2-2v8a4 4 0 0 0 4 4h6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-10Z"/></svg>
           </button>

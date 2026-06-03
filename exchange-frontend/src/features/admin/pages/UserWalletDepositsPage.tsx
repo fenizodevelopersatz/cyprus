@@ -37,7 +37,7 @@ export default function UserWalletDepositsPage() {
 
   const items: AdminDepositRecord[] = data?.items ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 0 };
-  const summary = data?.summary ?? { totalUsdt: "0", totalErc: "0", totalBep: "0", totalTrc: "0" };
+  const summary = data?.summary ?? { totalUsdt: "0", totalErc: "0", totalBep: "0", totalTrc: "0", totalSol: "0" };
 
   const copyValue = async (value: string) => {
     if (!value || typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -53,11 +53,11 @@ export default function UserWalletDepositsPage() {
         <p className="text-sm text-slate-300/80">External user deposits into platform deposit addresses only.</p>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <div className={panelCls}>
           <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Total USDT</div>
           <div className="mt-3 text-3xl font-semibold text-white">{formatAmount(summary.totalUsdt, 2)}</div>
-          <div className="mt-1 text-xs text-slate-400">All credited user balances across ERC + BEP + TRC.</div>
+          <div className="mt-1 text-xs text-slate-400">All credited user balances across enabled networks.</div>
         </div>
         <div className={panelCls}>
           <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Total ERC</div>
@@ -74,6 +74,11 @@ export default function UserWalletDepositsPage() {
           <div className="mt-3 text-3xl font-semibold text-white">{formatAmount(summary.totalTrc, 2)}</div>
           <div className="mt-1 text-xs text-slate-400">Credited USDT on TRON.</div>
         </div>
+        <div className={panelCls}>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Total SOL</div>
+          <div className="mt-3 text-3xl font-semibold text-white">{formatAmount(summary.totalSol, 2)}</div>
+          <div className="mt-1 text-xs text-slate-400">Credited USDC on Solana.</div>
+        </div>
       </section>
 
       <section className={panelCls}>
@@ -83,6 +88,7 @@ export default function UserWalletDepositsPage() {
             <option value="ethereum">ERC</option>
             <option value="bsc">BEP</option>
             <option value="tron">TRC</option>
+            <option value="solana">SOL</option>
           </select>
           <input className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="Status" value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))} />
           <input className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="User ID" value={filters.userId} onChange={(event) => setFilters((prev) => ({ ...prev, userId: event.target.value, page: 1 }))} />

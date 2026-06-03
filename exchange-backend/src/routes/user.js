@@ -203,6 +203,52 @@ function buildReferenceDetails(row) {
   return row.reference_id ? String(row.reference_id) : '-';
 }
 
+function shouldPreferOrdersAuditRow(nextRow, currentRow) {
+  const nextLevel = String(nextRow.level || '').trim();
+  const currentLevel = String(currentRow.level || '').trim();
+  const nextHasLevel = nextLevel !== '' && nextLevel !== '-';
+  const currentHasLevel = currentLevel !== '' && currentLevel !== '-';
+  if (nextHasLevel !== currentHasLevel) return nextHasLevel;
+
+  const nextRef = String(nextRow.reference_id ?? nextRow.orderRefId ?? '').trim();
+  const currentRef = String(currentRow.reference_id ?? currentRow.orderRefId ?? '').trim();
+  if (nextRef !== currentRef) return nextRef.length > currentRef.length;
+
+  return String(nextRow.txn_id || '').length > String(currentRow.txn_id || '').length;
+}
+
+function dedupeOrdersAuditRows(rows) {
+  const deduped = [];
+  const dedupeMap = new Map();
+
+  rows.forEach((row) => {
+    if (row.incomeType !== 'level_bonus_10day' && row.incomeType !== 'level_promotion_reward') {
+      deduped.push(row);
+      return;
+    }
+
+    const key = [
+      row.incomeType,
+      String(row.timestamp || ''),
+      Number(row.amount || 0).toFixed(2),
+    ].join('|');
+
+    const existingIndex = dedupeMap.get(key);
+    if (existingIndex === undefined) {
+      dedupeMap.set(key, deduped.length);
+      deduped.push(row);
+      return;
+    }
+
+    const existingRow = deduped[existingIndex];
+    if (shouldPreferOrdersAuditRow(row, existingRow)) {
+      deduped[existingIndex] = row;
+    }
+  });
+
+  return deduped;
+}
+
 function filterOrdersAuditRows(rows, { incomeType, search, fromDate, toDate }) {
   return rows.filter((row) => {
     if (incomeType && row.incomeType !== incomeType) return false;
@@ -397,7 +443,7 @@ async function loadOrdersAuditRows(userId) {
     }))
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  return combined;
+  return dedupeOrdersAuditRows(combined);
 }
 
 const upload = multer({

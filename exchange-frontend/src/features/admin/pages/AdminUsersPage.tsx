@@ -367,6 +367,16 @@ export default function AdminUsersPage() {
       tertiaryMetaValue: row.sourceUserLabel || row.sourceUser || "-",
       quaternaryMetaLabel: "Level",
       quaternaryMetaValue: row.level || "-",
+      detailRows:
+        String(row.incomeType || "").toLowerCase() === "level_bonus_10day" &&
+        Number.isFinite(Number(row.teamFreezeAmount))
+          ? [
+              {
+                label: "Team Freeze Amount",
+                value: `$${formatBalanceValue(Number(row.teamFreezeAmount || 0))}`,
+              },
+            ]
+          : undefined,
       badgeClass: "bg-emerald-500/20 text-emerald-100",
     })),
     ...depositItems.map((item) => ({

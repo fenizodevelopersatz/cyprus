@@ -817,6 +817,7 @@ export type AdminUserOrdersAuditRow = {
   symbol?: string | null;
   asset?: string | null;
   remark?: string | null;
+  teamFreezeAmount?: number | null;
   referenceDetails?: string | null;
   orderRefId?: string | number | null;
   createdAt?: string;

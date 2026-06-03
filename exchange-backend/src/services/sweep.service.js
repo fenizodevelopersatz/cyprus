@@ -2,6 +2,8 @@ import { Contract, Wallet, formatUnits, parseUnits } from 'ethers';
 import { db, withTx } from '../db.js';
 import { checkWalletGasStatus, confirmGasFunding, estimateSweepGas, fundUserGas } from './gasFunding.service.js';
 import { getExplorerTransactionsForAddress } from './depositExplorerService.js';
+import { buildAddressExplorerUrl, buildExplorerUrl } from './fundingMirror.service.js';
+import { toAbsoluteProfilePhotoUrl } from './userService.js';
 import {
   EVM_ERC20_ABI,
   TRC20_ABI,
@@ -15,6 +17,7 @@ import {
   normalizeSweepNetwork,
 } from './sweepNetwork.service.js';
 import { getTronOwnerAddress, isTronAccountActive } from '../utils/tron.js';
+import { transferSolanaToken } from '../utils/solana.js';
 
 const ACTIVE_SWEEP_STATUSES = [
   'pending',
@@ -109,6 +112,24 @@ function normalizeComparableAddress(network, address) {
   return normalizeSweepNetwork(network) === 'tron' ? raw : raw.toLowerCase();
 }
 
+function parseSweepMeta(meta) {
+  if (!meta) return {};
+  if (typeof meta === 'object') return meta;
+  try {
+    return JSON.parse(meta);
+  } catch {
+    return {};
+  }
+}
+
+function mergeSweepMeta(current, patch = {}) {
+  return JSON.stringify({
+    ...parseSweepMeta(current),
+    ...patch,
+    lastLogAt: new Date().toISOString(),
+  });
+}
+
 async function markSweepConfirmedFromExplorer(row, transfer) {
   const txHash = String(transfer?.txHash || transfer?.transactionHash || '').trim();
   const confirmedAt = transfer?.confirmedAt ? new Date(transfer.confirmedAt) : new Date();
@@ -121,6 +142,13 @@ async function markSweepConfirmedFromExplorer(row, transfer) {
       sweep_tx_hash: txHash || row.sweep_tx_hash || null,
       usdt_amount_decimal: amount,
       swept_at: confirmedAt,
+      meta: mergeSweepMeta(row.meta, {
+        logType: 'sweep_reconciled_from_explorer',
+        reconciledFromExplorer: true,
+        explorerTxHash: txHash || row.sweep_tx_hash || null,
+        explorerConfirmedAt: confirmedAt.toISOString(),
+        explorerTransfer: transfer?.raw || transfer || null,
+      }),
       updated_at: new Date(),
     });
 
@@ -304,10 +332,29 @@ async function executeTronSweep(network, userWallet, destination, amountRaw) {
   }
 }
 
+async function executeSolanaSweep(network, userWallet, destination, amountRaw) {
+  const config = await getSweepNetworkConfig(network);
+  const txHash = await transferSolanaToken({
+    fromPrivateKey: userWallet.decryptedPrivateKey,
+    toAddress: destination,
+    amountRaw,
+    assetConfig: config,
+  });
+  return {
+    txHash,
+    actualGasFeeRaw: null,
+  };
+}
+
 export async function queueEligibleSweeps({ network, triggerType = 'auto' } = {}) {
   const normalized = normalizeSweepNetwork(network);
   const rows = await db('deposit_transactions')
-    .where({ token: 'USDT', credited: 1, is_swept: 0 })
+    .where({ credited: 1, is_swept: 0 })
+    .andWhere((builder) => {
+      builder.where({ token: 'USDT' }).orWhere((inner) => {
+        inner.where({ network: 'solana', token: 'USDC' });
+      });
+    })
     .modify((builder) => {
       if (normalized) builder.andWhere({ network: normalized });
     })
@@ -331,7 +378,7 @@ export async function queueEligibleSweeps({ network, triggerType = 'auto' } = {}
       const inserted = await db('sweep_transactions').insert({
         user_id: deposit.user_id,
         network: deposit.network,
-        token: 'USDT',
+        token: deposit.token || (deposit.network === 'solana' ? 'USDC' : 'USDT'),
         source_wallet_address: deposit.deposit_address || deposit.to_address || '',
         destination_admin_wallet_address: adminWallet.address,
         deposit_transaction_id: deposit.id,
@@ -341,6 +388,19 @@ export async function queueEligibleSweeps({ network, triggerType = 'auto' } = {}
         gas_status: 'unknown',
         status: 'pending',
         trigger_type: triggerType,
+        meta: mergeSweepMeta(null, {
+          logType: 'sweep_queued',
+          triggerType,
+          depositTransactionId: deposit.id,
+          depositTxnId: deposit.txn_id || null,
+          depositTxHash: deposit.tx_hash || null,
+          depositRawPayload: parseSweepMeta(deposit.raw_payload),
+          token: deposit.token || (deposit.network === 'solana' ? 'USDC' : 'USDT'),
+          network: deposit.network,
+          sourceWalletAddress: deposit.deposit_address || deposit.to_address || '',
+          destinationAdminWalletAddress: adminWallet.address,
+          amountDecimal: String(deposit.amount_decimal || '0'),
+        }),
         created_at: new Date(),
         updated_at: new Date(),
       });
@@ -401,16 +461,31 @@ export async function processSweep(sweepId, options = {}) {
     amountRaw: depositAmountRaw.toString(),
     amountDecimal: row.usdt_amount_decimal,
   };
+  let sweepMeta = row.meta;
 
+  const gasCheckingMeta = mergeSweepMeta(sweepMeta, {
+    logType: 'sweep_gas_checking',
+    sweepId: row.id,
+    userId: row.user_id,
+    network: row.network,
+    token: row.token,
+    sourceWalletAddress: row.source_wallet_address || userWallet.address,
+    destinationAdminWalletAddress: row.destination_admin_wallet_address,
+    depositTransactionId: row.deposit_transaction_id || null,
+    amountDecimal: row.usdt_amount_decimal,
+    amountRaw: depositAmountRaw.toString(),
+  });
   await withTx(async (trx) => {
     await trx('sweep_transactions').where({ id: row.id }).update({
       status: 'gas_checking',
+      meta: gasCheckingMeta,
       updated_at: new Date(),
     });
     if (row.deposit_transaction_id) {
       await markDepositSweepPending(trx, row.deposit_transaction_id, row.id, 'gas_checking');
     }
   });
+  sweepMeta = gasCheckingMeta;
 
   const minSweepRaw = parseUnits(String(config.minSweepUsdt || '0'), config.decimals);
   
@@ -439,12 +514,22 @@ export async function processSweep(sweepId, options = {}) {
     config:config
   });
   if (onchainBalanceRaw < minSweepRaw || onchainBalanceRaw <= 0n) {
-    const message = onchainBalanceRaw < minSweepRaw ? 'BELOW_MIN_SWEEP_THRESHOLD' : 'INSUFFICIENT_USDT_BALANCE';
+    const sweepToken = String(row.token || (row.network === 'solana' ? 'USDC' : 'USDT')).toUpperCase();
+    const message = onchainBalanceRaw < minSweepRaw ? 'BELOW_MIN_SWEEP_THRESHOLD' : `INSUFFICIENT_${sweepToken}_BALANCE`;
+    const failedMeta = mergeSweepMeta(sweepMeta, {
+      logType: 'sweep_failed_balance_check',
+      reason: message,
+      token: sweepToken,
+      minSweepRaw: minSweepRaw.toString(),
+      onchainBalanceRaw: onchainBalanceRaw.toString(),
+      onchainBalanceDecimal: formatUnits(onchainBalanceRaw, config.decimals),
+    });
     await withTx(async (trx) => {
       await trx('sweep_transactions').where({ id: row.id }).update({
         status: 'failed',
         gas_status: 'unknown',
         error_message: message,
+        meta: failedMeta,
         updated_at: new Date(),
       });
       if (row.deposit_transaction_id) {
@@ -481,6 +566,15 @@ export async function processSweep(sweepId, options = {}) {
     }, error);
     throw error;
   }
+  const readinessMeta = mergeSweepMeta(sweepMeta, {
+    logType: 'sweep_readiness_checked',
+    gasStatus: gasStatus.status,
+    gasAsset: config.gasAsset,
+    estimatedGasFeeRaw: estimated.estimatedFeeRaw?.toString?.() || String(estimated.estimatedFeeRaw || ''),
+    estimatedGasFeeDecimal: estimated.estimatedFeeDecimal || null,
+    sweepAmountRaw: sweepAmountRaw.toString(),
+    sweepAmountDecimal,
+  });
   await withTx(async (trx) => {
     await trx('sweep_transactions').where({ id: row.id }).update({
       estimated_gas_fee_raw: estimated.estimatedFeeRaw?.toString?.() || String(estimated.estimatedFeeRaw || ''),
@@ -489,6 +583,7 @@ export async function processSweep(sweepId, options = {}) {
       status: gasStatus.status === 'sufficient' ? 'ready_to_sweep' : 'insufficient_gas',
       usdt_amount_raw: sweepAmountRaw.toString(),
       usdt_amount_decimal: sweepAmountDecimal,
+      meta: readinessMeta,
       updated_at: new Date(),
     });
     if (row.deposit_transaction_id) {
@@ -500,6 +595,7 @@ export async function processSweep(sweepId, options = {}) {
       );
     }
   });
+  sweepMeta = readinessMeta;
 
   if (gasStatus.status !== 'sufficient') {
     let funding;
@@ -513,7 +609,7 @@ export async function processSweep(sweepId, options = {}) {
       }, error);
       throw error;
     }
-    if (config.isTron && autoContinueAfterFunding && funding?.fundingId && ['sent', 'broadcasted', 'confirmed'].includes(String(funding.status || '').toLowerCase())) {
+    if ((config.isTron || config.isSolana) && autoContinueAfterFunding && funding?.fundingId && ['sent', 'broadcasted', 'confirmed'].includes(String(funding.status || '').toLowerCase())) {
       const confirmation = await waitForGasFundingConfirmation(funding.fundingId);
       if (confirmation?.confirmed) {
         return processSweep(row.id, { autoContinueAfterFunding: false });
@@ -522,21 +618,30 @@ export async function processSweep(sweepId, options = {}) {
     return { ok: true, status: funding.status === 'sent' ? 'gas_funding_sent' : funding.status, fundingId: funding.fundingId };
   }
 
+  const pendingMeta = mergeSweepMeta(sweepMeta, {
+    logType: 'sweep_pending',
+    sweepAmountRaw: sweepAmountRaw.toString(),
+    sweepAmountDecimal,
+  });
   await withTx(async (trx) => {
     await trx('sweep_transactions').where({ id: row.id }).update({
       status: 'sweep_pending',
+      meta: pendingMeta,
       updated_at: new Date(),
     });
     if (row.deposit_transaction_id) {
       await markDepositSweepPending(trx, row.deposit_transaction_id, row.id, 'sweep_pending');
     }
   });
+  sweepMeta = pendingMeta;
 
   let result;
   try {
-    result = config.isTron
-      ? await executeTronSweep(row.network, userWallet, row.destination_admin_wallet_address, sweepAmountRaw)
-      : await executeEvmSweep(row.network, userWallet, row.destination_admin_wallet_address, sweepAmountRaw);
+    result = config.isSolana
+      ? await executeSolanaSweep(row.network, userWallet, row.destination_admin_wallet_address, sweepAmountRaw)
+      : config.isTron
+        ? await executeTronSweep(row.network, userWallet, row.destination_admin_wallet_address, sweepAmountRaw)
+        : await executeEvmSweep(row.network, userWallet, row.destination_admin_wallet_address, sweepAmountRaw);
   } catch (error) {
     logSweepStepError('execute-sweep', {
       ...debugContext,
@@ -550,6 +655,16 @@ export async function processSweep(sweepId, options = {}) {
     throw error;
   }
 
+  const confirmedMeta = mergeSweepMeta(sweepMeta, {
+    logType: 'sweep_confirmed',
+    sweepTxHash: result.txHash,
+    gasTopupTxHash: row.gas_topup_tx_hash || null,
+    sweepAmountRaw: sweepAmountRaw.toString(),
+    sweepAmountDecimal,
+    estimatedGasFeeDecimal: estimated.estimatedFeeDecimal || null,
+    actualGasFeeRaw: result.actualGasFeeRaw ? result.actualGasFeeRaw.toString() : null,
+    actualGasFeeDecimal: result.actualGasFeeRaw ? formatUnits(result.actualGasFeeRaw, row.network === 'tron' ? 6 : row.network === 'solana' ? 9 : 18) : null,
+  });
   await withTx(async (trx) => {
     await trx('sweep_transactions').where({ id: row.id }).update({
       status: 'sweep_confirmed',
@@ -558,6 +673,7 @@ export async function processSweep(sweepId, options = {}) {
       usdt_amount_decimal: sweepAmountDecimal,
       sweep_tx_hash: result.txHash,
       swept_at: new Date(),
+      meta: confirmedMeta,
       updated_at: new Date(),
     });
     if (row.deposit_transaction_id) {
@@ -594,6 +710,12 @@ export async function retryFailedSweep(sweepId) {
     status: 'pending',
     gas_status: 'unknown',
     error_message: null,
+    meta: mergeSweepMeta(row.meta, {
+      logType: 'sweep_retry_requested',
+      previousStatus: row.status,
+      previousGasStatus: row.gas_status,
+      previousErrorMessage: row.error_message || null,
+    }),
     updated_at: new Date(),
   });
   if (row.deposit_transaction_id) {
@@ -668,12 +790,18 @@ export async function listSweepTransactions({ page = 1, limit = 20, network, sta
   const normalized = normalizeSweepNetwork(network);
   const query = db('sweep_transactions as s')
     .leftJoin('gas_funding_transactions as g', 'g.sweep_transaction_id', 's.id')
+    .leftJoin('users as u', 'u.id', 's.user_id')
+    .leftJoin('user_profiles as up', 'up.user_id', 's.user_id')
     .select(
       's.*',
+      'u.email as user_email',
+      'up.display_name as user_name',
+      'up.profile_photo as user_profile_photo',
+      'u.created_at as user_created_at',
       db.raw('MAX(g.id) as latest_gas_funding_id'),
       db.raw('MAX(g.tx_hash) as latest_gas_topup_tx_hash')
     )
-    .groupBy('s.id')
+    .groupBy('s.id', 'u.email', 'up.display_name', 'up.profile_photo', 'u.created_at')
     .modify((builder) => {
       if (normalized) builder.where('s.network', normalized);
       if (status) builder.where('s.status', String(status).trim());
@@ -693,26 +821,37 @@ export async function listSweepTransactions({ page = 1, limit = 20, network, sta
   ]);
 
   return {
-    items: rows.map((row) => ({
-      id: row.id,
-      userId: row.user_id,
-      network: row.network,
-      token: row.token,
-      sourceWalletAddress: row.source_wallet_address,
-      destinationAdminWalletAddress: row.destination_admin_wallet_address,
-      depositTransactionId: row.deposit_transaction_id,
-      usdtAmountDecimal: row.usdt_amount_decimal,
-      estimatedGasFeeDecimal: row.estimated_gas_fee_decimal,
-      gasAsset: row.gas_asset,
-      gasStatus: row.gas_status,
-      gasTopupTxHash: row.gas_topup_tx_hash || row.latest_gas_topup_tx_hash || null,
-      sweepTxHash: row.sweep_tx_hash,
-      status: row.status,
-      triggerType: row.trigger_type,
-      errorMessage: row.error_message,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      sweptAt: row.swept_at,
+    items: await Promise.all(rows.map(async (row) => {
+      const gasTopupTxHash = row.gas_topup_tx_hash || row.latest_gas_topup_tx_hash || null;
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userEmail: row.user_email || null,
+        userName: row.user_name || null,
+        userProfilePhoto: toAbsoluteProfilePhotoUrl(row.user_profile_photo),
+        userCreatedAt: row.user_created_at || null,
+        network: row.network,
+        token: row.token,
+        sourceWalletAddress: row.source_wallet_address,
+        sourceWalletExplorerUrl: await buildAddressExplorerUrl(row.network, row.source_wallet_address),
+        destinationAdminWalletAddress: row.destination_admin_wallet_address,
+        destinationAdminWalletExplorerUrl: await buildAddressExplorerUrl(row.network, row.destination_admin_wallet_address),
+        depositTransactionId: row.deposit_transaction_id,
+        usdtAmountDecimal: row.usdt_amount_decimal,
+        estimatedGasFeeDecimal: row.estimated_gas_fee_decimal,
+        gasAsset: row.gas_asset,
+        gasStatus: row.gas_status,
+        gasTopupTxHash,
+        gasTopupExplorerUrl: gasTopupTxHash ? await buildExplorerUrl(row.network, gasTopupTxHash) : null,
+        sweepTxHash: row.sweep_tx_hash,
+        sweepExplorerUrl: row.sweep_tx_hash ? await buildExplorerUrl(row.network, row.sweep_tx_hash) : null,
+        status: row.status,
+        triggerType: row.trigger_type,
+        errorMessage: row.error_message,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        sweptAt: row.swept_at,
+      };
     })),
     pagination: {
       page: safePage,
@@ -767,7 +906,7 @@ export async function listGasFundingTransactions({ page = 1, limit = 20, network
 
 export async function getCustodialTreasuryOverview() {
   const [wallets, pendingGasTopups, pendingSweeps, balances] = await Promise.all([
-    Promise.all(['ethereum', 'bsc', 'tron'].map(async (network) => {
+    Promise.all(['ethereum', 'bsc', 'tron', 'solana'].map(async (network) => {
       const adminWallet = await getAdminWalletRecord(network);
       const config = await getSweepNetworkConfig(network);
       console.log('3.Getting treasury overview for', { adminWallet, config });
@@ -788,7 +927,7 @@ export async function getCustodialTreasuryOverview() {
       .groupBy('network'),
   ]);
 
-  const totals = { ethereum: '0', bsc: '0', tron: '0' };
+  const totals = { ethereum: '0', bsc: '0', tron: '0', solana: '0' };
   for (const row of balances) {
     if (row.network in totals) totals[row.network] = String(row.total || '0');
   }

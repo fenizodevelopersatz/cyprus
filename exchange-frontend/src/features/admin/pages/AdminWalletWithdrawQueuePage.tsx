@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import bs58 from "bs58";
 import Button from "../../../ui/Button";
 import { FundingNetworkIcon } from "../../funding/components/FundingNetworkIcon";
 import {
@@ -185,6 +187,7 @@ export default function AdminWalletWithdrawQueuePage() {
             <option value="ethereum">ERC-20</option>
             <option value="bsc">BEP-20</option>
             <option value="tron">TRC-20</option>
+            <option value="solana">SOLANA</option>
           </select>
           <input
             type="date"
@@ -310,7 +313,10 @@ export default function AdminWalletWithdrawQueuePage() {
                       ) : (
                         <div className="break-all font-mono text-[11px] text-slate-200">-</div>
                       )}
-                      <div className="mt-2 text-xs text-slate-400">{normalizeNetworkLabel(item.chain)}</div>
+                      <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+                        <FundingNetworkIcon network={toFundingIconNetwork(item.chain)} size="xs" />
+                        <span>{normalizeNetworkLabel(item.chain)}</span>
+                      </div>
                     </DetailBlock>
 
                     <DetailBlock label="Requested">
@@ -406,68 +412,70 @@ export default function AdminWalletWithdrawQueuePage() {
         </div>
       </section>
 
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-6 space-y-4">
-            <h3 className="text-xl font-semibold text-white">{modal.type === "approve" ? "Approve and send withdrawal" : "Reject withdrawal"}</h3>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <FundingNetworkIcon network={toFundingIconNetwork(modal.item.chain)} size="sm" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-white">
-                    {modal.item.userName || modal.item.email || `User #${modal.item.userId}`} - {formatAmount(getApprovalSendAmount(modal.item), 4)} {modal.item.asset}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {normalizeNetworkLabel(modal.item.chain)} payout amount for this approval
+      {modal &&
+        createPortal(
+          <div className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-8 backdrop-blur-sm sm:items-center">
+            <div className="w-full max-w-2xl space-y-4 rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-[0_28px_120px_-48px_rgba(8,13,28,0.95)]">
+              <h3 className="text-xl font-semibold text-white">{modal.type === "approve" ? "Approve and send withdrawal" : "Reject withdrawal"}</h3>
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <FundingNetworkIcon network={toFundingIconNetwork(modal.item.chain)} size="sm" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white">
+                      {modal.item.userName || modal.item.email || `User #${modal.item.userId}`} - {formatAmount(getApprovalSendAmount(modal.item), 4)} {modal.item.asset}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {normalizeNetworkLabel(modal.item.chain)} payout amount for this approval
+                    </div>
                   </div>
                 </div>
+                {hasMetaValue(modal.item.meta, "requestedAmount") ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-400 sm:grid-cols-3">
+                    <div>Gross: {formatAmount(Number(modal.item.meta?.requestedAmount || modal.item.amount), 2)} {modal.item.asset}</div>
+                    <div>Admin fee: {formatAmount(Number(modal.item.meta?.adminFeeAmount || 0), 2)} {modal.item.asset}</div>
+                    <div>Penalty: {formatAmount(Number(modal.item.meta?.earlyPenaltyAmount || 0), 2)} {modal.item.asset}</div>
+                  </div>
+                ) : null}
               </div>
-              {hasMetaValue(modal.item.meta, "requestedAmount") ? (
-                <div className="mt-3 grid grid-cols-1 gap-1 text-xs text-slate-400 sm:grid-cols-3">
-                  <div>Gross: {formatAmount(Number(modal.item.meta?.requestedAmount || modal.item.amount), 2)} {modal.item.asset}</div>
-                  <div>Admin fee: {formatAmount(Number(modal.item.meta?.adminFeeAmount || 0), 2)} {modal.item.asset}</div>
-                  <div>Penalty: {formatAmount(Number(modal.item.meta?.earlyPenaltyAmount || 0), 2)} {modal.item.asset}</div>
-                </div>
+              <p className="text-xs text-slate-400">
+                {modal.type === "approve"
+                  ? "Enter the blockchain transaction hash used for this manual withdrawal approval."
+                  : "Enter the admin note that explains why this withdrawal is being rejected."}
+              </p>
+              <textarea
+                className="min-h-32 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
+                placeholder={modal.type === "approve" ? "Transaction hash" : "Admin rejection notes"}
+                value={modalInput}
+                onChange={(e) => setModalInput(e.target.value)}
+                rows={modal.type === "approve" ? 2 : 5}
+              />
+              {modal.type === "approve" && modalInput.trim() && !isValidTxHashForNetwork(modal.item.chain, modalInput.trim()) ? (
+                <div className="text-sm text-rose-400">{getTxHashValidationMessage(modal.item.chain)}</div>
               ) : null}
-            </div>
-            <p className="text-xs text-slate-400">
-              {modal.type === "approve"
-                ? "Enter the blockchain transaction hash used for this manual withdrawal approval."
-                : "Enter the admin note that explains why this withdrawal is being rejected."}
-            </p>
-            <textarea
-              className="min-h-32 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white"
-              placeholder={modal.type === "approve" ? "Transaction hash" : "Admin rejection notes"}
-              value={modalInput}
-              onChange={(e) => setModalInput(e.target.value)}
-              rows={modal.type === "approve" ? 2 : 5}
-            />
-            {modal.type === "approve" && modalInput.trim() && !isValidTxHashForNetwork(modal.item.chain, modalInput.trim()) ? (
-              <div className="text-sm text-rose-400">{getTxHashValidationMessage(modal.item.chain)}</div>
-            ) : null}
-            {(approveMutation.isError || rejectMutation.isError) && (
-              <div className="text-sm text-rose-400">
-                {(approveMutation.error as Error)?.message || (rejectMutation.error as Error)?.message}
+              {(approveMutation.isError || rejectMutation.isError) && (
+                <div className="text-sm text-rose-400">
+                  {(approveMutation.error as Error)?.message || (rejectMutation.error as Error)?.message}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={submitModal}
+                  disabled={
+                    approveMutation.isPending ||
+                    rejectMutation.isPending ||
+                    !modalInput.trim() ||
+                    (modal.type === "approve" && !isValidTxHashForNetwork(modal.item.chain, modalInput.trim()))
+                  }
+                >
+                  {approveMutation.isPending || rejectMutation.isPending ? "Submitting..." : "Confirm"}
+                </Button>
+                <Button className="flex-1" variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
               </div>
-            )}
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={submitModal}
-                disabled={
-                  approveMutation.isPending ||
-                  rejectMutation.isPending ||
-                  !modalInput.trim() ||
-                  (modal.type === "approve" && !isValidTxHashForNetwork(modal.item.chain, modalInput.trim()))
-                }
-              >
-                {approveMutation.isPending || rejectMutation.isPending ? "Submitting..." : "Confirm"}
-              </Button>
-              <Button className="flex-1" variant="secondary" onClick={() => setModal(null)}>Cancel</Button>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -529,13 +537,15 @@ function normalizeNetworkKey(value: string | undefined) {
   if (normalized === "erc20" || normalized === "ethereum" || normalized === "eth") return "erc20";
   if (normalized === "bep20" || normalized === "bsc") return "bep20";
   if (normalized === "trc20" || normalized === "tron") return "trc20";
+  if (normalized === "solana" || normalized === "sol") return "solana";
   return "";
 }
 
-function toFundingIconNetwork(value?: string): "ethereum" | "bsc" | "tron" {
+function toFundingIconNetwork(value?: string): "ethereum" | "bsc" | "tron" | "solana" {
   const normalized = normalizeNetworkKey(value);
   if (normalized === "erc20") return "ethereum";
   if (normalized === "bep20") return "bsc";
+  if (normalized === "solana") return "solana";
   return "tron";
 }
 
@@ -553,6 +563,7 @@ function isValidTxHashForNetwork(network: string | undefined, value: string) {
   if (!trimmed) return false;
   if (normalized === "trc20") return /^[a-fA-F0-9]{64}$/.test(trimmed);
   if (normalized === "erc20" || normalized === "bep20") return /^0x[a-fA-F0-9]{64}$/.test(trimmed);
+  if (normalized === "solana") return isValidSolanaSignature(trimmed);
   return false;
 }
 
@@ -561,7 +572,17 @@ function getTxHashValidationMessage(network: string | undefined) {
   if (normalized === "trc20") return "Enter a valid TRC20 transaction hash.";
   if (normalized === "erc20") return "Enter a valid ERC20 transaction hash.";
   if (normalized === "bep20") return "Enter a valid BEP20 transaction hash.";
+  if (normalized === "solana") return "Enter a valid Solana transaction signature.";
   return "Enter a valid transaction hash.";
+}
+
+function isValidSolanaSignature(value: string) {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(value)) return false;
+  try {
+    return bs58.decode(value).length === 64;
+  } catch {
+    return false;
+  }
 }
 
 function toExternalUrl(value?: string | null) {
@@ -570,9 +591,10 @@ function toExternalUrl(value?: string | null) {
 
 function normalizeNetworkLabel(value?: string) {
   const normalized = String(value || "").toLowerCase();
-  if (normalized === "ethereum") return "ERC-20";
-  if (normalized === "bsc") return "BEP-20";
-  if (normalized === "tron") return "TRC-20";
+  if (normalized === "ethereum" || normalized === "erc20" || normalized === "eth") return "ERC-20";
+  if (normalized === "bsc" || normalized === "bep20") return "BEP-20";
+  if (normalized === "tron" || normalized === "trc20") return "TRC-20";
+  if (normalized === "solana" || normalized === "sol") return "SOLANA";
   return value || "--";
 }
 

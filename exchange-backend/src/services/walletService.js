@@ -10,7 +10,7 @@ import {
   journal,
 } from './ledgerService.js';
 import { audit } from './auditService.js';
-import { applyWalletCreditRecord, applyWalletDebitRecord } from './walletAccountingService.js';
+import { applyWalletCreditRecord, applyWalletDebitRecord, getMainWalletBalanceBig } from './walletAccountingService.js';
 import { applyFirstDepositReferralRewards } from './fundingDepositService.js';
 import { recalculateMlmForUser } from './mlmLevelService.js';
 import { getUserSipLiabilities } from './sipService.js';
@@ -21,6 +21,7 @@ import { getWithdrawalPolicyContext } from './withdrawalPolicy.service.js';
 import { buildAddressExplorerUrl, buildExplorerUrl, normalizeFundingNetwork } from './fundingMirror.service.js';
 import { toAbsoluteProfilePhotoUrl } from './userService.js';
 import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
+import { isValidSolanaAddress, isValidSolanaSignature } from '../utils/solana.js';
 
 const SUPPORTED_CHAINS = ['ETH', 'BSC'];
 const NETWORK_CHAIN_MAP = {
@@ -29,6 +30,7 @@ const NETWORK_CHAIN_MAP = {
   BEP20: 'BSC',
   BSC: 'BSC',
   TRC20: 'TRC20',
+  SOLANA: 'SOLANA',
 };
 const NATIVE_ASSET = {
   ETH: 'ETH',
@@ -40,6 +42,11 @@ const WALLET_NAMESPACE_MAP = {
   futures: 'futures:available',
 };
 const tableColumnCache = new Map();
+const USD_EQUIVALENT_ASSETS = new Set(['USDT', 'USDC']);
+
+function isUsdEquivalentAsset(asset) {
+  return USD_EQUIVALENT_ASSETS.has(String(asset || '').trim().toUpperCase());
+}
 
 function parseMeta(meta) {
   if (!meta) return {};
@@ -105,6 +112,7 @@ function normalizeWithdrawalFilterNetwork(value) {
   if (normalized === 'tron' || normalized === 'trc20') return 'TRC20';
   if (normalized === 'bsc' || normalized === 'bep20') return 'BEP20';
   if (normalized === 'ethereum' || normalized === 'erc20' || normalized === 'eth') return 'ERC20';
+  if (normalized === 'solana' || normalized === 'sol') return 'SOLANA';
   return String(value || '').trim().toUpperCase();
 }
 
@@ -113,6 +121,7 @@ function isValidWithdrawalAddressForChain(chain, address) {
   const trimmed = String(address || '').trim();
   if (!trimmed) return false;
   if (normalizedNetwork === 'tron') return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(trimmed);
+  if (normalizedNetwork === 'solana') return isValidSolanaAddress(trimmed);
   if (normalizedNetwork === 'ethereum' || normalizedNetwork === 'bsc') return isAddress(trimmed);
   return false;
 }
@@ -122,6 +131,7 @@ function isValidTxHashForChain(chain, txHash) {
   const trimmed = String(txHash || '').trim();
   if (!trimmed) return false;
   if (normalizedNetwork === 'tron') return /^[a-fA-F0-9]{64}$/.test(trimmed);
+  if (normalizedNetwork === 'solana') return isValidSolanaSignature(trimmed);
   if (normalizedNetwork === 'ethereum' || normalizedNetwork === 'bsc') return /^0x[a-fA-F0-9]{64}$/.test(trimmed);
   return false;
 }
@@ -161,7 +171,7 @@ async function filterInsertableFields(tableName, payload, trx) {
 function requireChain(chain) {
   const normalized = String(chain || '').toUpperCase();
   const mapped = NETWORK_CHAIN_MAP[normalized] || normalized;
-  if (mapped === 'TRC20') return mapped;
+  if (mapped === 'TRC20' || mapped === 'SOLANA') return mapped;
   if (!SUPPORTED_CHAINS.includes(mapped)) {
     throw new Error(`Unsupported chain: ${chain}`);
   }
@@ -192,7 +202,7 @@ function getMasterNode() {
 export async function createDepositAddress({ userId, chain }, { trx } = {}) {
   if (!userId) throw new Error('userId required');
   const requestedNetwork = String(chain || '').toUpperCase();
-  if (['ERC20', 'BEP20', 'TRC20'].includes(requestedNetwork)) {
+  if (['ERC20', 'BEP20', 'TRC20', 'SOLANA'].includes(requestedNetwork)) {
     await provisionUserWallets(userId, { trx });
     const userWallet = await getUserWalletByNetwork(userId, requestedNetwork, { trx });
     const assetConfig = await getSignalAssetByNetwork(requestedNetwork);
@@ -380,16 +390,26 @@ export async function requestWithdrawal({ userId, asset, amount, to, chain, memo
       throw new Error(`MAXIMUM_WITHDRAWAL_${withdrawalPolicy.policy.maximumWithdrawalAmount}`);
     }
 
-    const balance = await getAccountBalance(
-      { userId, namespace: 'spot:available', asset },
-      trx
-    );
     const amountBig = parseUnits(String(amount), 18);
     if (amountBig <= 0n) throw new Error('Amount must be positive');
+    const balance = isUsdEquivalentAsset(asset)
+      ? await getMainWalletBalanceBig(userId, trx)
+      : await getAccountBalance(
+          { userId, namespace: 'spot:available', asset },
+          trx
+        );
     if (balance < amountBig) throw new Error('Insufficient balance');
 
     const now = new Date();
     const policySnapshot = {
+      logType: 'withdrawal_request',
+      requestedBy: userId,
+      requestedAt: now.toISOString(),
+      chain: normalizedChain,
+      asset,
+      destinationAddress: to,
+      requestedAmountDecimal: formatUnits(amountBig, 18),
+      tokenContract: assetConfig.contractAddress || null,
       note: withdrawalPolicy.policy.withdrawalNote || null,
       userDetails: details ? String(details).trim() : null,
       userMemo: memo ? String(memo).trim() : null,
@@ -408,7 +428,7 @@ export async function requestWithdrawal({ userId, asset, amount, to, chain, memo
       rewardReductionEnabled: withdrawalPolicy.policy.rewardReductionEnabled,
       rewardReductionType: withdrawalPolicy.policy.rewardReductionType,
       netAmount: withdrawalPolicy.preview.netAmount,
-      requestedAmount: withdrawalPolicy.preview.requestedAmount,
+      policyRequestedAmount: withdrawalPolicy.preview.requestedAmount,
       warningLines: [
         withdrawalPolicy.user.lockActive
           ? `Withdrawal locked for ${withdrawalPolicy.user.daysRemaining} more day(s). Early penalty ${withdrawalPolicy.policy.earlyPenaltyPercent}% applies.`
@@ -457,7 +477,7 @@ export async function requestWithdrawal({ userId, asset, amount, to, chain, memo
       { description: `Withdrawal reserve ${asset}`, meta: { userId, withdrawalId } }
     );
 
-    if (String(asset).toUpperCase() === 'USDT') {
+    if (isUsdEquivalentAsset(asset)) {
       await applyWalletDebitRecord(
         {
           userId,
@@ -465,8 +485,8 @@ export async function requestWithdrawal({ userId, asset, amount, to, chain, memo
           type: 'withdrawal_debit',
           sourceType: 'withdrawal_request',
           referenceId: withdrawalId,
-          remark: 'Withdrawal reserved from main wallet balance',
-          meta: { chain: normalizedChain, to, memo: memo ? String(memo).trim() : null },
+          remark: `${String(asset).toUpperCase()} withdrawal reserved from main wallet balance`,
+          meta: { chain: normalizedChain, asset: String(asset).toUpperCase(), to, memo: memo ? String(memo).trim() : null },
           investment: { enabled: true, amount: amountBig },
         },
         trx
@@ -737,6 +757,7 @@ export async function adminListWithdrawals({
     totalErc20: 0,
     totalBep20: 0,
     totalTrc20: 0,
+    totalSolana: 0,
   };
 
   for (const row of summaryRows) {
@@ -746,6 +767,7 @@ export async function adminListWithdrawals({
     if (network === 'ethereum') summary.totalErc20 += amount;
     if (network === 'bsc') summary.totalBep20 += amount;
     if (network === 'tron') summary.totalTrc20 += amount;
+    if (network === 'solana') summary.totalSolana += amount;
   }
 
   return {
@@ -755,6 +777,7 @@ export async function adminListWithdrawals({
       totalErc20: String(summary.totalErc20),
       totalBep20: String(summary.totalBep20),
       totalTrc20: String(summary.totalTrc20),
+      totalSolana: String(summary.totalSolana),
     },
     pagination: {
       page: safePage,
@@ -806,11 +829,17 @@ export async function adminApproveWithdrawal({ withdrawalId, txHash, reviewerId 
       { description: `Withdrawal approve ${row.asset}`, meta: { withdrawalId: row.id, reviewerId } }
     );
 
+    const txExplorerUrl = await buildExplorerUrl(row.chain, finalTxHash);
     const meta = serializeMeta(row.meta, {
+      logType: 'withdrawal_approval',
       approvedBy: reviewerId,
       approvedAt: now.toISOString(),
       txHash: finalTxHash || null,
+      txExplorerUrl,
       payoutAmount: payoutAmountDecimal,
+      chain: row.chain,
+      asset: row.asset,
+      destinationAddress: row.to,
       adminNotes: `Approved manually with tx hash ${finalTxHash}`,
     });
 
@@ -863,7 +892,7 @@ export async function adminRejectWithdrawal({ withdrawalId, reason, reviewerId }
       { description: `Withdrawal reject ${row.asset}`, meta: { withdrawalId: row.id, reviewerId } }
     );
 
-    if (String(row.asset).toUpperCase() === 'USDT') {
+    if (isUsdEquivalentAsset(row.asset)) {
       await applyWalletCreditRecord(
         {
           userId: row.user_id,
@@ -871,8 +900,8 @@ export async function adminRejectWithdrawal({ withdrawalId, reason, reviewerId }
           type: 'withdrawal_reversal_credit',
           sourceType: 'withdrawal_rejected',
           referenceId: row.id,
-          remark: 'Rejected withdrawal returned to main wallet balance',
-          meta: { reviewerId, reason: normalizedReason },
+          remark: `${String(row.asset).toUpperCase()} rejected withdrawal returned to main wallet balance`,
+          meta: { reviewerId, reason: normalizedReason, asset: String(row.asset).toUpperCase() },
           investment: { enabled: true, amount: amountBig },
         },
         trx
@@ -880,9 +909,13 @@ export async function adminRejectWithdrawal({ withdrawalId, reason, reviewerId }
     }
 
     const meta = serializeMeta(row.meta, {
+      logType: 'withdrawal_rejection',
       rejectedBy: reviewerId,
       rejectedAt: now.toISOString(),
       reason: normalizedReason,
+      chain: row.chain,
+      asset: row.asset,
+      destinationAddress: row.to,
       adminNotes: normalizedReason,
     });
 

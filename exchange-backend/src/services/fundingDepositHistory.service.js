@@ -16,7 +16,7 @@ export async function getFundingDepositHistory(userId, { network, page = 1, limi
   const normalizedNetwork = normalizeFundingNetwork(network);
   const canonicalIdsQuery = buildCanonicalDepositTransactionIdsQuery(userId, {
     network: normalizedNetwork,
-    token: 'USDT',
+    token: null,
   });
 
   const countRow = await db
@@ -36,7 +36,7 @@ export async function getFundingDepositHistory(userId, { network, page = 1, limi
     hash: row.tx_hash,
     network: row.network,
     type: row.type || getFundingType(row.network),
-    token: row.token,
+    token: row.network === 'solana' ? 'USDC' : row.token,
     amount: row.amount_decimal,
     createdAt: row.created_at,
     explorerUrl: await buildExplorerUrl(row.network, row.tx_hash),

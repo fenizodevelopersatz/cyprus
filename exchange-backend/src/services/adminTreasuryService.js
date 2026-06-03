@@ -6,6 +6,7 @@ import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 import { buildFundingTxnId } from './txnIdService.js';
 import { getTronClient, getTronOwnerAddress } from '../utils/tron.js';
 import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
+import { getSolanaTokenBalanceRaw, transferSolanaToken } from '../utils/solana.js';
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -36,6 +37,7 @@ const NETWORK_META = {
   ethereum: { label: 'ERC', assetNetwork: 'ERC20', thresholdEnv: 'ETH_MIN_SWEEP_THRESHOLD' },
   bsc: { label: 'BEP', assetNetwork: 'BEP20', thresholdEnv: 'BSC_MIN_SWEEP_THRESHOLD' },
   tron: { label: 'TRC', assetNetwork: 'TRC20', thresholdEnv: 'TRON_MIN_SWEEP_THRESHOLD' },
+  solana: { label: 'SOL', assetNetwork: 'SOLANA', thresholdEnv: 'SOLANA_MIN_SWEEP_THRESHOLD' },
 };
 
 function getNetworkMeta(network) {
@@ -56,7 +58,7 @@ async function getAdminWalletConfig(network) {
     ...meta,
     adminWallet: assetConfig?.hotWallet || assetConfig?.depositWallet || '',
     adminPrivateKey: assetConfig?.privateKey || '',
-    rpcUrl: assetConfig?.rpcUrl || process.env[meta.assetNetwork === 'ERC20' ? 'ETH_RPC_HTTP' : meta.assetNetwork === 'BEP20' ? 'BSC_RPC_HTTP' : 'TRX_API_URL'],
+    rpcUrl: assetConfig?.rpcUrl || process.env[meta.assetNetwork === 'ERC20' ? 'ETH_RPC_HTTP' : meta.assetNetwork === 'BEP20' ? 'BSC_RPC_HTTP' : meta.assetNetwork === 'SOLANA' ? 'SOLANA_RPC_URL' : 'TRX_API_URL'],
     contractAddress: assetConfig?.contractAddress || '',
     fullHost: assetConfig?.fullHost || '',
     decimals: Number(assetConfig?.decimals || (meta.assetNetwork === 'BEP20' ? 18 : 6)),
@@ -67,6 +69,7 @@ async function getAdminWalletConfig(network) {
 function getUserWalletRowNetwork(network) {
   if (network === 'ethereum') return 'ERC20';
   if (network === 'bsc') return 'BEP20';
+  if (network === 'solana') return 'SOLANA';
   return 'TRC20';
 }
 
@@ -114,6 +117,7 @@ function createZeroTotals() {
     ethereum: '0',
     bsc: '0',
     tron: '0',
+    solana: '0',
   };
 }
 
@@ -122,11 +126,13 @@ function buildTotalsPayload(totals) {
     totalUsdt: String(
       Number(totals.ethereum || 0) +
         Number(totals.bsc || 0) +
-        Number(totals.tron || 0)
+        Number(totals.tron || 0) +
+        Number(totals.solana || 0)
     ),
     totalErc: String(totals.ethereum || '0'),
     totalBep: String(totals.bsc || '0'),
     totalTrc: String(totals.tron || '0'),
+    totalSol: String(totals.solana || '0'),
   };
 }
 
@@ -144,6 +150,7 @@ function isGasRelatedError(errorMessage) {
     'trx',
     'bnb',
     'eth',
+    'sol',
   ].some((token) => message.includes(token));
 }
 
@@ -205,6 +212,16 @@ export async function sendAdminTreasuryUsdt({ network, to, amountDecimal }) {
     return { txHash, network: config.network };
   }
 
+  if (config.network === 'solana') {
+    const txHash = await transferSolanaToken({
+      fromPrivateKey: config.adminPrivateKey,
+      toAddress: to,
+      amountRaw: amount,
+      assetConfig: config,
+    });
+    return { txHash, network: config.network };
+  }
+
   const txHash = await transferEvmUsdt({
     network: config.network,
     fromPrivateKey: config.adminPrivateKey,
@@ -216,19 +233,21 @@ export async function sendAdminTreasuryUsdt({ network, to, amountDecimal }) {
 
 export async function getAdminTreasuryLiveBalances() {
   const wallets = await Promise.all(
-    ['ethereum', 'bsc', 'tron'].map(async (network) => {
+    ['ethereum', 'bsc', 'tron', 'solana'].map(async (network) => {
       const config = await getAdminWalletConfig(network);
       const balance = await getNetworkTreasuryBalance(network);
       const explorerUrl = config.adminWallet ? await buildAddressExplorerUrl(network, config.adminWallet) : null;
       return {
         network,
-        asset: 'USDT',
+        asset: network === 'solana' ? 'USDC' : 'USDT',
         label:
           network === 'ethereum'
             ? 'USDT ERC-20'
             : network === 'bsc'
               ? 'USDT BEP-20'
-              : 'USDT TRC-20',
+              : network === 'solana'
+                ? 'USDC Solana'
+                : 'USDT TRC-20',
         address: config.adminWallet || '',
         explorerUrl,
         balance,
@@ -242,6 +261,7 @@ export async function getAdminTreasuryLiveBalances() {
     totalErc20: wallets.find((wallet) => wallet.network === 'ethereum')?.balance || '0',
     totalBep20: wallets.find((wallet) => wallet.network === 'bsc')?.balance || '0',
     totalTrc20: wallets.find((wallet) => wallet.network === 'tron')?.balance || '0',
+    totalSolana: wallets.find((wallet) => wallet.network === 'solana')?.balance || '0',
     wallets,
   };
 }
@@ -261,7 +281,7 @@ export async function listAdminDeposits({
   const query = db('deposit_transactions')
     .leftJoin('users', 'deposit_transactions.user_id', 'users.id')
     .leftJoin('user_profiles', 'deposit_transactions.user_id', 'user_profiles.user_id')
-    .where({ 'deposit_transactions.token': 'USDT' })
+    .whereIn('deposit_transactions.token', ['USDT', 'USDC'])
     .modify((builder) => {
       if (normalizedNetwork) builder.andWhere({ 'deposit_transactions.network': normalizedNetwork });
       if (status) builder.andWhere({ 'deposit_transactions.status': String(status).trim().toLowerCase() });
@@ -282,7 +302,12 @@ export async function listAdminDeposits({
       .offset((safePage - 1) * safeLimit)
       .limit(safeLimit),
     db('deposit_transactions')
-      .where({ token: 'USDT', status: 'credited' })
+      .where({ status: 'credited' })
+      .whereIn('token', ['USDT', 'USDC'])
+      .modify((builder) => {
+        if (normalizedNetwork) builder.andWhere({ network: normalizedNetwork });
+        if (userId) builder.andWhere({ user_id: Number(userId) });
+      })
       .select('network')
       .sum({ total: 'amount_decimal' })
       .groupBy('network'),
@@ -436,6 +461,11 @@ async function getNetworkTreasuryBalance(network) {
     return formatUnits(raw, config.decimals);
   }
 
+  if (config.network === 'solana') {
+    const raw = await getSolanaTokenBalanceRaw(config.adminWallet, config);
+    return formatUnits(raw, config.decimals);
+  }
+
   const provider = await createLoggedRpcProvider({
     rpcUrl: config.rpcUrl,
     network,
@@ -471,11 +501,11 @@ export async function getAdminTreasuryOverview() {
   ]);
 
   const walletOverview = await Promise.all(
-    ['ethereum', 'bsc', 'tron'].map(async (network) => {
+    ['ethereum', 'bsc', 'tron', 'solana'].map(async (network) => {
       const resolvedConfig = await getAdminWalletConfig(network);
       return {
         network,
-        label: network === 'ethereum' ? 'Ethereum Wallet' : network === 'bsc' ? 'BSC Wallet' : 'TRON Wallet',
+        label: network === 'ethereum' ? 'Ethereum Wallet' : network === 'bsc' ? 'BSC Wallet' : network === 'solana' ? 'Solana Wallet' : 'TRON Wallet',
         address: resolvedConfig.adminWallet || '',
         contractAddress: resolvedConfig.contractAddress || null,
         balance: await getNetworkTreasuryBalance(network),
@@ -487,6 +517,7 @@ export async function getAdminTreasuryOverview() {
     ethereum: '0',
     bsc: '0',
     tron: '0',
+    solana: '0',
   };
   for (const row of creditedDeposits) {
     if (row.network in totals) totals[row.network] = String(row.total || '0');
@@ -505,7 +536,8 @@ export async function getAdminTreasuryOverview() {
       total: String(
         Number(totals.ethereum || 0) +
           Number(totals.bsc || 0) +
-          Number(totals.tron || 0)
+          Number(totals.tron || 0) +
+          Number(totals.solana || 0)
       ),
     },
     sweepStatus: {
@@ -559,6 +591,17 @@ async function sweepDepositRow(row) {
       fromPrivateKey: privateKey,
       to: config.adminWallet,
       amount,
+    });
+    return { txHash };
+  }
+
+  if (row.network === 'solana') {
+    const amount = parseUnits(String(row.amount_decimal), config.decimals);
+    const txHash = await transferSolanaToken({
+      fromPrivateKey: privateKey,
+      toAddress: config.adminWallet,
+      amountRaw: amount,
+      assetConfig: config,
     });
     return { txHash };
   }

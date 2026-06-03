@@ -121,7 +121,7 @@ const getErrorMessage = (error: unknown, fallback = "Request failed") => {
 
 const defaultSettings: AdminSettings = {
   siteName: "",
-  siteLogoUrl: "/icons/logo-white.webp",
+  siteLogoUrl: "/icons/logo.png",
   siteFaviconUrl: "/favicon.ico",
   maintenanceMode: false,
   enableKyc: true,

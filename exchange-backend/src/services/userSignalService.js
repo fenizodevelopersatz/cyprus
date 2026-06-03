@@ -20,6 +20,7 @@ const TRADE_SLOT_BATCHES_TABLE = 'trade_slot_batches';
 const TRADE_SLOTS_TABLE = 'trade_slots';
 const USERS_TABLE = 'users';
 const DEFAULT_ASSET = 'USDT';
+const DEPOSIT_ASSETS = ['USDT', 'USDC'];
 const DECIMALS = 18;
 const PRICE_DECIMALS = 8;
 const PERCENT_DENOMINATOR = 10_000n;
@@ -356,7 +357,8 @@ async function getDepositTotal(userId, trx = db) {
   } catch {
   const [depositsRow, depositTransactions] = await Promise.all([
     trx('deposits')
-      .where({ user_id: userId, asset: DEFAULT_ASSET })
+      .where({ user_id: userId })
+      .whereIn('asset', DEPOSIT_ASSETS)
       .sum({ total: 'amount' })
       .first()
       .catch(() => ({ total: '0' })),
@@ -364,7 +366,8 @@ async function getDepositTotal(userId, trx = db) {
       .then((hasTable) => {
         if (!hasTable) return { total: '0' };
         return trx('deposit_transactions')
-          .where({ user_id: userId, token: DEFAULT_ASSET, credited: 1 })
+          .where({ user_id: userId, credited: 1 })
+          .whereIn('token', DEPOSIT_ASSETS)
           .sum({ total: 'amount_decimal' })
           .first();
       })

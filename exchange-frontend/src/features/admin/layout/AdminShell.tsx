@@ -14,7 +14,6 @@ type NavEntry = {
   children?: Array<{ label: string; to?: string; heading?: boolean }>;
 };
 
-const ADMIN_KYC_LAST_READ_KEY = "admin:kyc:last-read-at";
 const KYC_SUMMARY_REFRESH_MS = 10 * 60 * 1000;
 
 type AdminSocketPayload = {
@@ -144,11 +143,7 @@ export default function AdminShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [siteName, setSiteName] = useState("Primerica Exchange");
-  const [siteLogoUrl, setSiteLogoUrl] = useState("/icons/logo-white.webp");
-  const [kycLastReadAt, setKycLastReadAt] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(ADMIN_KYC_LAST_READ_KEY);
-  });
+  const [siteLogoUrl, setSiteLogoUrl] = useState("/icons/logo.png");
 
   const kycSummaryQuery = useQuery({
     queryKey: ["admin", "kyc", "sidebar-summary"],
@@ -158,14 +153,8 @@ export default function AdminShell() {
   });
 
   const pendingKycItems = kycSummaryQuery.data?.items ?? [];
-  const unreadKycCount = useMemo(() => {
-    const lastReadTs = kycLastReadAt ? new Date(kycLastReadAt).getTime() : 0;
-    return pendingKycItems.filter((item) => {
-      const createdAt = new Date(item.createdAt).getTime();
-      return Number.isFinite(createdAt) && createdAt > lastReadTs;
-    }).length;
-  }, [kycLastReadAt, pendingKycItems]);
-  const hasUnreadKyc = unreadKycCount > 0;
+  const pendingKycCount = kycSummaryQuery.data?.pendingCount ?? pendingKycItems.length;
+  const hasPendingKyc = pendingKycCount > 0;
 
   useEffect(() => {
     const token = window.localStorage.getItem("adminAccessToken");
@@ -239,19 +228,6 @@ export default function AdminShell() {
     };
   }, [queryClient]);
 
-  useEffect(() => {
-    if (location.pathname !== "/admin/kyc") return;
-    if (!pendingKycItems.length) return;
-    const latestPendingCreatedAt = pendingKycItems.reduce<string | null>((latest, item) => {
-      if (!item.createdAt) return latest;
-      if (!latest) return item.createdAt;
-      return new Date(item.createdAt).getTime() > new Date(latest).getTime() ? item.createdAt : latest;
-    }, null);
-    if (!latestPendingCreatedAt || latestPendingCreatedAt === kycLastReadAt) return;
-    setKycLastReadAt(latestPendingCreatedAt);
-    window.localStorage.setItem(ADMIN_KYC_LAST_READ_KEY, latestPendingCreatedAt);
-  }, [kycLastReadAt, location.pathname, pendingKycItems]);
-
   const toggleSection = (label: string) =>
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
 
@@ -291,7 +267,7 @@ export default function AdminShell() {
 
     const applyBranding = (settings?: { siteName?: string; siteLogoUrl?: string }) => {
       setSiteName(settings?.siteName?.trim() || "Primerica Exchange");
-      setSiteLogoUrl(settings?.siteLogoUrl?.trim() || "/icons/logo-white.webp");
+      setSiteLogoUrl(settings?.siteLogoUrl?.trim() || "/icons/logo.png");
     };
 
     const loadBranding = async () => {
@@ -345,7 +321,7 @@ export default function AdminShell() {
                 alt={`${siteName} logo`}
                 className="h-12 w-12 rounded-full border border-white/10 bg-white/5 object-contain p-1"
                 onError={(event) => {
-                  event.currentTarget.src = "/icons/logo-white.webp";
+                  event.currentTarget.src = "/icons/logo.png";
                 }}
               />
               {!sidebarCollapsed && (
@@ -469,12 +445,12 @@ export default function AdminShell() {
                         {entry.label === "Compliance" ? (
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              hasUnreadKyc
+                              hasPendingKyc
                                 ? "bg-amber-400/20 text-amber-100"
                                 : "bg-white/10 text-slate-300"
                             }`}
                           >
-                            {hasUnreadKyc ? unreadKycCount : kycSummaryQuery.data?.pendingCount ?? 0}
+                            {pendingKycCount}
                           </span>
                         ) : null}
                         <span className={`transition ${open ? "rotate-0" : "-rotate-90"}`}>{">"}</span>
@@ -511,12 +487,12 @@ export default function AdminShell() {
                                   {child.to === "/admin/kyc" ? (
                                     <span
                                       className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                        hasUnreadKyc
+                                        hasPendingKyc
                                           ? "bg-amber-400/20 text-amber-100"
                                           : "bg-white/10 text-slate-300"
                                       }`}
                                     >
-                                      {hasUnreadKyc ? unreadKycCount : kycSummaryQuery.data?.pendingCount ?? 0}
+                                      {pendingKycCount}
                                     </span>
                                   ) : null}
                                 </span>

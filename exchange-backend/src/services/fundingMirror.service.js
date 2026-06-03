@@ -7,15 +7,18 @@ const NETWORK_MAP = {
   ERC20: 'ethereum',
   BEP20: 'bsc',
   TRC20: 'tron',
+  SOLANA: 'solana',
   ethereum: 'ethereum',
   bsc: 'bsc',
   tron: 'tron',
+  solana: 'solana',
 };
 
 const TYPE_MAP = {
   ethereum: 'ERC',
   bsc: 'BEP',
   tron: 'TRC',
+  solana: 'SOL',
 };
 
 export function normalizeFundingNetwork(value) {
@@ -31,15 +34,16 @@ export function buildCanonicalDepositTransactionIdsQuery(
   { network = null, token = 'USDT', creditedOnly = false } = {}
 ) {
   const normalizedNetwork = normalizeFundingNetwork(network);
-  return db('deposit_transactions as dt')
+  const query = db('deposit_transactions as dt')
     .where('dt.user_id', userId)
-    .andWhere('dt.token', token)
     .modify((builder) => {
       if (normalizedNetwork) builder.andWhere('dt.network', normalizedNetwork);
       if (creditedOnly) builder.andWhere('dt.credited', 1);
     })
     .groupBy('dt.network', 'dt.tx_hash', 'dt.log_index')
     .select(db.raw('MAX(dt.id) as id'));
+  if (token) query.andWhere('dt.token', token);
+  return query;
 }
 
 function getEthereumExplorerBase(assetConfig) {
@@ -81,14 +85,30 @@ function getTronAddressExplorerBase(assetConfig) {
   return 'https://tronscan.org/#/address/';
 }
 
+function getSolanaExplorerBase(assetConfig) {
+  const cluster = String(assetConfig?.chainId || process.env.NETWORK || process.env.SOLANA_NETWORK || 'devnet')
+    .trim()
+    .toLowerCase();
+  const suffix = cluster === 'mainnet' || cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+  return {
+    tx: 'https://explorer.solana.com/tx/',
+    address: 'https://explorer.solana.com/address/',
+    suffix,
+  };
+}
+
 export async function buildExplorerUrl(network, txHash) {
   const normalized = normalizeFundingNetwork(network);
   if (!txHash) return null;
-  const assetNetwork = normalized === 'ethereum' ? 'ERC20' : normalized === 'bsc' ? 'BEP20' : 'TRC20';
+  const assetNetwork = normalized === 'ethereum' ? 'ERC20' : normalized === 'bsc' ? 'BEP20' : normalized === 'solana' ? 'SOLANA' : 'TRC20';
   const assetConfig = await getSignalAssetByNetwork(assetNetwork);
   if (normalized === 'ethereum') return `${getEthereumExplorerBase(assetConfig)}${txHash}`;
   if (normalized === 'bsc') return `${getBscExplorerBase(assetConfig)}${txHash}`;
   if (normalized === 'tron') return `${getTronExplorerBase(assetConfig)}${txHash}`;
+  if (normalized === 'solana') {
+    const explorer = getSolanaExplorerBase(assetConfig);
+    return `${explorer.tx}${txHash}${explorer.suffix}`;
+  }
   return null;
 }
 
@@ -96,18 +116,23 @@ export async function buildAddressExplorerUrl(network, address) {
   const normalized = normalizeFundingNetwork(network);
   const trimmedAddress = String(address || '').trim();
   if (!trimmedAddress) return null;
-  const assetNetwork = normalized === 'ethereum' ? 'ERC20' : normalized === 'bsc' ? 'BEP20' : 'TRC20';
+  const assetNetwork = normalized === 'ethereum' ? 'ERC20' : normalized === 'bsc' ? 'BEP20' : normalized === 'solana' ? 'SOLANA' : 'TRC20';
   const assetConfig = await getSignalAssetByNetwork(assetNetwork);
   if (normalized === 'ethereum') return `${String(getEthereumExplorerBase(assetConfig)).replace(/\/tx\/?$/i, '/address/')}${trimmedAddress}`;
   if (normalized === 'bsc') return `${String(getBscExplorerBase(assetConfig)).replace(/\/tx\/?$/i, '/address/')}${trimmedAddress}`;
   if (normalized === 'tron') return `${getTronAddressExplorerBase(assetConfig)}${trimmedAddress}`;
+  if (normalized === 'solana') {
+    const explorer = getSolanaExplorerBase(assetConfig);
+    return `${explorer.address}${trimmedAddress}${explorer.suffix}`;
+  }
   return null;
 }
 
 function normalizeAddress(network, address) {
   const raw = String(address || '').trim();
   if (!raw) return raw;
-  return normalizeFundingNetwork(network) === 'tron' ? raw : raw.toLowerCase();
+  const normalized = normalizeFundingNetwork(network);
+  return normalized === 'tron' || normalized === 'solana' ? raw : raw.toLowerCase();
 }
 
 export async function syncWalletAddressesForUser(userId) {
@@ -130,9 +155,9 @@ export async function syncWalletAddressesForUser(userId) {
       user_id: userId,
       network,
       token: 'USDT',
-      label: assetConfig?.displayName || (network === 'ethereum' ? 'USDT Ethereum' : network === 'bsc' ? 'USDT BSC' : 'USDT TRON'),
+        label: assetConfig?.displayName || (network === 'ethereum' ? 'USDT Ethereum' : network === 'bsc' ? 'USDT BSC' : network === 'solana' ? 'USDC Solana' : 'USDT TRON'),
       address: wallet.address,
-      address_lower: network === 'tron' ? null : String(wallet.address || '').toLowerCase(),
+      address_lower: network === 'tron' || network === 'solana' ? null : String(wallet.address || '').toLowerCase(),
       is_active: true,
       memo_tag: null,
       meta: assetConfig ? JSON.stringify({ chain: wallet.network, assetId: assetConfig.id }) : null,
@@ -176,20 +201,25 @@ export async function syncDepositTransactionsForUser(userId) {
   const legacyRows = await db('deposits')
     .where({ user_id: userId })
     .andWhere((query) => {
-      query.where({ token_key: 'usdt' }).orWhere({ asset: 'USDT' });
+      query
+        .whereIn('token_key', ['usdt', 'usdc'])
+        .orWhereIn('asset', ['USDT', 'USDC']);
     })
     .orderBy('created_at', 'desc');
 
   for (const row of legacyRows) {
     const network = normalizeFundingNetwork(row.network_key || row.chain);
     if (!network) continue;
+    const token = network === 'solana'
+      ? 'USDC'
+      : String(row.asset || row.token_key || 'USDT').trim().toUpperCase();
     const assetConfig = assetMap.get(network) || null;
     const toAddress = normalizeAddress(network, row.to_address);
     const walletAddress = walletAddressMap.get(`${network}:${toAddress}`) || null;
     const existing = await db('deposit_transactions')
       .where({
         network,
-        token: 'USDT',
+        token,
         tx_hash: row.tx_hash,
         log_index: Number(row.log_index || 0),
       })
@@ -200,7 +230,7 @@ export async function syncDepositTransactionsForUser(userId) {
       user_id: userId,
       wallet_address_id: walletAddress?.id || null,
       network,
-      token: 'USDT',
+      token,
       txn_id: txnId,
       type: getFundingType(network),
       tx_hash: row.tx_hash,

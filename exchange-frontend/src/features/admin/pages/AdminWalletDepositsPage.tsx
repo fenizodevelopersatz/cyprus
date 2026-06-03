@@ -270,20 +270,36 @@ function DataBlock({
               {copied ? "Copied" : "Copy"}
             </button>
           ) : null}
-          {explorerUrl ? (
-            <a
-              href={explorerUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-100 transition hover:border-emerald-300/30 hover:bg-emerald-300/10"
-            >
-              Open
-            </a>
-          ) : null}
         </div>
       </div>
-      <div className={`mt-2 break-all text-sm font-medium ${tone}`}>{value}</div>
-      {detail ? <div className="mt-1 break-all text-xs text-slate-500">{detail}</div> : null}
+      {explorerUrl ? (
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noreferrer"
+          className={`mt-2 block break-all text-sm font-medium underline-offset-4 transition hover:text-cyan-200 hover:underline ${tone}`}
+          title="Open in explorer"
+        >
+          {value}
+        </a>
+      ) : (
+        <div className={`mt-2 break-all text-sm font-medium ${tone}`}>{value}</div>
+      )}
+      {detail ? (
+        explorerUrl ? (
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 block break-all text-xs text-slate-500 transition hover:text-cyan-300"
+            title="Open in explorer"
+          >
+            {detail}
+          </a>
+        ) : (
+          <div className="mt-1 break-all text-xs text-slate-500">{detail}</div>
+        )
+      ) : null}
     </div>
   );
 }

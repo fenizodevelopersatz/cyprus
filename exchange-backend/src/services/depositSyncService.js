@@ -18,7 +18,8 @@ async function getDepositsColumnSet(trx) {
 export function normalizeAddress(network, address) {
   const raw = String(address || '').trim();
   if (!raw) return raw;
-  return String(network || '').trim().toUpperCase() === 'TRC20' ? raw : raw.toLowerCase();
+  const normalized = String(network || '').trim().toUpperCase();
+  return normalized === 'TRC20' || normalized === 'SOLANA' ? raw : raw.toLowerCase();
 }
 
 export async function depositExists(trx, { chain, txHash, logIndex }) {
@@ -74,6 +75,7 @@ export async function saveDepositAndCredit({
 
   const normalizedChain = String(chain).trim().toUpperCase();
   const normalizedHash = String(txHash).trim();
+  const normalizedAsset = String(asset).trim().toUpperCase();
 
   return withTx(async (trx) => {
     const exists = await depositExists(trx, {
@@ -87,7 +89,7 @@ export async function saveDepositAndCredit({
     const depositRecord = {
       user_id: userId,
       chain: normalizedChain,
-      asset: String(asset).trim().toUpperCase(),
+      asset: normalizedAsset,
       tx_hash: normalizedHash,
       amount: String(amount),
       confirmations: Number(confirmations ?? 0),
@@ -102,8 +104,16 @@ export async function saveDepositAndCredit({
       raw_payload: meta ? JSON.stringify(meta) : null,
       source: meta?.source || 'explorer_refresh',
       network_key:
-        normalizedChain === 'ERC20' ? 'ethereum' : normalizedChain === 'BEP20' ? 'bsc' : normalizedChain === 'TRC20' ? 'tron' : null,
-      token_key: 'usdt',
+        normalizedChain === 'ERC20'
+          ? 'ethereum'
+          : normalizedChain === 'BEP20'
+            ? 'bsc'
+            : normalizedChain === 'TRC20'
+              ? 'tron'
+              : normalizedChain === 'SOLANA'
+                ? 'solana'
+                : null,
+      token_key: normalizedAsset === 'USDC' || normalizedChain === 'SOLANA' ? 'usdc' : 'usdt',
       status: 'credited',
       credited: true,
       credited_at: now,
@@ -120,7 +130,7 @@ export async function saveDepositAndCredit({
 
     await trx('deposits').insert(filteredRecord);
 
-    await creditDeposit(userId, String(asset).trim().toUpperCase(), String(amount), trx);
+    await creditDeposit(userId, normalizedAsset, String(amount), trx);
     await applyFirstDepositReferralRewards(trx, {
       userId,
       referenceKey: txHash,

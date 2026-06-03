@@ -1,6 +1,6 @@
-﻿# NovaX Backend
+﻿# FX Backend
 
-Scaffolded project structure for the NovaX backend service. Replace placeholders as you implement the platform.
+Scaffolded project structure for the FX backend service. Replace placeholders as you implement the platform.
 
 ## Dashboard & Market Sync
 

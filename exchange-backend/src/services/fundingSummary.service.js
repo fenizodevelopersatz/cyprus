@@ -18,6 +18,7 @@ function toNetworkKey(network) {
   if (network === 'ERC20') return 'ethereum';
   if (network === 'BEP20') return 'bsc';
   if (network === 'TRC20') return 'tron';
+  if (network === 'SOLANA') return 'solana';
   return null;
 }
 
@@ -60,16 +61,16 @@ export async function getFundingSummary(userId) {
     withdrawalRows,
   ] = await Promise.all([
     db('wallet_addresses').where({ user_id: userId, token: 'USDT', is_active: 1 }).orderBy('id', 'asc'),
-    listSignalAssets({ includeDisabled: false, asset: 'USDT' }),
+    listSignalAssets({ includeDisabled: false }),
     db('deposit_transactions')
       .whereIn(
         'id',
         buildCanonicalDepositTransactionIdsQuery(userId, {
-          token: 'USDT',
+          token: null,
           creditedOnly: true,
         })
       )
-      .select('network', 'amount_decimal'),
+      .select('network', 'token', 'amount_decimal'),
     getMainWalletBalanceBig(userId),
     getWithdrawalPolicyContext(userId, 0),
     db('wallet_ledger')
@@ -96,6 +97,7 @@ export async function getFundingSummary(userId) {
     ethereum: 6,
     bsc: 18,
     tron: 6,
+    solana: 6,
   };
 
   for (const asset of assets) {
@@ -109,12 +111,14 @@ export async function getFundingSummary(userId) {
     ethereum: '0',
     bsc: '0',
     tron: '0',
+    solana: '0',
   };
 
   const breakdownTotals = {
     ethereum: 0n,
     bsc: 0n,
     tron: 0n,
+    solana: 0n,
   };
 
   for (const row of creditedRows) {
@@ -172,10 +176,10 @@ export async function getFundingSummary(userId) {
         network: row.network,
         label:
           asset?.displayName ||
-          (row.network === 'ethereum' ? 'USDT Ethereum' : row.network === 'bsc' ? 'USDT BSC' : 'USDT TRON'),
+          (row.network === 'ethereum' ? 'USDT Ethereum' : row.network === 'bsc' ? 'USDT BSC' : row.network === 'solana' ? 'USDC Solana' : 'USDT TRON'),
         address: row.address,
         memoTag: row.memo_tag || null,
-        networkFee: String(asset?.withdrawFee || '0.10'),
+        networkFee: '0',
         qrValue,
         qrCode: qrValue ? await QRCode.toDataURL(qrValue, { margin: 1, scale: 6 }) : null,
         updatedAt: row.updated_at,
@@ -190,7 +194,8 @@ export async function getFundingSummary(userId) {
   }, null);
 
   const counts = await db('deposit_transactions')
-    .where({ user_id: userId, token: 'USDT' })
+    .where({ user_id: userId })
+    .whereIn('token', ['USDT', 'USDC'])
     .select('network', 'status')
     .count({ total: '*' })
     .groupBy('network', 'status');

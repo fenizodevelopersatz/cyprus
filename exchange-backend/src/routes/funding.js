@@ -22,7 +22,7 @@ router.post(
   requireAuth,
   v.celebrate({
     [v.Segments.BODY]: v.Joi.object({
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
     }).unknown(false),
   }),
   async (req, res) => {
@@ -39,7 +39,7 @@ router.get(
   requireAuth,
   v.celebrate({
     [v.Segments.QUERY]: v.Joi.object({
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
       page: v.Joi.number().integer().min(1).default(1),
       limit: v.Joi.number().integer().min(1).max(100).default(10),
     }).unknown(false),

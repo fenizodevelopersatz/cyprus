@@ -3,91 +3,37 @@ import { decryptText, encryptText } from '../utils/crypto.js';
 import { normalizeTronHost } from '../utils/tron.js';
 
 const STATUS_VALUES = new Set(['ENABLED', 'DISABLED']);
-const NETWORK_TYPE_VALUES = new Set(['EVM', 'TRON']);
-const FEE_TYPE_VALUES = new Set(['FIXED', 'PERCENT']);
-
-// const DEFAULT_SIGNAL_ASSETS = [
-//   {
-//     asset: 'USDT',
-//     network: 'ERC20',
-//     display_name: 'USDT ERC20',
-//     network_type: 'EVM',
-//     min_deposit: '0',
-//     min_withdraw: '0',
-//     withdraw_fee_type: 'FIXED',
-//     withdraw_fee: '0',
-//     rpc_url: '',
-//     chain_id: '1',
-//     contract_address: '',
-//     decimals: 6,
-//     deposit_wallet: '',
-//     hot_wallet: '',
-//     private_key: '',
-//     confirmations: 12,
-//     full_host: '',
-//     status: 'ENABLED',
-//     is_enabled: true,
-//     sort_order: 10,
-//     meta: null,
-//   },
-//   {
-//     asset: 'USDT',
-//     network: 'BEP20',
-//     display_name: 'USDT BEP20',
-//     network_type: 'EVM',
-//     min_deposit: '0',
-//     min_withdraw: '0',
-//     withdraw_fee_type: 'FIXED',
-//     withdraw_fee: '0',
-//     rpc_url: 'https://bsc-dataseed.binance.org',
-//     chain_id: '56',
-//     contract_address: '',
-//     decimals: 18,
-//     deposit_wallet: '',
-//     hot_wallet: '',
-//     private_key: '',
-//     confirmations: 15,
-//     full_host: '',
-//     status: 'ENABLED',
-//     is_enabled: true,
-//     sort_order: 20,
-//     meta: null,
-//   },
-//   {
-//     asset: 'USDT',
-//     network: 'TRC20',
-//     display_name: 'USDT TRC20',
-//     network_type: 'TRON',
-//     min_deposit: '0',
-//     min_withdraw: '0',
-//     withdraw_fee_type: 'FIXED',
-//     withdraw_fee: '0',
-//     rpc_url: '',
-//     chain_id: '',
-//     contract_address: '',
-//     decimals: 6,
-//     deposit_wallet: '',
-//     hot_wallet: '',
-//     private_key: '',
-//     confirmations: 20,
-//     full_host: 'https://api.trongrid.io',
-//     status: 'ENABLED',
-//     is_enabled: true,
-//     sort_order: 30,
-//     meta: null,
-//   },
-// ];
+const NETWORK_TYPE_VALUES = new Set(['EVM', 'TRON', 'SOLANA']);
 
 const DEFAULT_SIGNAL_ASSETS = [
+  {
+    asset: 'USDC',
+    network: 'SOLANA',
+    display_name: 'USDC Solana',
+    network_type: 'SOLANA',
+    rpc_url: process.env.SOLANA_RPC_URL || process.env.SOLANA_DEVNET_RPC || 'https://api.devnet.solana.com',
+    chain_id: process.env.NETWORK || process.env.SOLANA_NETWORK || 'devnet',
+    contract_address:
+      process.env.SOLANA_TOKEN_MINT ||
+      process.env.SOLANA_USDC_MINT ||
+      process.env.SOLANA_TESTNET_USDC_MINT ||
+      '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+    decimals: 6,
+    deposit_wallet: process.env.ADMIN_WALLET_ADDRESS || '',
+    hot_wallet: process.env.ADMIN_WALLET_ADDRESS || '',
+    private_key: process.env.ADMIN_PRIVATE_KEY || '',
+    confirmations: 1,
+    full_host: '',
+    status: 'ENABLED',
+    is_enabled: true,
+    sort_order: 40,
+    meta: { gasAsset: 'SOL' },
+  },
   {
     asset: 'USDT',
     network: 'ERC20',
     display_name: 'USDT Ethereum',
     network_type: 'EVM',
-    min_deposit: '0.1',
-    min_withdraw: '10',
-    withdraw_fee_type: 'FIXED',
-    withdraw_fee: '0.1',
     rpc_url: 'https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID',
     chain_id: '1',
     contract_address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
@@ -107,10 +53,6 @@ const DEFAULT_SIGNAL_ASSETS = [
     network: 'BEP20',
     display_name: 'USDT BSC',
     network_type: 'EVM',
-    min_deposit: '0.1',
-    min_withdraw: '10',
-    withdraw_fee_type: 'FIXED',
-    withdraw_fee: '0.1',
     rpc_url: 'https://bsc-dataseed.binance.org/',
     chain_id: '56',
     contract_address: '0x55d398326f99059fF775485246999027B3197955',
@@ -130,10 +72,6 @@ const DEFAULT_SIGNAL_ASSETS = [
     network: 'TRC20',
     display_name: 'USDT TRON Nile',
     network_type: 'TRON',
-    min_deposit: '0.1',
-    min_withdraw: '10',
-    withdraw_fee_type: 'FIXED',
-    withdraw_fee: '0.1',
     rpc_url: '',
     chain_id: '',
     contract_address: 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj',
@@ -204,16 +142,6 @@ function normalizeNetworkType(value, fallback = 'EVM') {
   return normalized;
 }
 
-function normalizeFeeType(value, fallback = 'FIXED') {
-  const normalized = String(value || fallback).trim().toUpperCase();
-  if (!FEE_TYPE_VALUES.has(normalized)) {
-    const error = new Error('INVALID_WITHDRAW_FEE_TYPE');
-    error.status = 400;
-    throw error;
-  }
-  return normalized;
-}
-
 function optionalString(value) {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
@@ -233,10 +161,6 @@ function mapRow(row) {
     network: row.network,
     displayName: row.display_name,
     networkType: row.network_type,
-    minDeposit: row.min_deposit,
-    minWithdraw: row.min_withdraw,
-    withdrawFeeType: row.withdraw_fee_type,
-    withdrawFee: row.withdraw_fee,
     rpcUrl,
     chainId: row.chain_id,
     contractAddress: row.contract_address,
@@ -244,6 +168,7 @@ function mapRow(row) {
     depositWallet: row.deposit_wallet,
     hotWallet: row.hot_wallet,
     privateKey: hidePrivateKey(decryptedPrivateKey),
+    privateKeyLast5: decryptedPrivateKey ? decryptedPrivateKey.slice(-5) : null,
     hasPrivateKey: Boolean(decryptedPrivateKey),
     confirmations: row.confirmations,
     fullHost,
@@ -263,10 +188,6 @@ function normalizePayload(input, { partial = false } = {}) {
   if (!partial || input.network !== undefined) payload.network = String(input.network || '').trim().toUpperCase();
   if (!partial || input.displayName !== undefined) payload.display_name = String(input.displayName || '').trim();
   if (!partial || input.networkType !== undefined) payload.network_type = normalizeNetworkType(input.networkType);
-  if (!partial || input.minDeposit !== undefined) payload.min_deposit = String(input.minDeposit ?? '0').trim() || '0';
-  if (!partial || input.minWithdraw !== undefined) payload.min_withdraw = String(input.minWithdraw ?? '0').trim() || '0';
-  if (!partial || input.withdrawFeeType !== undefined) payload.withdraw_fee_type = normalizeFeeType(input.withdrawFeeType);
-  if (!partial || input.withdrawFee !== undefined) payload.withdraw_fee = String(input.withdrawFee ?? '0').trim() || '0';
   if (!partial || input.rpcUrl !== undefined) payload.rpc_url = optionalString(input.rpcUrl);
   if (!partial || input.chainId !== undefined) payload.chain_id = optionalString(input.chainId);
   if (!partial || input.contractAddress !== undefined) payload.contract_address = optionalString(input.contractAddress);
@@ -301,13 +222,14 @@ function normalizePayload(input, { partial = false } = {}) {
 }
 
 export async function ensureDefaultSignalAssets() {
-  const existing = await db('signal_assets').count({ count: '*' }).first();
-  const total = Number(existing?.count ?? 0);
-  if (total > 0) return;
   const now = new Date();
-  await db('signal_assets').insert(
-    DEFAULT_SIGNAL_ASSETS.map((row) => buildSeedRow(row, now))
-  );
+  for (const row of DEFAULT_SIGNAL_ASSETS) {
+    const existing = await db('signal_assets')
+      .where({ asset: row.asset, network: row.network })
+      .first();
+    if (existing) continue;
+    await db('signal_assets').insert(buildSeedRow(row, now));
+  }
 }
 
 export async function listSignalAssets({ status, asset, includeDisabled = true } = {}) {

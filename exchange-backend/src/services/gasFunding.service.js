@@ -14,11 +14,19 @@ import {
   normalizeSweepNetwork,
 } from './sweepNetwork.service.js';
 import { getTronOwnerAddress, isTronAccountActive } from '../utils/tron.js';
+import {
+  confirmSolanaSignature,
+  decimalFromLamports,
+  lamportsFromDecimal,
+  sendSolanaLamports,
+} from '../utils/solana.js';
 
 const GAS_PENDING_STATUSES = ['pending', 'gas_checking', 'insufficient_gas', 'gas_funding_pending', 'gas_funding_sent'];
 const FUNDING_ACTIVE_STATUSES = ['pending', 'sent', 'broadcasted', 'confirmed'];
 const DEFAULT_TRON_GAS_TOPUP_MIN = '10';
 const DEFAULT_TRON_GAS_TOPUP_AMOUNT = '15';
+const DEFAULT_SOLANA_GAS_TOPUP_MIN = '0.0005';
+const DEFAULT_SOLANA_GAS_TOPUP_AMOUNT = '0.001';
 
 function sanitizeSweepReadinessDebug(userWallet, config) {
   return {
@@ -53,17 +61,45 @@ function sanitizeSweepReadinessDebug(userWallet, config) {
 
 function toRawGasAmount(amountDecimal, network) {
   if (network === 'tron') return BigInt(Math.round(Number(amountDecimal || 0) * 1_000_000));
+  if (network === 'solana') return lamportsFromDecimal(amountDecimal);
   return parseUnits(String(amountDecimal || '0'), 18);
+}
+
+function parseMeta(meta) {
+  if (!meta) return {};
+  if (typeof meta === 'object') return meta;
+  try {
+    return JSON.parse(meta);
+  } catch {
+    return {};
+  }
+}
+
+async function mergeSweepMetaForUpdate(trx, sweepId, patch = {}) {
+  if (!sweepId) return null;
+  const row = await trx('sweep_transactions').where({ id: Number(sweepId) }).select('meta').first();
+  return JSON.stringify({
+    ...parseMeta(row?.meta),
+    ...patch,
+    lastLogAt: new Date().toISOString(),
+  });
 }
 
 function getEffectiveGasTopupMin(config, network) {
   if (network === 'tron' && Number(config?.gasTopupMin || 0) <= 0) return DEFAULT_TRON_GAS_TOPUP_MIN;
+  if (network === 'solana' && Number(config?.gasTopupMin || 0) <= 0) return DEFAULT_SOLANA_GAS_TOPUP_MIN;
   return String(config?.gasTopupMin || '0');
 }
 
 function getEffectiveGasTopupAmount(config, network) {
   if (network === 'tron' && Number(config?.gasTopupAmount || 0) <= 0) {
     return Number(config?.gasTopupMin || 0) > 0 ? String(config.gasTopupMin) : DEFAULT_TRON_GAS_TOPUP_AMOUNT;
+  }
+  if (network === 'solana') {
+    if (process.env.GAS_FUNDING_LAMPORTS) return decimalFromLamports(BigInt(process.env.GAS_FUNDING_LAMPORTS));
+    if (Number(config?.gasTopupAmount || 0) <= 0) {
+      return Number(config?.gasTopupMin || 0) > 0 ? String(config.gasTopupMin) : DEFAULT_SOLANA_GAS_TOPUP_AMOUNT;
+    }
   }
   return String(config?.gasTopupAmount || config?.gasTopupMin || '0');
 }
@@ -94,6 +130,16 @@ async function estimateTronSweepGas(network) {
   };
 }
 
+async function estimateSolanaSweepGas(network) {
+  const config = await getSweepNetworkConfig(network);
+  const estimatedFeeRaw = toRawGasAmount(getEffectiveGasTopupMin(config, network), network);
+  return {
+    gasEstimateRaw: estimatedFeeRaw,
+    estimatedFeeRaw,
+    estimatedFeeDecimal: decimalFromLamports(estimatedFeeRaw),
+  };
+}
+
 export async function estimateSweepGas(userWalletId, network, usdtAmount) {
   const normalized = normalizeSweepNetwork(network);
   const config = await getSweepNetworkConfig(normalized);
@@ -107,9 +153,11 @@ export async function estimateSweepGas(userWalletId, network, usdtAmount) {
   const userWalletSecret = await getUserWalletSecret(userWallet.user_id, normalized);
   const amountRaw = parseUnits(String(usdtAmount || '0'), config.decimals);
 
-  return config.isTron
-    ? estimateTronSweepGas(normalized)
-    : estimateEvmSweepGas(normalized, userWalletSecret, adminWallet.address, amountRaw);
+  return config.isSolana
+    ? estimateSolanaSweepGas(normalized)
+    : config.isTron
+      ? estimateTronSweepGas(normalized)
+      : estimateEvmSweepGas(normalized, userWalletSecret, adminWallet.address, amountRaw);
 }
 
 export async function checkWalletGasStatus(userWalletId, network) {
@@ -123,7 +171,7 @@ export async function checkWalletGasStatus(userWalletId, network) {
   }
 
   const nativeBalanceRaw = await getNativeBalanceRaw(row.address, normalized);
-  const nativeBalanceDecimal = formatUnits(nativeBalanceRaw, normalized === 'tron' ? 6 : 18);
+  const nativeBalanceDecimal = normalized === 'solana' ? decimalFromLamports(nativeBalanceRaw) : formatUnits(nativeBalanceRaw, normalized === 'tron' ? 6 : 18);
   const thresholdDecimal = getEffectiveGasTopupMin(config, normalized);
   const minimumRaw = toRawGasAmount(thresholdDecimal, normalized);
   const accountActive = normalized === 'tron'
@@ -155,6 +203,11 @@ async function confirmTronFunding(network, txHash) {
   return { confirmed: Boolean(receipt && !receipt.receipt?.result ? true : receipt?.receipt?.result === 'SUCCESS'), receipt };
 }
 
+async function confirmSolanaFunding(network, txHash) {
+  const config = await getSweepNetworkConfig(network);
+  return confirmSolanaSignature(txHash, config);
+}
+
 export async function confirmGasFunding(fundingId) {
   const row = await db('gas_funding_transactions').where({ id: Number(fundingId) }).first();
   if (!row) {
@@ -165,9 +218,11 @@ export async function confirmGasFunding(fundingId) {
   if (!row.tx_hash) return { ok: false, status: row.status, confirmed: false };
 
   const normalized = normalizeSweepNetwork(row.network);
-  const result = normalized === 'tron'
-    ? await confirmTronFunding(normalized, row.tx_hash)
-    : await confirmEvmFunding(normalized, row.tx_hash);
+  const result = normalized === 'solana'
+    ? await confirmSolanaFunding(normalized, row.tx_hash)
+    : normalized === 'tron'
+      ? await confirmTronFunding(normalized, row.tx_hash)
+      : await confirmEvmFunding(normalized, row.tx_hash);
 
   if (result.confirmed) {
     await withTx(async (trx) => {
@@ -177,9 +232,20 @@ export async function confirmGasFunding(fundingId) {
         updated_at: new Date(),
       });
       if (row.sweep_transaction_id) {
+        const meta = await mergeSweepMetaForUpdate(trx, row.sweep_transaction_id, {
+          logType: 'gas_funding_confirmed',
+          gasFundingId: row.id,
+          gasTopupTxHash: row.tx_hash || null,
+          gasAsset: row.gas_asset,
+          gasAmountDecimal: row.amount_decimal,
+          gasAmountRaw: row.amount_raw || null,
+          gasSourceAdminWallet: row.source_admin_wallet_address,
+          gasDestinationUserWallet: row.destination_user_wallet_address,
+        });
         await trx('sweep_transactions').where({ id: row.sweep_transaction_id }).update({
           status: 'gas_funding_confirmed',
           gas_status: 'topup_confirmed',
+          meta,
           updated_at: new Date(),
         });
       }
@@ -230,7 +296,7 @@ export async function fundUserGas(userWalletId, network, { sweepId = null, force
 
   const adminWallet = await getAdminWalletSecret(normalized);
   const amountRaw = toRawGasAmount(getEffectiveGasTopupAmount(config, normalized), normalized);
-  const amountDecimal = normalized === 'tron' ? formatUnits(amountRaw, 6) : formatUnits(amountRaw, 18);
+  const amountDecimal = normalized === 'solana' ? decimalFromLamports(amountRaw) : normalized === 'tron' ? formatUnits(amountRaw, 6) : formatUnits(amountRaw, 18);
 
   const fundingId = await withTx(async (trx) => {
     const inserted = await trx('gas_funding_transactions').insert({
@@ -248,9 +314,19 @@ export async function fundUserGas(userWalletId, network, { sweepId = null, force
     });
     const id = Array.isArray(inserted) ? inserted[0] : inserted;
     if (sweepId) {
+      const meta = await mergeSweepMetaForUpdate(trx, sweepId, {
+        logType: 'gas_funding_pending',
+        gasFundingId: id,
+        gasAsset: config.gasAsset,
+        gasAmountRaw: amountRaw.toString(),
+        gasAmountDecimal: amountDecimal,
+        gasSourceAdminWallet: adminWallet.address,
+        gasDestinationUserWallet: walletRow.address,
+      });
       await trx('sweep_transactions').where({ id: sweepId }).update({
         gas_status: 'topup_required',
         status: 'gas_funding_pending',
+        meta,
         updated_at: new Date(),
       });
     }
@@ -259,7 +335,14 @@ export async function fundUserGas(userWalletId, network, { sweepId = null, force
 
   let txHash = null;
   try {
-    if (normalized === 'tron') {
+    if (normalized === 'solana') {
+      txHash = await sendSolanaLamports({
+        fromPrivateKey: adminWallet.decryptedPrivateKey,
+        toAddress: walletRow.address,
+        lamports: amountRaw,
+        assetConfig: config,
+      });
+    } else if (normalized === 'tron') {
       const tronWeb = createTronClient(adminWallet.decryptedPrivateKey, config.rpcUrl);
       const ownerAddress = getTronOwnerAddress(tronWeb, adminWallet.decryptedPrivateKey);
       console.error('[tron-gas-funding:before-send]', {
@@ -298,10 +381,21 @@ export async function fundUserGas(userWalletId, network, { sweepId = null, force
         updated_at: new Date(),
       });
       if (sweepId) {
+        const meta = await mergeSweepMetaForUpdate(trx, sweepId, {
+          logType: 'gas_funding_sent',
+          gasFundingId: fundingId,
+          gasTopupTxHash: txHash,
+          gasAsset: config.gasAsset,
+          gasAmountRaw: amountRaw.toString(),
+          gasAmountDecimal: amountDecimal,
+          gasSourceAdminWallet: adminWallet.address,
+          gasDestinationUserWallet: walletRow.address,
+        });
         await trx('sweep_transactions').where({ id: sweepId }).update({
           gas_status: 'topup_sent',
           gas_topup_tx_hash: txHash,
           status: 'gas_funding_sent',
+          meta,
           updated_at: new Date(),
         });
       }
@@ -345,10 +439,21 @@ export async function fundUserGas(userWalletId, network, { sweepId = null, force
         updated_at: new Date(),
       });
       if (sweepId) {
+        const meta = await mergeSweepMetaForUpdate(trx, sweepId, {
+          logType: 'gas_funding_failed',
+          gasFundingId: fundingId,
+          gasAsset: config.gasAsset,
+          gasAmountRaw: amountRaw.toString(),
+          gasAmountDecimal: amountDecimal,
+          gasSourceAdminWallet: adminWallet.address,
+          gasDestinationUserWallet: walletRow.address,
+          errorMessage: normalizedMessage || 'GAS_TOPUP_FAILED',
+        });
         await trx('sweep_transactions').where({ id: sweepId }).update({
           gas_status: 'insufficient',
           status: 'failed',
           error_message: normalizedMessage || 'GAS_TOPUP_FAILED',
+          meta,
           updated_at: new Date(),
         });
       }

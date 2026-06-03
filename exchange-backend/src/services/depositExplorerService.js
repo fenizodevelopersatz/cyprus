@@ -1,10 +1,17 @@
 import axios from 'axios';
+import { PublicKey } from '@solana/web3.js';
 import { db } from '../db.js';
 import { getSignalAssetByNetwork } from './signalAssetService.js';
 import { getUserWalletByNetwork } from './userWalletService.js';
 import { normalizeAddress, saveDepositAndCredit } from './depositSyncService.js';
-import { bscLogger, depositLogger, ethereumLogger, tronLogger } from '../logging/loggers.js';
+import { bscLogger, depositLogger, ethereumLogger, solanaLogger, tronLogger } from '../logging/loggers.js';
 import { getTronClient, normalizeTronHost } from '../utils/tron.js';
+import {
+  createSolanaConnection,
+  getSolanaAssociatedTokenAddress,
+  getSolanaRpcUrl,
+  getSolanaTokenMint,
+} from '../utils/solana.js';
 
 const TRON_EVENT_PAGE_SIZE = Number(process.env.TRON_EVENT_PAGE_SIZE || 200);
 const TRON_EVENT_PAGE_LIMIT = Number(process.env.TRON_EVENT_PAGE_LIMIT || 50);
@@ -22,6 +29,7 @@ function getExplorerLogger(network) {
   if (network === 'ERC20') return ethereumLogger;
   if (network === 'BEP20') return bscLogger;
   if (network === 'TRC20') return tronLogger;
+  if (network === 'SOLANA') return solanaLogger;
   return depositLogger;
 }
 
@@ -187,6 +195,159 @@ function formatTronList(list) {
     confirmed: tx.confirmed === undefined ? true : Boolean(tx.confirmed),
     raw: tx,
   }));
+}
+
+function flattenSolanaInstructions(parsedTransaction) {
+  const messageInstructions = parsedTransaction?.transaction?.message?.instructions || [];
+  const innerInstructions = Array.isArray(parsedTransaction?.meta?.innerInstructions)
+    ? parsedTransaction.meta.innerInstructions.flatMap((item) => item.instructions || [])
+    : [];
+  return [...messageInstructions, ...innerInstructions].filter(Boolean);
+}
+
+function getSolanaTokenAmount(info, decimals) {
+  const tokenAmount = info?.tokenAmount;
+  if (tokenAmount?.uiAmountString) return tokenAmount.uiAmountString;
+  if (tokenAmount?.amount) return (Number(tokenAmount.amount) / 10 ** Number(tokenAmount.decimals ?? decimals)).toString();
+  if (info?.amount) return (Number(info.amount) / 10 ** Number(decimals || 6)).toString();
+  return '0';
+}
+
+function getSolanaRawTokenAmount(info) {
+  return info?.tokenAmount?.amount || info?.amount || null;
+}
+
+function getSolanaExplorerSuffix(assetConfig) {
+  const cluster = String(assetConfig?.chainId || process.env.NETWORK || process.env.SOLANA_NETWORK || 'devnet')
+    .trim()
+    .toLowerCase();
+  return cluster === 'mainnet' || cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+}
+
+function getSolanaOwnerBalanceSnapshot(parsedTransaction, mintAddress, ownerAddress) {
+  const findBalance = (items) => (items || []).find(
+    (item) => String(item?.mint || '') === String(mintAddress)
+      && String(item?.owner || '') === String(ownerAddress)
+  );
+  const pre = findBalance(parsedTransaction?.meta?.preTokenBalances);
+  const post = findBalance(parsedTransaction?.meta?.postTokenBalances);
+  const before = Number(pre?.uiTokenAmount?.uiAmount ?? pre?.uiTokenAmount?.uiAmountString ?? 0);
+  const after = Number(post?.uiTokenAmount?.uiAmount ?? post?.uiTokenAmount?.uiAmountString ?? 0);
+  const amountChange = Number((after - before).toFixed(6));
+  return {
+    before,
+    after,
+    amountChange,
+    direction: amountChange > 0 ? 'received' : amountChange < 0 ? 'sent' : 'unknown',
+    preRawAmount: pre?.uiTokenAmount?.amount || null,
+    postRawAmount: post?.uiTokenAmount?.amount || null,
+    decimals: Number(post?.uiTokenAmount?.decimals ?? pre?.uiTokenAmount?.decimals ?? 6),
+  };
+}
+
+async function fetchAllSolanaTokenTransfers({ address, assetConfig }) {
+  const connection = createSolanaConnection(assetConfig);
+  const mintAddress = requireExplorerConfig(getSolanaTokenMint(assetConfig), 'SOLANA_TOKEN_MINT_NOT_CONFIGURED');
+  const owner = new PublicKey(address);
+  const tokenAccount = await getSolanaAssociatedTokenAddress(address, mintAddress);
+  const signatures = await connection.getSignaturesForAddress(tokenAccount, { limit: Number(process.env.SOLANA_SIGNATURE_LIMIT || 1000) }, 'confirmed');
+  const transfers = [];
+  let logIndex = 0;
+  const explorerSuffix = getSolanaExplorerSuffix(assetConfig);
+  const log = solanaLogger.child({ job: 'explorer_sync', network: 'solana', depositAddress: owner.toBase58() });
+
+  for (const signature of signatures) {
+    if (signature.err) continue;
+    const tx = await connection.getParsedTransaction(signature.signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0,
+    });
+    if (!tx) continue;
+
+    for (const instruction of flattenSolanaInstructions(tx)) {
+      const parsed = instruction?.parsed;
+      const info = parsed?.info || {};
+      const type = String(parsed?.type || '').toLowerCase();
+      if (!['transfer', 'transferchecked'].includes(type)) continue;
+      if (String(info.mint || mintAddress) !== mintAddress) continue;
+      if (String(info.destination || '') !== tokenAccount.toBase58()) continue;
+
+      const amount = getSolanaTokenAmount(info, assetConfig.decimals || 6);
+      if (Number(amount || 0) <= 0) continue;
+      const tokenSnapshot = getSolanaOwnerBalanceSnapshot(tx, mintAddress, owner.toBase58());
+      const feeLamports = Number(tx.meta?.fee || 0);
+      const feeSol = feeLamports / 1_000_000_000;
+      const explorer = `https://explorer.solana.com/tx/${signature.signature}${explorerSuffix}`;
+      const rawPayload = {
+        source: 'solana_rpc_parsed_transaction',
+        network: 'solana',
+        chain: 'SOLANA',
+        token: 'USDC',
+        signature: signature.signature,
+        signatureStatus: {
+          confirmationStatus: signature.confirmationStatus || null,
+          err: signature.err || tx.meta?.err || null,
+        },
+        explorer,
+        slot: Number(tx.slot || signature.slot || 0),
+        blockTime: signature.blockTime || tx.blockTime || null,
+        blockTimeIso: tx.blockTime ? new Date(Number(tx.blockTime) * 1000).toISOString() : null,
+        feeLamports,
+        feeSol,
+        mint: mintAddress,
+        owner: owner.toBase58(),
+        ownerTokenAccount: tokenAccount.toBase58(),
+        sourceTokenAccount: info.source || null,
+        destinationTokenAccount: info.destination || null,
+        authority: info.authority || info.owner || null,
+        instructionType: type,
+        programId: String(instruction.programId || ''),
+        transferAmountRaw: getSolanaRawTokenAmount(info),
+        transferAmountDecimal: amount,
+        ownerBalanceBefore: tokenSnapshot.before,
+        ownerBalanceAfter: tokenSnapshot.after,
+        ownerAmountChange: tokenSnapshot.amountChange,
+        direction: tokenSnapshot.direction,
+        preTokenRawAmount: tokenSnapshot.preRawAmount,
+        postTokenRawAmount: tokenSnapshot.postRawAmount,
+        decimals: tokenSnapshot.decimals,
+        innerInstructionCount: Array.isArray(tx.meta?.innerInstructions)
+          ? tx.meta.innerInstructions.reduce((sum, item) => sum + Number(item.instructions?.length || 0), 0)
+          : 0,
+        recentBlockhash: tx.transaction?.message?.recentBlockhash || null,
+        instruction: parsed,
+      };
+
+      log.info({
+        event: 'solana_usdc_transfer_detected',
+        txHash: signature.signature,
+        tokenAccount: tokenAccount.toBase58(),
+        mint: mintAddress,
+        amount,
+        amountChange: tokenSnapshot.amountChange,
+        direction: tokenSnapshot.direction,
+        feeSol,
+        slot: rawPayload.slot,
+      }, 'solana_usdc_transfer_detected');
+
+      transfers.push({
+        chain: 'SOLANA',
+        txHash: signature.signature,
+        logIndex,
+        blockNumber: Number(tx.slot || 0),
+        confirmations: signature.confirmationStatus === 'finalized' ? 2 : 1,
+        fromAddress: info.authority || info.owner || info.source || null,
+        toAddress: owner.toBase58(),
+        amount,
+        confirmedAt: tx.blockTime ? new Date(Number(tx.blockTime) * 1000).toISOString() : null,
+        confirmed: !tx.meta?.err,
+        raw: rawPayload,
+      });
+      logIndex += 1;
+    }
+  }
+
+  return transfers;
 }
 
 function matchesTronContract(tx, contractAddress) {
@@ -478,6 +639,10 @@ async function getExplorerTransactions(address, assetConfig) {
     return formatTronList(events);
   }
 
+  if (network === 'SOLANA') {
+    return fetchAllSolanaTokenTransfers({ address, assetConfig });
+  }
+
   const err = new Error('INVALID_NETWORK');
   err.status = 400;
   throw err;
@@ -557,13 +722,21 @@ export async function syncExplorerDepositsForUser(userId, network) {
         source: 'explorer_refresh',
         contractAddress: assetConfig.contractAddress,
         confirmedAt: tx.confirmedAt,
+        chainPayload: tx.raw || null,
+        txStatus: tx.raw?.signatureStatus || null,
+        explorerUrl: tx.raw?.explorer || null,
+        feeSol: tx.raw?.feeSol ?? null,
+        amountChange: tx.raw?.ownerAmountChange ?? null,
+        direction: tx.raw?.direction || null,
         explorerNetwork: tronEnvironment,
         explorerApiBase:
           normalizedNetwork === 'ERC20'
             ? resolveEvmExplorerBaseUrl(normalizedNetwork, assetConfig)
             : normalizedNetwork === 'BEP20'
               ? resolveEvmExplorerBaseUrl(normalizedNetwork, assetConfig)
-              : resolveTronExplorerBaseUrl(assetConfig),
+              : normalizedNetwork === 'TRC20'
+                ? resolveTronExplorerBaseUrl(assetConfig)
+                : getSolanaRpcUrl(assetConfig),
       },
     });
     if (saved) {

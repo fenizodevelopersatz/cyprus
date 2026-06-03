@@ -2,7 +2,7 @@ import { db } from '../db.js';
 import { cronLogger } from '../logging/loggers.js';
 import { fetchNetworkOverview, getNetworkMetaByWalletNetwork } from './adminUserWalletOverview.service.js';
 
-const SUPPORTED_NETWORKS = ['ethereum', 'bsc', 'tron'];
+const SUPPORTED_NETWORKS = ['ethereum', 'bsc', 'tron', 'solana'];
 
 function normalizeNetwork(network) {
   const normalized = String(network || '').trim().toLowerCase();
@@ -10,6 +10,7 @@ function normalizeNetwork(network) {
   if (normalized === 'erc20' || normalized === 'eth') return 'ethereum';
   if (normalized === 'bep20' || normalized === 'bnb') return 'bsc';
   if (normalized === 'trc20' || normalized === 'trx') return 'tron';
+  if (normalized === 'solana' || normalized === 'sol') return 'solana';
   return SUPPORTED_NETWORKS.includes(normalized) ? normalized : '';
 }
 
@@ -22,8 +23,8 @@ export async function scanAllUserWalletLiveBalances({ network } = {}) {
   }
 
   const walletNetworks = normalizedNetwork
-    ? [getNetworkMetaByWalletNetwork(normalizedNetwork === 'ethereum' ? 'ERC20' : normalizedNetwork === 'bsc' ? 'BEP20' : 'TRC20')?.walletNetwork].filter(Boolean)
-    : ['ERC20', 'BEP20', 'TRC20'];
+    ? [getNetworkMetaByWalletNetwork(normalizedNetwork === 'ethereum' ? 'ERC20' : normalizedNetwork === 'bsc' ? 'BEP20' : normalizedNetwork === 'solana' ? 'SOLANA' : 'TRC20')?.walletNetwork].filter(Boolean)
+    : ['ERC20', 'BEP20', 'TRC20', 'SOLANA'];
 
   const rows = await db('user_wallets as uw')
     .leftJoin('users as u', 'u.id', 'uw.user_id')

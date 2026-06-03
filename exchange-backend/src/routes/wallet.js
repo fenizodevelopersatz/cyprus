@@ -140,7 +140,7 @@ router.post(
   requireAuth,
   v.celebrate({
     [v.Segments.BODY]: v.Joi.object({
-      network: v.Joi.string().valid('ERC20', 'BEP20', 'TRC20').required(),
+      network: v.Joi.string().valid('ERC20', 'BEP20', 'TRC20', 'SOLANA').required(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
     }).unknown(false),
   }),

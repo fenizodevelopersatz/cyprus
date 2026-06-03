@@ -182,6 +182,7 @@ export default function AdminKycPage() {
 
   const invalidateKycQueries = () => {
     queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "requests"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
     if (selectedId != null) {
       queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "request", selectedId] });
     }

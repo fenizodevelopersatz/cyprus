@@ -7,6 +7,7 @@ const NETWORK_TO_LEGACY = {
   ethereum: 'ERC20',
   bsc: 'BEP20',
   tron: 'TRC20',
+  solana: 'SOLANA',
 };
 
 function extractErrorMessage(error) {
@@ -29,7 +30,7 @@ function extractErrorMessage(error) {
 export async function refreshFundingDeposits(userId, { network } = {}) {
   await syncWalletAddressesForUser(userId);
   const normalizedNetwork = normalizeFundingNetwork(network);
-  const targetNetworks = normalizedNetwork ? [normalizedNetwork] : ['ethereum', 'bsc', 'tron'];
+  const targetNetworks = normalizedNetwork ? [normalizedNetwork] : ['ethereum', 'bsc', 'tron', 'solana'];
 
   console.log(`Starting deposit refresh for user ${userId} on networks: ${targetNetworks.join(', ')} | normalizedNetwork: ${normalizedNetwork}`);
   const startedAt = new Date();

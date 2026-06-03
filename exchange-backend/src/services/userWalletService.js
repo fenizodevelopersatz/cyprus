@@ -2,13 +2,14 @@ import { Wallet } from 'ethers';
 import { db } from '../db.js';
 import { encryptText } from '../utils/crypto.js';
 import { createTronAccount } from '../utils/tron.js';
+import { createSolanaWallet } from '../utils/solana.js';
 
-const SUPPORTED_NETWORKS = ['ERC20', 'BEP20', 'TRC20'];
+const SUPPORTED_NETWORKS = ['ERC20', 'BEP20', 'TRC20', 'SOLANA'];
 
 function normalizeAddress(network, address) {
   const raw = String(address || '').trim();
   if (!raw) return raw;
-  return network === 'TRC20' ? raw : raw.toLowerCase();
+  return network === 'TRC20' || network === 'SOLANA' ? raw : raw.toLowerCase();
 }
 
 function mapWalletRow(row) {
@@ -48,6 +49,7 @@ export async function createTronWallet() {
 
 async function generateWalletForNetwork(network) {
   if (network === 'TRC20') return createTronWallet();
+  if (network === 'SOLANA') return createSolanaWallet();
   return createEvmWallet();
 }
 
@@ -69,13 +71,18 @@ async function createWalletRecord(userId, network, wallet, trx) {
   return mapWalletRow(row);
 }
 
-export async function provisionUserWallets(userId, { trx } = {}) {
+export async function provisionUserWallets(userId, { trx, networks = SUPPORTED_NETWORKS } = {}) {
   const conn = trx || db;
+  const targetNetworks = [...new Set(
+    (Array.isArray(networks) ? networks : SUPPORTED_NETWORKS)
+      .map((network) => String(network || '').trim().toUpperCase())
+      .filter((network) => SUPPORTED_NETWORKS.includes(network))
+  )];
   const existingRows = await conn('user_wallets').where({ user_id: userId });
   const existingMap = new Map(existingRows.map((row) => [row.network, mapWalletRow(row)]));
   const created = [];
 
-  for (const network of SUPPORTED_NETWORKS) {
+  for (const network of targetNetworks) {
     if (existingMap.has(network)) continue;
     const wallet = await generateWalletForNetwork(network);
     const record = await createWalletRecord(userId, network, wallet, conn);
@@ -84,7 +91,7 @@ export async function provisionUserWallets(userId, { trx } = {}) {
   }
 
   return {
-    wallets: SUPPORTED_NETWORKS.reduce((acc, network) => {
+    wallets: targetNetworks.reduce((acc, network) => {
       const record = existingMap.get(network);
       if (record) acc[network] = record.address;
       return acc;

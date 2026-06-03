@@ -64,7 +64,7 @@ router.get(
     [v.Segments.QUERY]: v.Joi.object({
       page: v.Joi.number().integer().min(1).optional(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
       status: v.Joi.string().trim().optional(),
       userId: v.Joi.number().integer().positive().optional(),
       txHash: v.Joi.string().trim().optional(),
@@ -122,7 +122,7 @@ router.get(
     [v.Segments.QUERY]: v.Joi.object({
       page: v.Joi.number().integer().min(1).optional(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
       status: v.Joi.string().trim().optional(),
       userId: v.Joi.number().integer().positive().optional(),
     }).unknown(false),
@@ -143,7 +143,7 @@ router.get(
     [v.Segments.QUERY]: v.Joi.object({
       page: v.Joi.number().integer().min(1).optional(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'ERC20', 'BEP20', 'TRC20').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana', 'ERC20', 'BEP20', 'TRC20', 'SOLANA').optional(),
       userId: v.Joi.number().integer().positive().optional(),
       fromDate: v.Joi.string().trim().optional(),
       toDate: v.Joi.string().trim().optional(),
@@ -205,7 +205,7 @@ router.get(
     [v.Segments.QUERY]: v.Joi.object({
       page: v.Joi.number().integer().min(1).optional(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
       status: v.Joi.string().trim().optional(),
       userId: v.Joi.number().integer().positive().optional(),
       txHash: v.Joi.string().trim().optional(),
@@ -240,7 +240,7 @@ router.post(
   guard,
   v.celebrate({
     [v.Segments.BODY]: v.Joi.object({
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
     }).unknown(false),
   }),
   async (req, res) => {
@@ -265,7 +265,7 @@ router.get(
     [v.Segments.QUERY]: v.Joi.object({
       page: v.Joi.number().integer().min(1).optional(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
       status: v.Joi.string().trim().optional(),
       userId: v.Joi.number().integer().positive().optional(),
     }).unknown(false),
@@ -286,7 +286,7 @@ router.get(
     [v.Segments.QUERY]: v.Joi.object({
       page: v.Joi.number().integer().min(1).optional(),
       limit: v.Joi.number().integer().min(1).max(100).optional(),
-      network: v.Joi.string().valid('ethereum', 'bsc', 'tron').optional(),
+      network: v.Joi.string().valid('ethereum', 'bsc', 'tron', 'solana').optional(),
       status: v.Joi.string().trim().optional(),
       userId: v.Joi.number().integer().positive().optional(),
     }).unknown(false),

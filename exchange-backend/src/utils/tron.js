@@ -94,7 +94,6 @@ export function getTronClient({ fullHost, privateKey } = {}) {
     }
     client.setAddress(address);
   }
-  console.log('getTronClient-98->', { fullHost, privateKey: privateKey, normalizedPrivateKey, clientAddress: client?.address?.toString?.() });
   return client;
 }
 

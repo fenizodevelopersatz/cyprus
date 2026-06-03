@@ -7,22 +7,26 @@ import { getLevelManagementSettings } from './adminLevelManagement.service.js';
 import { recalculateMlmForUser } from './mlmLevelService.js';
 import { recordMlmFlowStep } from './mlmFlowTrackingService.js';
 
-const NETWORK_KEYS = ['ethereum', 'bsc', 'tron'];
+const NETWORK_KEYS = ['ethereum', 'bsc', 'tron', 'solana'];
 const STATUS_KEYS = ['detected', 'pending', 'confirmed', 'credited'];
 const NETWORK_TO_WALLET = {
   ethereum: 'ERC20',
   bsc: 'BEP20',
   tron: 'TRC20',
+  solana: 'SOLANA',
 };
 const DEFAULT_CONFIRMATIONS = {
   ethereum: Number(process.env.ETH_USDT_CONFIRMATIONS || process.env.ETH_CONFIRMATIONS || 12),
   bsc: Number(process.env.BSC_USDT_CONFIRMATIONS || process.env.BSC_CONFIRMATIONS || 12),
   tron: Number(process.env.TRON_USDT_CONFIRMATIONS || process.env.TRX_CONFIRMATIONS || 20),
+  solana: Number(process.env.SOLANA_CONFIRMATIONS || 1),
 };
+const CREDITABLE_DEPOSIT_ASSETS = new Set(['USDT', 'USDC']);
 const ALLOWLIST = {
   ethereum: String(process.env.USDT_ETH_CONTRACT || '').trim().toLowerCase(),
   bsc: String(process.env.USDT_BSC_CONTRACT || '').trim().toLowerCase(),
   tron: String(process.env.USDT_TRON_CONTRACT || '').trim().toLowerCase(),
+  solana: String(process.env.SOLANA_TOKEN_MINT || process.env.SOLANA_USDC_MINT || process.env.SOLANA_TESTNET_USDC_MINT || '').trim().toLowerCase(),
 };
 
 function parseJson(value) {
@@ -41,6 +45,7 @@ function normalizeNetworkKey(value) {
   if (normalized === 'erc20' || normalized === 'eth') return 'ethereum';
   if (normalized === 'bep20' || normalized === 'bnb') return 'bsc';
   if (normalized === 'trc20' || normalized === 'trx') return 'tron';
+  if (normalized === 'solana' || normalized === 'sol' || normalized === 'spl') return 'solana';
   return '';
 }
 
@@ -49,10 +54,20 @@ function normalizeStatus(value) {
   return STATUS_KEYS.includes(normalized) ? normalized : '';
 }
 
+function normalizeDepositToken(network, token) {
+  const raw = String(token || '').trim().toLowerCase();
+  if (network === 'solana') {
+    if (!raw || raw === 'usdc' || raw === 'spl') return 'usdc';
+    return '';
+  }
+  if (!raw || raw === 'usdt') return 'usdt';
+  return '';
+}
+
 export function normalizeDepositAddress(networkKey, address) {
   const raw = String(address || '').trim();
   if (!raw) return raw;
-  return networkKey === 'tron' ? raw : raw.toLowerCase();
+  return networkKey === 'tron' || networkKey === 'solana' ? raw : raw.toLowerCase();
 }
 
 export function getWalletNetworkKey(networkKey) {
@@ -251,7 +266,7 @@ async function applyFirstDepositReferralRewards(
 export async function upsertDetectedDeposit({
   userId,
   network,
-  token = 'usdt',
+  token = null,
   contractAddress,
   txHash,
   logIndex = 0,
@@ -267,9 +282,11 @@ export async function upsertDetectedDeposit({
 }) {
   const normalizedNetwork = normalizeNetworkKey(network);
   if (!normalizedNetwork) return { ignored: true, reason: 'INVALID_NETWORK' };
-  if (String(token || '').trim().toLowerCase() !== 'usdt') {
+  const normalizedToken = normalizeDepositToken(normalizedNetwork, token);
+  if (!normalizedToken) {
     return { ignored: true, reason: 'INVALID_TOKEN' };
   }
+  const asset = normalizedToken.toUpperCase();
 
   const expectedContract = getAllowedTokenContract(normalizedNetwork);
   const normalizedContract = String(contractAddress || '').trim().toLowerCase();
@@ -308,8 +325,8 @@ export async function upsertDetectedDeposit({
         user_id: wallet.user_id,
         chain: walletNetwork,
         network_key: normalizedNetwork,
-        asset: 'USDT',
-        token_key: 'usdt',
+        asset,
+        token_key: normalizedToken,
         token_contract: normalizedContract,
         tx_hash: String(txHash || '').trim(),
         amount: String(amount),
@@ -343,7 +360,8 @@ export async function upsertDetectedDeposit({
       .update({
         user_id: existing.user_id || wallet.user_id,
         network_key: normalizedNetwork,
-        token_key: 'usdt',
+        asset: asset || existing.asset,
+        token_key: normalizedToken,
         token_contract: normalizedContract,
         amount: String(amount ?? existing.amount),
         confirmations: mergedConfirmations,
@@ -404,7 +422,8 @@ export async function creditConfirmedDeposit(depositId) {
       { description: `Deposit credit ${row.asset}`, meta: { depositId: row.id, userId: row.user_id } }
     );
 
-    if (String(row.asset).toUpperCase() === 'USDT') {
+    const asset = String(row.asset || '').toUpperCase();
+    if (CREDITABLE_DEPOSIT_ASSETS.has(asset)) {
       const depositCreditResult = await applyWalletCreditRecord(
         {
           userId: row.user_id,
@@ -412,7 +431,7 @@ export async function creditConfirmedDeposit(depositId) {
           type: 'deposit_credit',
           sourceType: 'deposit',
           referenceId: row.id,
-          remark: 'Successful USDT deposit credited to main wallet',
+          remark: `Successful ${asset} deposit credited to main wallet`,
           meta: { asset: row.asset, depositId: row.id },
           suppressMlmRefresh: true,
           investment: { enabled: true, amount: row.amount },
@@ -495,7 +514,7 @@ export async function listFundingDepositHistory(userId, { network, status, page 
   const normalizedNetwork = normalizeNetworkKey(network);
   const normalizedStatus = normalizeStatus(status);
 
-  const query = db('deposits').where({ user_id: userId, token_key: 'usdt' });
+  const query = db('deposits').where({ user_id: userId }).whereIn('token_key', ['usdt', 'usdc']);
   if (normalizedNetwork) query.andWhere({ network_key: normalizedNetwork });
   if (normalizedStatus) query.andWhere({ status: normalizedStatus });
 
@@ -519,7 +538,8 @@ export async function listFundingDepositHistory(userId, { network, status, page 
 
 export async function getFundingDepositSummary(userId) {
   const rows = await db('deposits')
-    .where({ user_id: userId, token_key: 'usdt' })
+    .where({ user_id: userId })
+    .whereIn('token_key', ['usdt', 'usdc'])
     .select('network_key', 'status')
     .count({ total: '*' })
     .groupBy('network_key', 'status');
@@ -529,6 +549,7 @@ export async function getFundingDepositSummary(userId) {
     ethereum: { detected: 0, pending: 0, confirmed: 0, credited: 0, total: 0 },
     bsc: { detected: 0, pending: 0, confirmed: 0, credited: 0, total: 0 },
     tron: { detected: 0, pending: 0, confirmed: 0, credited: 0, total: 0 },
+    solana: { detected: 0, pending: 0, confirmed: 0, credited: 0, total: 0 },
   };
 
   for (const row of rows) {

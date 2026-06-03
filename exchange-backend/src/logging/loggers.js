@@ -8,6 +8,7 @@ export const depositLogger = logger.child({ module: 'deposit' });
 export const ethereumLogger = logger.child({ module: 'ethereum', network: 'ethereum' });
 export const bscLogger = logger.child({ module: 'bsc', network: 'bsc' });
 export const tronLogger = logger.child({ module: 'tron', network: 'tron' });
+export const solanaLogger = logger.child({ module: 'solana', network: 'solana' });
 export const databaseLogger = logger.child({ module: 'database' });
 export const cronLogger = logger.child({ module: 'cron' });
 export const queueLogger = logger.child({ module: 'queue' });

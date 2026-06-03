@@ -169,15 +169,17 @@ export async function creditDeposit(userId, asset, amount, trx = null) {
       { description: `Deposit credit ${asset}`, meta: { userId, asset } }
     );
 
-    if (String(asset).toUpperCase() === 'USDT') {
+    const normalizedAsset = String(asset).toUpperCase();
+    if (['USDT', 'USDC'].includes(normalizedAsset)) {
       await applyWalletCreditRecord(
         {
           userId,
           amount: amountBig,
           type: 'deposit_credit',
           sourceType: 'deposit',
-          remark: 'Successful USDT deposit credited to main wallet',
-          meta: { asset },
+          remark: `Successful ${normalizedAsset} deposit credited to main wallet`,
+          meta: { asset: normalizedAsset },
+          investment: { enabled: true, amount: amountBig },
         },
         conn
       );

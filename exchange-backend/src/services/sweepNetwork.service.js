@@ -5,6 +5,12 @@ import { decryptPrivateKey, encryptPrivateKey } from '../utils/crypto.js';
 import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 import { getTronClient, normalizeTronHost } from '../utils/tron.js';
 import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
+import {
+  getSolanaNativeBalanceRaw,
+  getSolanaTokenBalanceRaw,
+  getSolanaRpcUrl,
+  getSolanaTokenMint,
+} from '../utils/solana.js';
 
 const sweepLogger = getModuleLogger('custodial_sweep');
 
@@ -58,6 +64,16 @@ export const NETWORK_CONFIG = {
     rpcEnv: 'TRX_API_URL',
     rpcFallbackEnv: 'TRON_FULL_HOST',
   },
+  solana: {
+    adminWalletEnv: 'ADMIN_WALLET_ADDRESS',
+    adminPrivateKeyEnv: 'ADMIN_PRIVATE_KEY',
+    tokenContractEnv: 'SOLANA_TOKEN_MINT',
+    minSweepEnv: 'SOLANA_MIN_SWEEP_USDT',
+    gasTopupMinEnv: 'SOLANA_GAS_TOPUP_MIN',
+    gasTopupAmountEnv: 'SOLANA_GAS_TOPUP_AMOUNT',
+    rpcEnv: 'SOLANA_RPC_URL',
+    rpcFallbackEnv: 'SOLANA_DEVNET_RPC',
+  },
 };
 
 const NETWORK_RUNTIME_DEFAULTS = {
@@ -81,6 +97,15 @@ const NETWORK_RUNTIME_DEFAULTS = {
     gasAsset: 'TRX',
     decimalsDefault: 6,
     isTron: true,
+    isSolana: false,
+  },
+  solana: {
+    walletNetwork: 'SOLANA',
+    assetNetwork: 'SOLANA',
+    gasAsset: 'SOL',
+    decimalsDefault: 6,
+    isTron: false,
+    isSolana: true,
   },
 };
 
@@ -89,13 +114,14 @@ export function normalizeSweepNetwork(network) {
   if (normalized === 'ethereum' || normalized === 'erc20' || normalized === 'eth') return 'ethereum';
   if (normalized === 'bsc' || normalized === 'bep20' || normalized === 'bnb') return 'bsc';
   if (normalized === 'tron' || normalized === 'trc20' || normalized === 'trx') return 'tron';
+  if (normalized === 'solana' || normalized === 'sol' || normalized === 'spl') return 'solana';
   return '';
 }
 
 function normalizeAddress(network, address) {
   const raw = String(address || '').trim();
   if (!raw) return '';
-  return network === 'tron' ? raw : raw.toLowerCase();
+  return network === 'tron' || network === 'solana' ? raw : raw.toLowerCase();
 }
 
 export async function getNetworkAssetRow(network) {
@@ -103,7 +129,7 @@ export async function getNetworkAssetRow(network) {
   if (!normalized) return null;
   const cfg = NETWORK_RUNTIME_DEFAULTS[normalized];
   const row = await db('signal_assets')
-    .where({ asset: 'USDT', network: cfg.assetNetwork })
+    .where({ asset: normalized === 'solana' ? 'USDC' : 'USDT', network: cfg.assetNetwork })
     .first();
   return row || null;
 }
@@ -123,11 +149,12 @@ export async function getSweepNetworkConfig(network) {
     getSignalAssetSecretByNetwork(defaults.assetNetwork),
   ]);
   const isTron = normalized === 'tron';
+  const isSolana = normalized === 'solana';
   const decimals = Number(assetRow?.decimals ?? assetConfig?.decimals ?? defaults.decimalsDefault);
   const tokenContract = String(
     assetConfig?.contractAddress ||
       assetRow?.contract_address ||
-      (!isTron ? process.env[envConfig.tokenContractEnv] : '') ||
+      (isSolana ? getSolanaTokenMint(assetConfig || assetRow || {}) : (!isTron ? process.env[envConfig.tokenContractEnv] : '')) ||
       ''
   ).trim();
   let rpcUrl = String(
@@ -150,6 +177,10 @@ export async function getSweepNetworkConfig(network) {
   if (normalized === 'tron') {
     rpcUrl = normalizeTronHost(rpcUrl || fullHost);
     fullHost = normalizeTronHost(fullHost || rpcUrl);
+  }
+  if (normalized === 'solana') {
+    rpcUrl = getSolanaRpcUrl(assetConfig || assetRow || {});
+    fullHost = rpcUrl;
   }
   const adminWallet = String(assetConfig?.hotWallet || assetConfig?.depositWallet || '').trim();
   const adminPrivateKey = String(assetConfig?.privateKey || '').trim();
@@ -177,19 +208,25 @@ export async function ensureAdminWalletsSeeded() {
   for (const key of Object.keys(NETWORK_RUNTIME_DEFAULTS)) {
     const config = await getSweepNetworkConfig(key);
     if (!config.adminWalletEnv || !config.adminPrivateKeyEnv) continue;
-    const address = String(process.env[config.adminWalletEnv] || '').trim();
-    const privateKey = String(process.env[config.adminPrivateKeyEnv] || '').trim();
+    const assetAddress = String(config.adminWallet || '').trim();
+    const assetPrivateKey = String(config.adminPrivateKey || '').trim();
+    const envAddress = String(process.env[config.adminWalletEnv] || '').trim();
+    const envPrivateKey = String(process.env[config.adminPrivateKeyEnv] || '').trim();
+    const address = assetAddress || envAddress;
+    const privateKey = assetPrivateKey || envPrivateKey;
     if (!address || !privateKey) continue;
+    const source = assetAddress && assetPrivateKey ? 'asset_config' : 'env_seed';
 
     const payload = {
       network: config.network,
       token: 'USDT',
       address,
-      address_lower: config.isTron ? null : address.toLowerCase(),
+      address_lower: config.isTron || config.isSolana ? null : address.toLowerCase(),
       encrypted_private_key: encryptPrivateKey(privateKey),
       is_active: true,
       meta: JSON.stringify({
-        source: 'env_seed',
+        source,
+        assetNetwork: config.assetNetwork,
         gasAsset: config.gasAsset,
       }),
       updated_at: new Date(),
@@ -319,6 +356,9 @@ export async function getEvmProvider(network) {
 
 export async function getTokenBalanceRaw(address, network, privateKey = '') {
   const config = await getSweepNetworkConfig(network);
+  if (config.isSolana) {
+    return getSolanaTokenBalanceRaw(address, config);
+  }
   if (config.isTron) {
     try {
       const tronWeb = createTronClient(privateKey, config.fullHost || config.rpcUrl, address);
@@ -348,6 +388,9 @@ export async function getTokenBalanceRaw(address, network, privateKey = '') {
 
 export async function getNativeBalanceRaw(address, network) {
   const config = await getSweepNetworkConfig(network);
+  if (config.isSolana) {
+    return getSolanaNativeBalanceRaw(address, config);
+  }
   if (config.isTron) {
     try {
       const tronWeb = createTronClient('', config.fullHost || config.rpcUrl);

@@ -7,6 +7,7 @@ import { allocateGlobalTxnNumber, formatGlobalTxnId } from '../utils/generateGlo
 import { queueWalletRealtimeRefresh } from './walletRealtime.service.js';
 
 const DEFAULT_ASSET = 'USDT';
+const CREDITED_DEPOSIT_TOKENS = ['USDT', 'USDC'];
 const DECIMALS = 18;
 
 let schemaReadyPromise = null;
@@ -540,7 +541,8 @@ export async function getUserWalletSummary(userId, trx = db) {
   const [userRow, depositRow, signalRow, mlmRow, debitRows] = await Promise.all([
     readUserBalanceRow(userId, trx),
     trx('deposit_transactions')
-      .where({ user_id: userId, token: DEFAULT_ASSET, credited: 1 })
+      .where({ user_id: userId, credited: 1 })
+      .whereIn('token', CREDITED_DEPOSIT_TOKENS)
       .where((builder) => builder.whereNull('status').orWhere('status', 'credited').orWhere('status', 'SUCCESS'))
       .sum({ total: 'amount_decimal' })
       .first()
@@ -595,7 +597,8 @@ export async function getUserWalletSummary(userId, trx = db) {
 export async function getUserDepositBalanceHistory(userId, { limit = 100 } = {}, trx = db) {
   await ensureWalletAccountingSchema();
   const items = await trx('deposit_transactions')
-    .where({ user_id: userId, token: DEFAULT_ASSET, credited: 1 })
+    .where({ user_id: userId, credited: 1 })
+    .whereIn('token', CREDITED_DEPOSIT_TOKENS)
     .where((builder) => builder.whereNull('status').orWhere('status', 'credited').orWhere('status', 'SUCCESS'))
     .orderBy('created_at', 'asc')
     .limit(limit);

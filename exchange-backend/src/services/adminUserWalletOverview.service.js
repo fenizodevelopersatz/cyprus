@@ -1,10 +1,11 @@
 import { Contract, formatUnits } from 'ethers';
 import { getTronClient } from '../utils/tron.js';
 import { buildAddressExplorerUrl } from './fundingMirror.service.js';
-import { listUserWallets } from './userWalletService.js';
+import { listUserWallets, provisionUserWallets } from './userWalletService.js';
 import { getUserWalletSummary } from './walletAccountingService.js';
 import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
+import { getSolanaNativeBalanceRaw, getSolanaTokenBalanceRaw } from '../utils/solana.js';
 
 const ERC20_ABI = ['function balanceOf(address owner) view returns (uint256)'];
 
@@ -12,6 +13,7 @@ export const NETWORKS = [
   { key: 'ethereum', walletNetwork: 'ERC20', nativeAsset: 'ETH', nativeDecimals: 18 },
   { key: 'bsc', walletNetwork: 'BEP20', nativeAsset: 'BNB', nativeDecimals: 18 },
   { key: 'tron', walletNetwork: 'TRC20', nativeAsset: 'TRX', nativeDecimals: 6 },
+  { key: 'solana', walletNetwork: 'SOLANA', nativeAsset: 'SOL', nativeDecimals: 9 },
 ];
 
 function toPlainAmount(value, fallback = '0') {
@@ -59,6 +61,17 @@ async function fetchTronWalletBalances({ address, fullHost, contractAddress, tok
   };
 }
 
+async function fetchSolanaWalletBalances({ address, assetConfig, tokenDecimals }) {
+  const [nativeRaw, tokenRaw] = await Promise.all([
+    getSolanaNativeBalanceRaw(address, assetConfig),
+    getSolanaTokenBalanceRaw(address, assetConfig),
+  ]);
+  return {
+    nativeBalance: formatUnits(nativeRaw, 9),
+    tokenBalance: formatUnits(tokenRaw, tokenDecimals),
+  };
+}
+
 export function getNetworkMetaByWalletNetwork(walletNetwork) {
   const normalized = String(walletNetwork || '').trim().toUpperCase();
   return NETWORKS.find((item) => item.walletNetwork === normalized) || null;
@@ -66,9 +79,10 @@ export function getNetworkMetaByWalletNetwork(walletNetwork) {
 
 export async function fetchNetworkOverview(walletRow, meta) {
   const assetConfig = await getSignalAssetSecretByNetwork(meta.walletNetwork);
-  const explorerUrl = walletRow.address ? await buildAddressExplorerUrl(meta.key, walletRow.address) : null;
+  const address = String(walletRow?.address || '').trim();
+  const explorerUrl = address ? await buildAddressExplorerUrl(meta.key, address) : null;
 
-  if (!walletRow?.address) {
+  if (!address) {
     return {
       network: meta.key,
       walletNetwork: meta.walletNetwork,
@@ -76,7 +90,7 @@ export async function fetchNetworkOverview(walletRow, meta) {
       explorerUrl,
       nativeAsset: meta.nativeAsset,
       nativeBalance: '0',
-      tokenAsset: 'USDT',
+      tokenAsset: meta.key === 'solana' ? 'USDC' : 'USDT',
       tokenBalance: '0',
       live: false,
       error: 'ADDRESS_NOT_AVAILABLE',
@@ -85,16 +99,22 @@ export async function fetchNetworkOverview(walletRow, meta) {
 
   try {
     let balances;
-    if (meta.key === 'tron') {
+    if (meta.key === 'solana') {
+      balances = await fetchSolanaWalletBalances({
+        address,
+        assetConfig,
+        tokenDecimals: Number(assetConfig?.decimals || 6),
+      });
+    } else if (meta.key === 'tron') {
       balances = await fetchTronWalletBalances({
-        address: walletRow.address,
+        address,
         fullHost: assetConfig?.fullHost || process.env.TRX_API_URL || process.env.TRON_API_BASE,
         contractAddress: assetConfig?.contractAddress,
         tokenDecimals: Number(assetConfig?.decimals || 6),
       });
     } else {
       balances = await fetchEvmWalletBalances({
-        address: walletRow.address,
+        address,
         network: meta.key,
         rpcUrl:
           assetConfig?.rpcUrl ||
@@ -109,11 +129,11 @@ export async function fetchNetworkOverview(walletRow, meta) {
     return {
       network: meta.key,
       walletNetwork: meta.walletNetwork,
-      address: walletRow.address,
+      address,
       explorerUrl,
       nativeAsset: meta.nativeAsset,
       nativeBalance: toPlainAmount(balances.nativeBalance),
-      tokenAsset: 'USDT',
+      tokenAsset: meta.key === 'solana' ? 'USDC' : 'USDT',
       tokenBalance: toPlainAmount(balances.tokenBalance),
       live: true,
       error: null,
@@ -123,11 +143,11 @@ export async function fetchNetworkOverview(walletRow, meta) {
     return {
       network: meta.key,
       walletNetwork: meta.walletNetwork,
-      address: walletRow.address,
+      address,
       explorerUrl,
       nativeAsset: meta.nativeAsset,
       nativeBalance: '0',
-      tokenAsset: 'USDT',
+      tokenAsset: meta.key === 'solana' ? 'USDC' : 'USDT',
       tokenBalance: '0',
       live: false,
       error: String(error?.message || error || 'LIVE_BALANCE_UNAVAILABLE'),
@@ -145,7 +165,7 @@ export async function getAdminUserWalletOverview(userId) {
 
   const [internalSummary, wallets] = await Promise.all([
     getUserWalletSummary(normalizedUserId),
-    listUserWallets(normalizedUserId),
+    provisionUserWallets(normalizedUserId, { networks: ['SOLANA'] }).then(() => listUserWallets(normalizedUserId)),
   ]);
   const walletMap = new Map(wallets.map((wallet) => [String(wallet.network || '').toUpperCase(), wallet]));
 
@@ -171,11 +191,13 @@ export async function getAdminUserWalletOverview(userId) {
         eth: networks.find((item) => item.network === 'ethereum')?.nativeBalance || '0',
         bnb: networks.find((item) => item.network === 'bsc')?.nativeBalance || '0',
         trx: networks.find((item) => item.network === 'tron')?.nativeBalance || '0',
+        sol: networks.find((item) => item.network === 'solana')?.nativeBalance || '0',
       },
       totalToken: {
         erc20: networks.find((item) => item.network === 'ethereum')?.tokenBalance || '0',
         bep20: networks.find((item) => item.network === 'bsc')?.tokenBalance || '0',
         trc20: networks.find((item) => item.network === 'tron')?.tokenBalance || '0',
+        solana: networks.find((item) => item.network === 'solana')?.tokenBalance || '0',
       },
       networks,
     },

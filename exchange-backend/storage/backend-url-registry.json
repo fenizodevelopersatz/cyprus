@@ -2,7 +2,7 @@
   "version": 1,
   "enabled": true,
   "createdAt": "2026-06-03T13:55:36.280Z",
-  "updatedAt": "2026-06-03T14:13:45.602Z",
+  "updatedAt": "2026-06-04T06:00:23.693Z",
   "endpoints": [
     {
       "key": "api_base",
@@ -17,13 +17,8 @@
       "cacheTtlMs": 30000,
       "source": "env_default",
       "createdAt": "2026-06-03T13:55:36.280Z",
-      "updatedAt": "2026-06-03T14:13:45.602Z",
-      "lastStatus": {
-        "ok": false,
-        "disabled": true,
-        "checkedAt": "2026-06-03T14:11:09.737Z",
-        "message": "Endpoint disabled"
-      }
+      "updatedAt": "2026-06-04T06:00:23.692Z",
+      "lastStatus": null
     },
     {
       "key": "app_base",

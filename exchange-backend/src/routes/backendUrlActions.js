@@ -26,12 +26,7 @@ router.get('/urls/:key/enable', (req, res) => {
 
 router.get('/urls/:key/disable', (req, res) => {
   try {
-    setBackendUrlEnabled(req.params.key, false, 'public_url_action');
-    res.status(404).json({
-      status: false,
-      code: 404,
-      message: 'Not Found',
-    });
+    ok(res, setBackendUrlEnabled(req.params.key, false, 'public_url_action'));
   } catch (err) {
     res.status(err.status || 400).json({
       status: false,

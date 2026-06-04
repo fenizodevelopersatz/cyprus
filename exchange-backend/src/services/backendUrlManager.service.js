@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { cfg } from '../config.js';
 import { getModuleLogger } from '../logging/loggers.js';
+import { discoverApiEndpoints } from './apiEndpointDiscovery.service.js';
 
 const logger = getModuleLogger('backend_url_manager');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -336,6 +337,7 @@ export function listBackendUrls() {
     enabled: registry.enabled,
     configPath: CONFIG_PATH,
     cacheTtlMs: cfg.urlManager.cacheTtlMs,
+    apiEndpoints: discoverApiEndpoints(),
     endpoints: registry.endpoints.map((endpoint) => ({
       ...endpoint,
       url: endpoint.maskedUrl || maskUrl(endpoint.url),
@@ -417,6 +419,14 @@ export function setBackendUrlEnabled(key, enabled, actorId = null) {
 
   endpoint.enabled = Boolean(enabled);
   endpoint.updatedAt = nowIso();
+  endpoint.lastStatus = endpoint.enabled
+    ? null
+    : {
+        ok: false,
+        disabled: true,
+        checkedAt: nowIso(),
+        message: 'Endpoint disabled',
+      };
   cache.delete(endpoint.key);
   const saved = writeRegistry(registry);
   const savedEndpoint = saved.endpoints.find((item) => item.key === normalizedKey);

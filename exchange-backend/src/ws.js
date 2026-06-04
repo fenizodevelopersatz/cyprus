@@ -6,6 +6,7 @@ import { exchangeSnapshot, wallets as fetchWallets, openOrders as fetchOpenOrder
 import { getPortfolioSnapshot } from './services/portfolioService.js';
 import { getWalletRealtimeSnapshot, walletRealtimeEmitter } from './services/walletRealtime.service.js';
 import { getKycQueueSidebarSummary, kycAdminEmitter } from './services/kycService.js';
+import { isBackendUrlEnabled } from './services/backendUrlManager.service.js';
 
 const ALLOWLIST = [
     process.env.APP_BASE_DOMAIN,
@@ -23,6 +24,16 @@ function resolveSocketToken(socket) {
   const headerAuth = socket.handshake.headers?.authorization;
   if (headerAuth?.startsWith('Bearer ')) return headerAuth.slice(7);
   return null;
+}
+
+function backendDisabledError() {
+  const err = new Error('Backend API disabled');
+  err.data = { status: false, code: 404, message: 'Not Found' };
+  return err;
+}
+
+function rejectDisabledUpgrade(socket) {
+  socket.end('HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{"status":false,"code":404,"message":"Not Found"}');
 }
 
 export function createWs(httpServer) {
@@ -44,6 +55,11 @@ export function createWs(httpServer) {
     },
   });
 
+  io.use((_socket, next) => {
+    if (isBackendUrlEnabled('api_base')) return next();
+    return next(backendDisabledError());
+  });
+
   io.on('connection', (socket) => {
     socket.on('subscribe', (room) => socket.join(room));
     socket.on('unsubscribe', (room) => socket.leave(room));
@@ -52,6 +68,8 @@ export function createWs(httpServer) {
   const exchangeNs = io.of('/exchange');
 
   exchangeNs.use((socket, next) => {
+    if (!isBackendUrlEnabled('api_base')) return next(backendDisabledError());
+
     try {
       const token = resolveSocketToken(socket);
       const payload = verifyToken(token);
@@ -389,24 +407,40 @@ export function createWs(httpServer) {
     try {
       const { pathname } = new URL(request.url, 'http://localhost');
       if (pathname === '/ws/exchange') {
+        if (!isBackendUrlEnabled('api_base')) {
+          rejectDisabledUpgrade(socket);
+          return;
+        }
         rawExchangeWs.handleUpgrade(request, socket, head, (ws) => {
           rawExchangeWs.emit('connection', ws, request);
         });
         return;
       }
       if (pathname === '/ws/portfolio') {
+        if (!isBackendUrlEnabled('api_base')) {
+          rejectDisabledUpgrade(socket);
+          return;
+        }
         portfolioWs.handleUpgrade(request, socket, head, (ws) => {
           portfolioWs.emit('connection', ws, request);
         });
         return;
       }
       if (pathname === '/ws/wallet') {
+        if (!isBackendUrlEnabled('api_base')) {
+          rejectDisabledUpgrade(socket);
+          return;
+        }
         walletWs.handleUpgrade(request, socket, head, (ws) => {
           walletWs.emit('connection', ws, request);
         });
         return;
       }
       if (pathname === '/ws/admin/dashboard') {
+        if (!isBackendUrlEnabled('api_base')) {
+          rejectDisabledUpgrade(socket);
+          return;
+        }
         adminDashboardWs.handleUpgrade(request, socket, head, (ws) => {
           adminDashboardWs.emit('connection', ws, request);
         });

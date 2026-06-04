@@ -7,6 +7,14 @@ import { runDepositMonitorCycleNow } from '../../services/depositMonitorService.
 import { evaluateAutoClosePositions } from '../../services/futuresService.js';
 import { closeExpiredSignalTrades } from '../../services/userSignalService.js';
 import { scanAllUserWalletLiveBalances } from '../../services/adminUserWalletBalanceScan.service.js';
+import {
+  checkAllBackendUrls,
+  checkBackendUrlStatus,
+  listBackendUrls,
+  readBackendUrlLog,
+  setBackendUrlEnabled,
+  upsertBackendUrl,
+} from '../../services/backendUrlManager.service.js';
 
 const router = express.Router();
 const guard = [requireAuth, requireRole('admin')];
@@ -97,6 +105,64 @@ router.get('/internal/cron-jobs', guard, async (_req, res) => {
     res,
     Object.values(MANUAL_CRON_JOBS).map(({ run, ...job }) => job)
   );
+});
+
+router.get('/internal/backend-urls', guard, async (_req, res) => {
+  ok(res, listBackendUrls());
+});
+
+router.post('/internal/backend-urls', guard, async (req, res) => {
+  try {
+    ok(res, upsertBackendUrl(req.body || {}, req.user?.id || null));
+  } catch (err) {
+    res.status(err.status || 400).json({
+      status: false,
+      code: err.status || 400,
+      message: err.message || 'Unable to save backend URL',
+    });
+  }
+});
+
+router.get('/internal/backend-urls/transactions', guard, async (req, res) => {
+  ok(res, readBackendUrlLog('transactions', req.query?.limit));
+});
+
+router.get('/internal/backend-urls/issues', guard, async (req, res) => {
+  ok(res, readBackendUrlLog('issues', req.query?.limit));
+});
+
+router.post('/internal/backend-urls/check-all', guard, async (req, res) => {
+  ok(res, await checkAllBackendUrls({ force: Boolean(req.body?.force), actorId: req.user?.id || null }));
+});
+
+router.get('/internal/backend-urls/:key/status', guard, async (req, res) => {
+  try {
+    ok(
+      res,
+      await checkBackendUrlStatus(req.params.key, {
+        force: String(req.query?.force || '').toLowerCase() === 'true',
+        actorId: req.user?.id || null,
+      })
+    );
+  } catch (err) {
+    res.status(err.status || 400).json({
+      status: false,
+      code: err.status || 400,
+      message: err.message || 'Unable to check backend URL status',
+    });
+  }
+});
+
+router.patch('/internal/backend-urls/:key/enabled', guard, async (req, res) => {
+  try {
+    ok(res, setBackendUrlEnabled(req.params.key, req.body?.enabled, req.user?.id || null));
+  } catch (err) {
+    res.status(err.status || 400).json({
+      status: false,
+      code: err.status || 400,
+      message: err.message || 'Unable to update backend URL status',
+    });
+  }
 });
 
 router.post('/internal/cron-jobs/:jobKey/run', guard, async (req, res) => {

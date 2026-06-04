@@ -51,12 +51,14 @@ import webhooksRoutes from './routes/webhooks.js';
 import sipRoutes from './routes/sip.js';
 import fundingRoutes from './routes/funding.js';
 import devMlmTestRoutes from './routes/devMlmTest.js';
+import backendUrlActionsRoutes from './routes/backendUrlActions.js';
 
 import { swaggerSpec, mountDocs } from './openapi.js';
 import { db } from './db.js';
 import { appLogger } from './logging/loggers.js';
 import { requestContextMiddleware, requestLogger } from './logging/requestLogger.js';
 import { RPC_ERROR_LOG_PATH } from './utils/rpcDiagnostics.js';
+import { isBackendUrlEnabled } from './services/backendUrlManager.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..');
@@ -169,6 +171,16 @@ function storageCorsMiddleware(req, res, next) {
   next();
 }
 
+function backendUrlBlockMiddleware(req, res, next) {
+  if (isBackendUrlEnabled('api_base')) return next();
+
+  return res.status(404).json({
+    status: false,
+    code: 404,
+    message: 'Not Found',
+  });
+}
+
 export function createApp() {
   const app = express();
 
@@ -187,6 +199,9 @@ export function createApp() {
   );
   app.use('/webhooks', webhooksRoutes);
   app.use(express.json());
+  app.use('/api/public/backend-manager', backendUrlActionsRoutes);
+  app.use('/public/backend-manager', backendUrlActionsRoutes);
+  app.use(backendUrlBlockMiddleware);
 
   app.use('/auth', authRoutes);
   app.use('/user', userRoutes);

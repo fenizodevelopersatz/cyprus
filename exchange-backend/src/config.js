@@ -17,6 +17,8 @@ const APP_BASE_URL = process.env.APP_BASE_URL || process.env.APP_URL || 'http://
 const EXCHANGE_MIN_NOTIONAL = Number(process.env.EXCHANGE_MIN_NOTIONAL_USDT || 0);
 const EXCHANGE_ENFORCE_MIN_NOTIONAL =
   String(process.env.EXCHANGE_ENFORCE_MIN_NOTIONAL || '').toLowerCase() === 'true';
+const URL_MANAGER_CACHE_TTL_MS = Number(process.env.URL_MANAGER_CACHE_TTL_MS || 30000);
+const URL_MANAGER_TIMEOUT_MS = Number(process.env.URL_MANAGER_TIMEOUT_MS || 8000);
 
 function parseSymbolList(input, fallback = '') {
   const raw = String(input ?? fallback)
@@ -96,5 +98,13 @@ export const cfg = {
   },
   api: {
     baseUrl: String(API_BASE_URL).replace(/\/+$/, ''),
+  },
+  urlManager: {
+    enabled: String(process.env.URL_MANAGER_ENABLED ?? 'true').toLowerCase() !== 'false',
+    configPath: process.env.URL_MANAGER_CONFIG_PATH,
+    transactionLogPath: process.env.URL_MANAGER_TRANSACTION_LOG_PATH,
+    issueLogPath: process.env.URL_MANAGER_ISSUE_LOG_PATH,
+    cacheTtlMs: Number.isFinite(URL_MANAGER_CACHE_TTL_MS) ? URL_MANAGER_CACHE_TTL_MS : 30000,
+    timeoutMs: Number.isFinite(URL_MANAGER_TIMEOUT_MS) ? URL_MANAGER_TIMEOUT_MS : 8000,
   },
 };

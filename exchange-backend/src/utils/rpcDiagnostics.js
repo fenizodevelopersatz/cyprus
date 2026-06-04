@@ -3,6 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getModuleLogger } from '../logging/loggers.js';
+import {
+  recordBlockchainConnectionIssue,
+  recordBlockchainConnectionTransaction,
+} from '../services/backendUrlManager.service.js';
 
 const rpcLogger = getModuleLogger('rpc');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +76,13 @@ export async function createLoggedRpcProvider({
       },
       'rpc_connected'
     );
+    recordBlockchainConnectionTransaction('rpc_connected', {
+      service,
+      network,
+      rpcUrl: maskedRpcUrl,
+      chainId: normalizeChainId(detectedNetwork?.chainId),
+      extra,
+    });
     return provider;
   } catch (err) {
     appendRpcErrorLog({
@@ -98,6 +109,13 @@ export async function createLoggedRpcProvider({
       },
       'rpc_startup_failed'
     );
+    recordBlockchainConnectionIssue('rpc_startup_failed', {
+      service,
+      network,
+      rpcUrl: maskedRpcUrl,
+      extra,
+      error: err,
+    });
     throw err;
   }
 }

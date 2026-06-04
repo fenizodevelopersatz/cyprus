@@ -695,6 +695,7 @@ export const ADMIN_ENDPOINTS = {
       return toAbsolute(`/admin/assets${q}`);
     },
     create: toAbsolute("/admin/assets"),
+    walletTransportPublicKey: toAbsolute("/admin/assets/wallet-transport-public-key"),
     verifyPassword: toAbsolute("/admin/assets/verify-password"),
     deriveHotWallet: toAbsolute("/admin/assets/derive-hot-wallet"),
     update: (id: string | number) => toAbsolute(`/admin/assets/${encodeURIComponent(String(id))}`),

@@ -74,6 +74,10 @@ export const cfg = {
   wallet: {
     signupBonusUsdt: SIGNUP_BONUS_USDT,
     encryptionSecret: process.env.WALLET_ENCRYPTION_SECRET || process.env.WALLET_SECRET,
+    transportPrivateKey:
+      process.env.WALLET_TRANSPORT_PRIVATE_KEY ||
+      process.env.WALLET_ENCRYPTION_PRIVATE_KEY ||
+      process.env.WALLET_REQUEST_PRIVATE_KEY,
   },
   depositMonitor: {
     enabled: String(process.env.DEPOSIT_MONITOR_ENABLED || '').toLowerCase() === 'true',

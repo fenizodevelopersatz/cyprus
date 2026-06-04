@@ -225,6 +225,15 @@ async function markDepositSweepPending(trx, depositId, sweepId, status) {
   });
 }
 
+async function linkDepositToSweep(depositId, sweepRow) {
+  if (!depositId || !sweepRow?.id) return;
+  await db('deposit_transactions').where({ id: depositId }).update({
+    sweep_transaction_id: sweepRow.id,
+    sweep_status: sweepRow.status || 'pending',
+    updated_at: new Date(),
+  });
+}
+
 async function executeEvmSweep(network, userWallet, destination, amountRaw) {
   const config = await getSweepNetworkConfig(network);
   const provider = await getEvmProvider(network);
@@ -364,9 +373,9 @@ export async function queueEligibleSweeps({ network, triggerType = 'auto' } = {}
   for (const deposit of rows) {
     const existing = await db('sweep_transactions')
       .where({ deposit_transaction_id: deposit.id })
-      .whereIn('status', ACTIVE_SWEEP_STATUSES)
       .first();
     if (existing) {
+      await linkDepositToSweep(deposit.id, existing);
       queued.push(existing);
       continue;
     }
@@ -374,8 +383,8 @@ export async function queueEligibleSweeps({ network, triggerType = 'auto' } = {}
     const adminWallet = await getAdminWalletRecord(deposit.network);
     const config = await getSweepNetworkConfig(deposit.network);
     const amountRaw = parseUnits(String(deposit.amount_decimal || '0'), config.decimals);
-    try {
-      const inserted = await db('sweep_transactions').insert({
+    await db('sweep_transactions')
+      .insert({
         user_id: deposit.user_id,
         network: deposit.network,
         token: deposit.token || (deposit.network === 'solana' ? 'USDC' : 'USDT'),
@@ -403,31 +412,15 @@ export async function queueEligibleSweeps({ network, triggerType = 'auto' } = {}
         }),
         created_at: new Date(),
         updated_at: new Date(),
-      });
-      const id = Array.isArray(inserted) ? inserted[0] : inserted;
-      await db('deposit_transactions').where({ id: deposit.id }).update({
-        sweep_transaction_id: id,
-        sweep_status: 'pending',
-        updated_at: new Date(),
-      });
-      queued.push(await db('sweep_transactions').where({ id }).first());
-    } catch (err) {
-      if (err?.code === 'ER_DUP_ENTRY' || /sweep_transactions_deposit_unique/i.test(String(err?.message || ''))) {
-        const existingSweep = await db('sweep_transactions')
-          .where({ deposit_transaction_id: deposit.id })
-          .first();
-        if (existingSweep) {
-          await db('deposit_transactions').where({ id: deposit.id }).update({
-            sweep_transaction_id: existingSweep.id,
-            sweep_status: existingSweep.status || 'pending',
-            updated_at: new Date(),
-          });
-          queued.push(existingSweep);
-          continue;
-        }
-      }
-      throw err;
-    }
+      })
+      .onConflict('deposit_transaction_id')
+      .ignore();
+
+    const sweepRow = await db('sweep_transactions')
+      .where({ deposit_transaction_id: deposit.id })
+      .first();
+    await linkDepositToSweep(deposit.id, sweepRow);
+    if (sweepRow) queued.push(sweepRow);
   }
 
   return queued;

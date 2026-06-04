@@ -724,12 +724,67 @@ export type AdminSignalAssetPayload = {
   depositWallet?: string;
   hotWallet?: string;
   privateKey?: string;
+  encryptedPrivateKey?: string;
   confirmations: number;
   fullHost?: string;
   status: "ENABLED" | "DISABLED";
   isEnabled: boolean;
   sortOrder?: number;
 };
+
+let walletTransportKeyPromise: Promise<CryptoKey> | null = null;
+
+const pemToArrayBuffer = (pem: string) => {
+  const base64 = pem
+    .replace(/-----BEGIN PUBLIC KEY-----/g, "")
+    .replace(/-----END PUBLIC KEY-----/g, "")
+    .replace(/\s/g, "");
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+};
+
+async function getWalletTransportKey() {
+  if (!walletTransportKeyPromise) {
+    walletTransportKeyPromise = api
+      .post(ADMIN_ENDPOINTS.assets.walletTransportPublicKey, {})
+      .then((response) => unwrap<{ publicKey: string }>(response.data))
+      .then(({ publicKey }) =>
+        window.crypto.subtle.importKey(
+          "spki",
+          pemToArrayBuffer(publicKey),
+          { name: "RSA-OAEP", hash: "SHA-256" },
+          false,
+          ["encrypt"]
+        )
+      );
+  }
+  return walletTransportKeyPromise;
+}
+
+async function encryptWalletTransportPayload(payload: Record<string, unknown>) {
+  const key = await getWalletTransportKey();
+  const encoded = new TextEncoder().encode(JSON.stringify(payload));
+  const encrypted = await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, key, encoded);
+  const bytes = new Uint8Array(encrypted);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return window.btoa(binary);
+}
+
+async function encryptSignalAssetPrivateKeyPayload<T extends Partial<AdminSignalAssetPayload>>(payload: T) {
+  const privateKey = String(payload.privateKey ?? "").trim();
+  if (!privateKey || privateKey === "__configured__") return payload;
+  const encryptedPrivateKey = await encryptWalletTransportPayload({ privateKey });
+  const next = { ...payload, encryptedPrivateKey };
+  delete next.privateKey;
+  return next;
+}
 
 export type AdminSignalPackageSettings = {
   minDeposit: string;
@@ -1716,12 +1771,14 @@ export async function fetchAdminSignalAssets(params?: { status?: string; asset?:
 }
 
 export async function createAdminSignalAsset(payload: AdminSignalAssetPayload) {
-  const { data } = await api.post(ADMIN_ENDPOINTS.assets.create, payload);
+  const encryptedPayload = await encryptSignalAssetPrivateKeyPayload(payload);
+  const { data } = await api.post(ADMIN_ENDPOINTS.assets.create, encryptedPayload);
   return unwrap<AdminSignalAsset>(data);
 }
 
 export async function updateAdminSignalAsset(id: string | number, payload: Partial<AdminSignalAssetPayload>) {
-  const { data } = await api.patch(ADMIN_ENDPOINTS.assets.update(id), payload);
+  const encryptedPayload = await encryptSignalAssetPrivateKeyPayload(payload);
+  const { data } = await api.patch(ADMIN_ENDPOINTS.assets.update(id), encryptedPayload);
   return unwrap<AdminSignalAsset>(data);
 }
 
@@ -1734,7 +1791,11 @@ export async function deriveAdminSignalAssetHotWallet(payload: {
   networkType: AdminSignalAssetPayload["networkType"];
   privateKey: string;
 }) {
-  const { data } = await api.post(ADMIN_ENDPOINTS.assets.deriveHotWallet, payload);
+  const encryptedPrivateKey = await encryptWalletTransportPayload({ privateKey: payload.privateKey });
+  const { data } = await api.post(ADMIN_ENDPOINTS.assets.deriveHotWallet, {
+    networkType: payload.networkType,
+    encryptedPrivateKey,
+  });
   return unwrap<{ address: string; networkType: AdminSignalAssetPayload["networkType"] }>(data);
 }
 

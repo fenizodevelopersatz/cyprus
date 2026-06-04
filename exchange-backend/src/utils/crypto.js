@@ -48,3 +48,52 @@ export function encryptPrivateKey(value) {
 export function decryptPrivateKey(payload) {
   return decryptText(payload);
 }
+
+function getWalletEncryptionPrivateKey() {
+  const raw = cfg.wallet?.transportPrivateKey;
+  if (!raw) {
+    const error = new Error('WALLET_TRANSPORT_PRIVATE_KEY_NOT_CONFIGURED');
+    error.status = 500;
+    throw error;
+  }
+  const normalized = String(raw).replace(/\\n/g, '\n');
+  if (!normalized.includes('PRIVATE KEY')) {
+    const error = new Error('WALLET_TRANSPORT_PRIVATE_KEY_NOT_CONFIGURED');
+    error.status = 500;
+    throw error;
+  }
+  return normalized;
+}
+
+export function getWalletEncryptionPublicKey() {
+  try {
+    return crypto
+      .createPublicKey(getWalletEncryptionPrivateKey())
+      .export({ type: 'spki', format: 'pem' });
+  } catch (err) {
+    if (err?.status) throw err;
+    const error = new Error('WALLET_ENCRYPTION_PUBLIC_KEY_UNAVAILABLE');
+    error.status = 500;
+    error.cause = err;
+    throw error;
+  }
+}
+
+export function decryptWalletTransportPayload(encryptedData) {
+  try {
+    const decrypted = crypto.privateDecrypt(
+      {
+        key: getWalletEncryptionPrivateKey(),
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha256',
+      },
+      Buffer.from(String(encryptedData || ''), 'base64')
+    );
+    return decrypted.toString('utf8');
+  } catch (err) {
+    const error = new Error('WALLET_TRANSPORT_DECRYPT_FAILED');
+    error.status = 400;
+    error.cause = err;
+    throw error;
+  }
+}

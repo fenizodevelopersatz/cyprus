@@ -4,7 +4,11 @@ import { requireRole } from '../../middleware/roles.js';
 import { ok, fail } from '../../utils/responses.js';
 import { v } from '../../middleware/validate.js';
 import { db } from '../../db.js';
-import { verifyPassword } from '../../utils/crypto.js';
+import {
+  decryptWalletTransportPayload,
+  getWalletEncryptionPublicKey,
+  verifyPassword,
+} from '../../utils/crypto.js';
 import { Wallet } from 'ethers';
 import { getTronWebConstructor } from '../../utils/tron.js';
 import { getSolanaKeypair } from '../../utils/solana.js';
@@ -25,6 +29,7 @@ const bodySchema = {
   depositWallet: v.Joi.string().allow('', null).max(191),
   hotWallet: v.Joi.string().allow('', null).max(191),
   privateKey: v.Joi.string().allow('', null),
+  encryptedPrivateKey: v.Joi.string().allow('', null),
   confirmations: v.Joi.number().integer().min(0).max(999),
   fullHost: v.Joi.string().allow('', null).max(255),
   status: v.Joi.string().trim().uppercase().valid('ENABLED', 'DISABLED'),
@@ -60,6 +65,37 @@ function deriveHotWalletAddress({ privateKey, networkType }) {
   return new Wallet(raw).address;
 }
 
+function decryptTransportPrivateKey(encryptedPrivateKey) {
+  const payload = decryptWalletTransportPayload(encryptedPrivateKey);
+  try {
+    const parsed = JSON.parse(payload);
+    return String(parsed?.privateKey || '').trim();
+  } catch {
+    return String(payload || '').trim();
+  }
+}
+
+function normalizeAssetPayload(input) {
+  const payload = { ...input };
+  if (payload.encryptedPrivateKey) {
+    payload.privateKey = decryptTransportPrivateKey(payload.encryptedPrivateKey);
+    delete payload.encryptedPrivateKey;
+  }
+  return payload;
+}
+
+function sendWalletTransportPublicKey(req, res) {
+  try {
+    return ok(res, {
+      publicKey: getWalletEncryptionPublicKey(),
+      algorithm: 'RSA-OAEP',
+      hash: 'SHA-256',
+    });
+  } catch (err) {
+    return fail(res, err.message || 'Unable to load wallet transport public key', err.status || 500);
+  }
+}
+
 router.get(
   '/',
   guard,
@@ -92,12 +128,15 @@ router.post(
   }),
   async (req, res) => {
     try {
-      ok(res, await createSignalAsset(req.body), 201);
+      ok(res, await createSignalAsset(normalizeAssetPayload(req.body)), 201);
     } catch (err) {
       fail(res, err.message || 'Unable to create signal asset', err.status || 400);
     }
   }
 );
+
+router.get('/wallet-transport-public-key', guard, sendWalletTransportPublicKey);
+router.post('/wallet-transport-public-key', guard, sendWalletTransportPublicKey);
 
 router.post(
   '/verify-password',
@@ -132,13 +171,14 @@ router.post(
   v.celebrate({
     [v.Segments.BODY]: v.Joi.object({
       networkType: v.Joi.string().trim().uppercase().valid('EVM', 'TRON', 'SOLANA').required(),
-      privateKey: v.Joi.string().required(),
+      encryptedPrivateKey: v.Joi.string().required(),
     }).unknown(false),
   }),
   async (req, res) => {
     try {
+      const privateKey = decryptTransportPrivateKey(req.body.encryptedPrivateKey);
       return ok(res, {
-        address: deriveHotWalletAddress(req.body),
+        address: deriveHotWalletAddress({ privateKey, networkType: req.body.networkType }),
         networkType: String(req.body.networkType || '').trim().toUpperCase(),
       });
     } catch (err) {
@@ -158,7 +198,7 @@ router.patch(
   }),
   async (req, res) => {
     try {
-      ok(res, await updateSignalAsset(Number(req.params.id), req.body));
+      ok(res, await updateSignalAsset(Number(req.params.id), normalizeAssetPayload(req.body)));
     } catch (err) {
       fail(res, err.message || 'Unable to update signal asset', err.status || 400);
     }

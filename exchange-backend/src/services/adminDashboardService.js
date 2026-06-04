@@ -2,6 +2,7 @@ import { db } from '../db.js';
 import { allowedSpotSymbols } from '../utils/symbols.js';
 import * as marketService from './marketService.js';
 import { getProgramOverview } from './stakingService.js';
+import { REQUEST_STATUS_FILTERS } from './kycService.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_RANGE_DAYS = 7;
@@ -343,7 +344,7 @@ export async function getOverviewSnapshot({ rangeDays } = {}) {
     db('users').where('created_at', '>=', since24h).count({ count: '*' }).first(),
     db('user_profiles').where('last_login', '>=', since24h).count({ count: '*' }).first(),
     db('kyc_requests')
-      .where((qb) => qb.whereNull('status').orWhereNot('status', 'approved'))
+      .where((qb) => qb.whereIn('status', REQUEST_STATUS_FILTERS.IN_REVIEW).orWhereNull('status'))
       .count({ count: '*' })
       .first(),
     db('market_symbols').count({ count: '*' }).first(),
@@ -428,7 +429,7 @@ export async function getOverviewSnapshot({ rangeDays } = {}) {
     db('kyc_requests as k')
       .leftJoin('users as u', 'k.user_id', 'u.id')
       .select('k.id', 'k.user_id', 'k.status', 'k.created_at', 'u.email as user_email')
-      .where((qb) => qb.whereNull('k.status').orWhereNot('k.status', 'approved'))
+      .where((qb) => qb.whereIn('k.status', REQUEST_STATUS_FILTERS.IN_REVIEW).orWhereNull('k.status'))
       .orderBy('k.created_at', 'asc')
       .limit(10),
     getProgramOverview(),

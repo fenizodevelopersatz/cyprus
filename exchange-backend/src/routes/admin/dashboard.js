@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/roles.js';
 import { v } from '../../middleware/validate.js';
 import { ok } from '../../utils/responses.js';
 import { db } from '../../db.js';
+import { REQUEST_STATUS_FILTERS } from '../../services/kycService.js';
 
 /**
  * @openapi
@@ -123,7 +124,10 @@ router.get('/metrics', guard, async (_req, res) => {
     db('market_symbols').count({ count: '*' }).first(),
     db('deposits').count({ count: '*' }).first(),
     db('withdrawals').count({ count: '*' }).first(),
-    db('kyc_requests').whereNot({ status: 'approved' }).orWhereNull('status').count({ count: '*' }).first(),
+    db('kyc_requests')
+      .where((qb) => qb.whereIn('status', REQUEST_STATUS_FILTERS.IN_REVIEW).orWhereNull('status'))
+      .count({ count: '*' })
+      .first(),
     db('market_symbols')
       .select(db.raw('COUNT(DISTINCT base_asset) as base_count'), db.raw('COUNT(DISTINCT quote_asset) as quote_count'))
       .first(),

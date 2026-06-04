@@ -137,8 +137,18 @@ function useAdminDashboardLiveFeed() {
           setLiveState("live");
         };
 
-        socket.onmessage = () => {
+        socket.onmessage = (message) => {
           setLastEventAt(new Date().toISOString());
+          try {
+            const payload = JSON.parse(String(message.data || "{}")) as {
+              data?: { kyc?: unknown };
+            };
+            if (payload.data?.kyc) {
+              queryClient.setQueryData(["admin", "kyc", "sidebar-summary"], payload.data.kyc);
+            }
+          } catch {
+            queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
+          }
           queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
           queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
         };

@@ -1,0 +1,274 @@
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE TEMPORARY TABLE keep_admin_users AS
+SELECT id
+FROM users
+WHERE LOWER(COALESCE(roles, '')) LIKE '%admin%';
+
+-- Clear sessions / OTPs
+TRUNCATE TABLE refresh_tokens;
+TRUNCATE TABLE login_otps;
+TRUNCATE TABLE password_reset_otps;
+
+-- Clear KYC
+TRUNCATE TABLE kyc_activity;
+TRUNCATE TABLE kyc_documents;
+TRUNCATE TABLE kyc_requests;
+
+-- Clear transactions / orders / MLM
+TRUNCATE TABLE wallet_transactions;
+TRUNCATE TABLE wallet_ledger;
+TRUNCATE TABLE deposits;
+TRUNCATE TABLE withdrawals;
+TRUNCATE TABLE fiat_deposits;
+TRUNCATE TABLE deposit_transactions;
+TRUNCATE TABLE deposit_sync_runs;
+TRUNCATE TABLE deposit_scan_state;
+TRUNCATE TABLE deposit_chain_cursors;
+TRUNCATE TABLE sweep_transactions;
+TRUNCATE TABLE treasury_sweep_runs;
+TRUNCATE TABLE gas_funding_transactions;
+
+TRUNCATE TABLE spot_orders;
+TRUNCATE TABLE spot_trades;
+TRUNCATE TABLE futures_positions;
+TRUNCATE TABLE futures_trades;
+TRUNCATE TABLE futures_funding_rates;
+TRUNCATE TABLE futures_price_ticks;
+TRUNCATE TABLE swap_quotes;
+TRUNCATE TABLE paper_orders;
+TRUNCATE TABLE paper_positions;
+
+TRUNCATE TABLE staking_positions;
+TRUNCATE TABLE sip_orders;
+TRUNCATE TABLE sip_subscriptions;
+
+TRUNCATE TABLE referral_referrals;
+TRUNCATE TABLE referral_stats;
+TRUNCATE TABLE referral_profiles;
+TRUNCATE TABLE mlm_income_history;
+TRUNCATE TABLE user_team_wallet_summary;
+TRUNCATE TABLE mlm_level_achievements;
+TRUNCATE TABLE mlm_level_bonus_payouts;
+TRUNCATE TABLE user_level_history;
+TRUNCATE TABLE user_position_status;
+TRUNCATE TABLE recurring_bonus_history;
+TRUNCATE TABLE mlm_bonus_cycle_snapshot_members;
+TRUNCATE TABLE mlm_bonus_cycle_snapshots;
+TRUNCATE TABLE mlm_flow_tracking;
+
+TRUNCATE TABLE user_signal_logs;
+
+-- Keep only admin wallet/address details
+DELETE FROM wallets
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+DELETE FROM user_wallets
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+DELETE FROM deposit_addresses
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+DELETE FROM wallet_addresses
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+-- Clear ledger/accounting rows; balances/addresses kept above
+TRUNCATE TABLE accounts;
+TRUNCATE TABLE journals;
+TRUNCATE TABLE entries;
+
+-- Delete non-admin profiles and users
+DELETE FROM user_profiles
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+DELETE FROM users
+WHERE id NOT IN (SELECT id FROM keep_admin_users);
+
+-- Keep admin active
+UPDATE users
+SET
+  status = COALESCE(status, 'active'),
+  kyc_verified = 1,
+  kyc_level = GREATEST(COALESCE(kyc_level, 0), 1),
+  updated_at = NOW()
+WHERE id IN (SELECT id FROM keep_admin_users);
+
+DROP TEMPORARY TABLE keep_admin_users;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+
+
+
+
+
+
+//////////////////////////////////////////
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- Auth/session/user verification data
+TRUNCATE TABLE refresh_tokens;
+TRUNCATE TABLE login_otps;
+TRUNCATE TABLE password_reset_otps;
+
+-- KYC user records
+TRUNCATE TABLE kyc_activity;
+TRUNCATE TABLE kyc_documents;
+TRUNCATE TABLE kyc_requests;
+
+-- Wallet/accounting/transactions
+TRUNCATE TABLE wallet_transactions;
+TRUNCATE TABLE wallet_ledger;
+TRUNCATE TABLE wallets;
+TRUNCATE TABLE user_wallets;
+TRUNCATE TABLE deposit_addresses;
+TRUNCATE TABLE wallet_addresses;
+TRUNCATE TABLE accounts;
+TRUNCATE TABLE journals;
+TRUNCATE TABLE entries;
+
+TRUNCATE TABLE deposits;
+TRUNCATE TABLE withdrawals;
+TRUNCATE TABLE fiat_deposits;
+TRUNCATE TABLE deposit_transactions;
+TRUNCATE TABLE deposit_sync_runs;
+TRUNCATE TABLE deposit_scan_state;
+TRUNCATE TABLE deposit_chain_cursors;
+
+TRUNCATE TABLE sweep_transactions;
+TRUNCATE TABLE treasury_sweep_runs;
+TRUNCATE TABLE gas_funding_transactions;
+
+-- Trading/orders
+TRUNCATE TABLE spot_orders;
+TRUNCATE TABLE spot_trades;
+TRUNCATE TABLE futures_positions;
+TRUNCATE TABLE futures_trades;
+TRUNCATE TABLE futures_funding_rates;
+TRUNCATE TABLE futures_price_ticks;
+TRUNCATE TABLE swap_quotes;
+TRUNCATE TABLE paper_orders;
+TRUNCATE TABLE paper_positions;
+TRUNCATE TABLE p2p_order_messages;
+TRUNCATE TABLE p2p_orders;
+TRUNCATE TABLE p2p_listings;
+
+-- Staking / SIP user activity
+TRUNCATE TABLE staking_positions;
+TRUNCATE TABLE sip_orders;
+TRUNCATE TABLE sip_subscriptions;
+
+-- Referral / MLM
+TRUNCATE TABLE referral_referrals;
+TRUNCATE TABLE referral_stats;
+TRUNCATE TABLE referral_profiles;
+TRUNCATE TABLE mlm_income_history;
+TRUNCATE TABLE user_team_wallet_summary;
+TRUNCATE TABLE mlm_level_achievements;
+TRUNCATE TABLE mlm_level_bonus_payouts;
+TRUNCATE TABLE user_level_history;
+TRUNCATE TABLE user_position_status;
+TRUNCATE TABLE recurring_bonus_history;
+TRUNCATE TABLE mlm_bonus_cycle_snapshot_members;
+TRUNCATE TABLE mlm_bonus_cycle_snapshots;
+TRUNCATE TABLE mlm_flow_tracking;
+
+-- Signals user logs
+TRUNCATE TABLE user_signal_logs;
+
+-- Delete non-admin users and profiles
+DELETE p
+FROM user_profiles p
+JOIN users u ON u.id = p.user_id
+WHERE LOWER(COALESCE(u.roles, '')) NOT LIKE '%admin%';
+
+DELETE FROM users
+WHERE LOWER(COALESCE(roles, '')) NOT LIKE '%admin%';
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//////////////////////////////////
+admin_wallets
+admin_trading_rules
+admin_trade_time_slots
+admin_package_tier_settings
+admin_level_settings
+admin_level_management_config
+control_system_trading_flow_settings
+trade_slots
+trade_slot_batches
+package_tier_settings
+birthday_gift_settings
+email_templates
+dashboard_summary
+dashboard_promotions
+dashboard_news
+exchange_connections
+market_symbols
+signal_assets
+signal_package_settings
+signal_packages
+staking_packages
+sip_plans
+txn_global_sequence
+
+//////////////////////////////////////
+-- Admin wallet / treasury setup
+admin_wallets
+
+-- Site/admin settings
+admin_trading_rules
+admin_trade_time_slots
+admin_package_tier_settings
+admin_birthday_gift_settings
+admin_level_settings
+admin_level_management_config
+
+-- Control system / signal timing setup
+control_system_trading_flow_settings
+trade_slots
+trade_slot_batches
+package_tier_settings
+birthday_gift_settings
+
+-- Email and dashboard content setup
+email_templates
+dashboard_summary
+dashboard_promotions
+dashboard_news
+exchange_connections
+
+-- Market / coin / signal asset setup
+market_symbols
+signal_assets
+signal_package_settings
+signal_packages
+
+-- Product/package setup
+staking_packages
+sip_plans
+
+-- Transaction numbering / sequence setup
+txn_global_sequence
+
+-- Admin user/account access
+users
+user_profiles

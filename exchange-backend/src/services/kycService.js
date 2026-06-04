@@ -39,7 +39,7 @@ const STATUS_MAP = {
   failed: 'REJECTED',
 };
 
-const REQUEST_STATUS_FILTERS = {
+export const REQUEST_STATUS_FILTERS = {
   IN_REVIEW: ['pending', 'in_review', 'queue', 'PENDING', 'IN_REVIEW'],
   APPROVED: ['approved', 'APPROVED', 'verified', 'completed'],
   REJECTED: ['rejected', 'REJECTED', 'failed'],

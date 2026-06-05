@@ -4,8 +4,8 @@
     "type": "module",
     "main": "src/index.js",
     "scripts": {
-        "dev": "nodemon src/index.js",
-        "start": "node src/index.js",
+        "dev": "nodemon --quiet src/bootstrap.js",
+        "start": "node src/bootstrap.js",
         "worker:deposits": "node src/workers/depositMonitor.js",
         "wallet:transport-key": "node scripts/generateWalletTransportKey.js",
         "fix:signup-bonus": "node src/scripts/removeLegacySignupBonus.js",

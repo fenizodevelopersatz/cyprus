@@ -6,11 +6,13 @@ import { exchangeSnapshot, wallets as fetchWallets, openOrders as fetchOpenOrder
 import { getPortfolioSnapshot } from './services/portfolioService.js';
 import { getWalletRealtimeSnapshot, walletRealtimeEmitter } from './services/walletRealtime.service.js';
 import { getKycQueueSidebarSummary, kycAdminEmitter } from './services/kycService.js';
+import { getAdminDashboardContainer } from './services/adminDashboardService.js';
 import { isBackendUrlEnabled } from './services/backendUrlManager.service.js';
 
 const ALLOWLIST = [
     process.env.APP_BASE_DOMAIN,
 ];
+const ADMIN_DASHBOARD_RENEWAL_MS = 9 * 60 * 1000;
 
 function isAllowedOrigin(origin) {
   return !origin || ALLOWLIST.includes(origin);
@@ -364,22 +366,40 @@ export function createWs(httpServer) {
         return;
       }
 
-      const roles = Array.isArray(auth?.roles) ? auth.roles.map((role) => String(role).toLowerCase()) : [];
+      const roles = Array.isArray(auth?.roles)
+        ? auth.roles.map((role) => String(role).toLowerCase())
+        : String(auth?.roles || '')
+            .split(',')
+            .map((role) => role.trim().toLowerCase())
+            .filter(Boolean);
       if (!roles.includes('admin')) {
         ws.send(JSON.stringify({ type: 'error', code: 403, message: 'Forbidden' }));
         ws.close(4403, 'forbidden');
         return;
       }
 
-      const sendSummary = async (eventName, detail = null) => {
+      const rangeDays = Number(url.searchParams.get('rangeDays') || 30);
+      const activityLimit = Number(url.searchParams.get('activityLimit') || 40);
+      let renewalTimer = null;
+
+      const sendSummary = async (eventName, detail = null, options = {}) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         const kyc = await getKycQueueSidebarSummary().catch(() => null);
+        const dashboard = await getAdminDashboardContainer({
+          rangeDays,
+          activityLimit,
+          lastEventAt: new Date().toISOString(),
+          refreshTreasury: Boolean(options.refreshTreasury),
+          includeTreasury: Boolean(options.includeTreasury),
+        }).catch(() => null);
         ws.send(
           JSON.stringify({
             type: eventName,
             event: eventName,
             data: {
               kyc,
+              dashboard,
+              sidebar: dashboard?.sidebar || null,
               detail,
               sentAt: new Date().toISOString(),
             },
@@ -390,12 +410,34 @@ export function createWs(httpServer) {
       const handleKycUpdate = (detail) => {
         void sendSummary('admin:kyc:queue-updated', detail);
       };
+      const handleClientMessage = (raw) => {
+        let payload = null;
+        try {
+          payload = JSON.parse(String(raw || '{}'));
+        } catch {
+          return;
+        }
+        const eventName = payload?.event || payload?.type;
+        if (eventName === 'admin:dashboard:refresh') {
+          void sendSummary('admin:dashboard:refreshed', { source: 'manual' }, { refreshTreasury: true, includeTreasury: true });
+        }
+      };
+
+      const cleanup = () => {
+        kycAdminEmitter.off('kyc:queue-updated', handleKycUpdate);
+        ws.off('message', handleClientMessage);
+        if (renewalTimer) clearInterval(renewalTimer);
+      };
 
       kycAdminEmitter.on('kyc:queue-updated', handleKycUpdate);
-      ws.on('close', () => kycAdminEmitter.off('kyc:queue-updated', handleKycUpdate));
-      ws.on('error', () => kycAdminEmitter.off('kyc:queue-updated', handleKycUpdate));
+      ws.on('message', handleClientMessage);
+      ws.on('close', cleanup);
+      ws.on('error', cleanup);
 
       await sendSummary('admin:dashboard:ready');
+      renewalTimer = setInterval(() => {
+        void sendSummary('admin:dashboard:renewal');
+      }, ADMIN_DASHBOARD_RENEWAL_MS);
     } catch (_err) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.close(1011, 'unexpected error');

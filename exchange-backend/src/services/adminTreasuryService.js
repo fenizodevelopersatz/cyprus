@@ -482,7 +482,12 @@ async function getNetworkTreasuryBalance(network) {
 export async function getAdminTreasuryOverview() {
   const [creditedDeposits, completedWithdrawals, pendingSweeps, lastSweepRow, sweepCountRow] = await Promise.all([
     db('deposit_transactions')
-      .where({ token: 'USDT', status: 'credited' })
+      .where({ status: 'credited' })
+      .andWhere((builder) => {
+        builder.where({ token: 'USDT' }).orWhere((inner) => {
+          inner.where({ network: 'solana', token: 'USDC' });
+        });
+      })
       .select('network')
       .sum({ total: 'amount_decimal' })
       .groupBy('network'),
@@ -492,7 +497,12 @@ export async function getAdminTreasuryOverview() {
       .sum({ total: 'amount' })
       .groupBy('chain'),
     db('deposit_transactions')
-      .where({ token: 'USDT', is_swept: 0 })
+      .where({ is_swept: 0 })
+      .andWhere((builder) => {
+        builder.where({ token: 'USDT' }).orWhere((inner) => {
+          inner.where({ network: 'solana', token: 'USDC' });
+        });
+      })
       .whereIn('status', ['confirmed', 'credited'])
       .count({ total: '*' })
       .first(),

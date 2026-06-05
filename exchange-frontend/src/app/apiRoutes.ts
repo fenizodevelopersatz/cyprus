@@ -372,6 +372,15 @@ export const SIP_ENDPOINTS = {
 export const ADMIN_ENDPOINTS = {
   session: toAbsolute("/admin/session"),
   dashboard: {
+    container: (params?: { rangeDays?: number; activityLimit?: number; refreshTreasury?: boolean; includeTreasury?: boolean }) => {
+      const qs = new URLSearchParams();
+      if (params?.rangeDays) qs.set("rangeDays", String(params.rangeDays));
+      if (params?.activityLimit) qs.set("activityLimit", String(params.activityLimit));
+      if (params?.refreshTreasury) qs.set("refreshTreasury", "1");
+      if (params?.includeTreasury === false) qs.set("includeTreasury", "0");
+      const q = qs.toString() ? `?${qs.toString()}` : "";
+      return toAbsolute(`/admin/dashboard/container${q}`);
+    },
     overview: (params?: { rangeDays?: number; asset?: string; force?: boolean }) => {
       const qs = new URLSearchParams();
       if (params?.rangeDays) qs.set("rangeDays", String(params.rangeDays));

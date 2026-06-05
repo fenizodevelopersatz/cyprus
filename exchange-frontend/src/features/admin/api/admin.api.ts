@@ -610,6 +610,23 @@ export type AdminDashboardOverview = {
   services?: AdminServices["services"];
 };
 
+export type AdminDashboardSidebarSummary = {
+  newUsers24h: number;
+  pendingKyc: number;
+  pendingWithdrawals: number;
+  syncedAt?: string;
+};
+
+export type AdminDashboardContainer = {
+  syncedAt: string;
+  overview: AdminDashboardOverview;
+  activity: AdminDashboardActivityResponse;
+  treasury?: AdminTreasuryOverview | null;
+  services: AdminServices;
+  websocketStatus: AdminWebsocketStatus;
+  sidebar?: AdminDashboardSidebarSummary;
+};
+
 export type AdminDashboardActivityResponse = {
   syncedAt?: string;
   items: AdminDashboardActivity[];
@@ -1205,6 +1222,16 @@ export async function fetchAdminDashboardOverview(params?: { rangeDays?: number;
     return (payload as { overview: AdminDashboardOverview }).overview;
   }
   return payload as AdminDashboardOverview;
+}
+
+export async function fetchAdminDashboardContainer(params?: {
+  rangeDays?: number;
+  activityLimit?: number;
+  refreshTreasury?: boolean;
+  includeTreasury?: boolean;
+}) {
+  const { data } = await api.get(ADMIN_ENDPOINTS.dashboard.container(params));
+  return unwrap<AdminDashboardContainer>(data);
 }
 
 export async function fetchAdminDashboardActivity(params?: { limit?: number; cursor?: string }) {

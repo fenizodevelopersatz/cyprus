@@ -196,7 +196,9 @@ export async function syncDepositTransactionsForUser(userId) {
     listSignalAssets({ includeDisabled: true }),
   ]);
   const walletAddressMap = new Map(walletAddresses.map((row) => [`${row.network}:${normalizeAddress(row.network, row.address)}`, row]));
-  console.log('Wallet Address Map:', walletAddressMap);
+  if (String(process.env.LOG_CONSOLE ?? 'true').toLowerCase() !== 'false') {
+    console.log('Wallet Address Map:', walletAddressMap);
+  }
   const assetMap = new Map(assets.map((asset) => [normalizeFundingNetwork(asset.network), asset]));
   const legacyRows = await db('deposits')
     .where({ user_id: userId })

@@ -14,6 +14,9 @@ import { REQUEST_STATUS_FILTERS } from '../../services/kycService.js';
  */
 import {
   applyRegularUserFilter,
+  getAdminDashboardContainer,
+  getAdminServiceChecks,
+  getAdminWebsocketStatusSnapshot,
   getOverviewSnapshot,
   getActivityFeed,
 } from '../../services/adminDashboardService.js';
@@ -160,41 +163,11 @@ router.get('/metrics', guard, async (_req, res) => {
 });
 
 router.get('/services', guard, async (_req, res) => {
-  const checks = [];
-
-  const runCheck = async (name, fn) => {
-    const result = { name, status: 'online', message: null };
-    const started = Date.now();
-    try {
-      await fn();
-      result.latencyMs = Date.now() - started;
-    } catch (err) {
-      result.status = 'offline';
-      result.message = err.message || 'unreachable';
-      result.latencyMs = Date.now() - started;
-    }
-    checks.push(result);
-  };
-
-  await runCheck('web', async () => true);
-  await runCheck('database', async () => db.raw('select 1'));
-  await runCheck('encryption', async () => true);
-  await runCheck('api', async () => true);
-  await runCheck('jobs', async () => true);
-  await runCheck('websocket', async () => true);
-
-  ok(res, {
-    syncedAt: new Date().toISOString(),
-    services: checks,
-  });
+  ok(res, await getAdminServiceChecks());
 });
 
 router.get('/websocket-status', guard, async (_req, res) => {
-  ok(res, {
-    connected: true,
-    uptimeSeconds: process.uptime ? Math.floor(process.uptime()) : undefined,
-    lastEventAt: new Date().toISOString(),
-  });
+  ok(res, getAdminWebsocketStatusSnapshot());
 });
 
 router.get(
@@ -239,6 +212,35 @@ router.get(
       res
         .status(err.status || 500)
         .json({ message: 'Unable to load admin audit logs', code: 'ADMIN_AUDIT_FAILED' });
+    }
+  }
+);
+
+router.get(
+  '/dashboard/container',
+  guard,
+  v.celebrate({
+    [v.Segments.QUERY]: v.Joi.object({
+      rangeDays: v.Joi.number().integer().min(7).max(90).default(30),
+      activityLimit: v.Joi.number().integer().min(5).max(100).default(40),
+      refreshTreasury: v.Joi.boolean().truthy('1').truthy('true').falsy('0').falsy('false').default(false),
+      includeTreasury: v.Joi.boolean().truthy('1').truthy('true').falsy('0').falsy('false').default(true),
+    }).unknown(false),
+  }),
+  async (req, res) => {
+    try {
+      const payload = await getAdminDashboardContainer({
+        rangeDays: req.query.rangeDays,
+        activityLimit: req.query.activityLimit,
+        refreshTreasury: req.query.refreshTreasury,
+        includeTreasury: req.query.includeTreasury,
+      });
+      ok(res, payload);
+    } catch (err) {
+      console.error('[admin.dashboard] container failed', err);
+      res
+        .status(err.status || 500)
+        .json({ message: 'Unable to load admin dashboard', code: 'ADMIN_DASHBOARD_CONTAINER_FAILED' });
     }
   }
 );

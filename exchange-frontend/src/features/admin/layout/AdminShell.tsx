@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ADMIN_DASHBOARD_WS_PATH, API_BASE_URL } from "../../../app/apiRoutes";
 import Button from "../../../ui/Button";
 import { useAdminAuth } from "../state/AdminAuthProvider";
-import { fetchAdminKycSidebarSummary, fetchAdminSettings, type AdminKycSidebarSummary } from "../api/admin.api";
+import {
+  fetchAdminKycSidebarSummary,
+  fetchAdminSettings,
+  type AdminDashboardSidebarSummary,
+  type AdminKycSidebarSummary,
+} from "../api/admin.api";
 
 type NavEntry = {
   label: string;
@@ -15,12 +20,15 @@ type NavEntry = {
 };
 
 const KYC_SUMMARY_REFRESH_MS = 10 * 60 * 1000;
+const NEW_USERS_ACK_STORAGE_KEY = "admin:new-users-ack-count";
 
 type AdminSocketPayload = {
   type?: string;
   event?: string;
   data?: {
     kyc?: AdminKycSidebarSummary | null;
+    sidebar?: AdminDashboardSidebarSummary | null;
+    dashboard?: { sidebar?: AdminDashboardSidebarSummary | null } | null;
     detail?: unknown;
     sentAt?: string;
   };
@@ -144,6 +152,12 @@ export default function AdminShell() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [siteName, setSiteName] = useState("Primerica Exchange");
   const [siteLogoUrl, setSiteLogoUrl] = useState("/icons/logo.png");
+  const [socketSidebarSummary, setSocketSidebarSummary] = useState<AdminDashboardSidebarSummary | null>(null);
+  const [acknowledgedNewUsersCount, setAcknowledgedNewUsersCount] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const stored = Number(window.localStorage.getItem(NEW_USERS_ACK_STORAGE_KEY) || 0);
+    return Number.isFinite(stored) ? stored : 0;
+  });
 
   const kycSummaryQuery = useQuery({
     queryKey: ["admin", "kyc", "sidebar-summary"],
@@ -153,8 +167,22 @@ export default function AdminShell() {
   });
 
   const pendingKycItems = kycSummaryQuery.data?.items ?? [];
-  const pendingKycCount = kycSummaryQuery.data?.pendingCount ?? pendingKycItems.length;
+  const pendingKycCount = socketSidebarSummary?.pendingKyc ?? kycSummaryQuery.data?.pendingCount ?? pendingKycItems.length;
+  const rawNewUsersCount = socketSidebarSummary?.newUsers24h ?? 0;
+  const newUsersCount = Math.max(0, rawNewUsersCount - acknowledgedNewUsersCount);
+  const pendingWithdrawalsCount = socketSidebarSummary?.pendingWithdrawals ?? 0;
   const hasPendingKyc = pendingKycCount > 0;
+
+  const acknowledgeNewUsers = useCallback(() => {
+    setAcknowledgedNewUsersCount(rawNewUsersCount);
+    window.localStorage.setItem(NEW_USERS_ACK_STORAGE_KEY, String(rawNewUsersCount));
+  }, [rawNewUsersCount]);
+
+  useEffect(() => {
+    if (location.pathname === "/admin/users" && !new URLSearchParams(location.search).get("view")) {
+      acknowledgeNewUsers();
+    }
+  }, [acknowledgeNewUsers, location.pathname, location.search]);
 
   useEffect(() => {
     const token = window.localStorage.getItem("adminAccessToken");
@@ -180,6 +208,11 @@ export default function AdminShell() {
             const payload = JSON.parse(String(message.data || "{}")) as AdminSocketPayload;
             const eventName = payload.event || payload.type;
             const kycSummary = payload.data?.kyc;
+            const sidebarSummary = payload.data?.sidebar || payload.data?.dashboard?.sidebar || null;
+
+            if (sidebarSummary) {
+              setSocketSidebarSummary(sidebarSummary);
+            }
 
             if (eventName === "admin:dashboard:ready" && kycSummary) {
               queryClient.setQueryData(["admin", "kyc", "sidebar-summary"], kycSummary);
@@ -428,7 +461,12 @@ export default function AdminShell() {
                   <button
                     type="button"
                     className={`flex w-full items-center ${compact ? "justify-center px-3" : "justify-between px-4"} py-3 text-sm font-medium text-slate-200`}
-                    onClick={() => toggleSection(entry.label)}
+                    onClick={() => {
+                      if (entry.label === "User Management") {
+                        acknowledgeNewUsers();
+                      }
+                      toggleSection(entry.label);
+                    }}
                   >
                     <span className={`flex items-center ${compact ? "justify-center" : "gap-3"}`}>
                       <span className="text-lg">
@@ -453,6 +491,16 @@ export default function AdminShell() {
                             {pendingKycCount}
                           </span>
                         ) : null}
+                        {entry.label === "User Management" && newUsersCount > 0 ? (
+                          <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
+                            +{newUsersCount}
+                          </span>
+                        ) : null}
+                        {entry.label === "Wallet Management" && pendingWithdrawalsCount > 0 ? (
+                          <span className="rounded-full bg-rose-400/20 px-2 py-0.5 text-[10px] font-semibold text-rose-100">
+                            {pendingWithdrawalsCount}
+                          </span>
+                        ) : null}
                         <span className={`transition ${open ? "rotate-0" : "-rotate-90"}`}>{">"}</span>
                       </span>
                     )}
@@ -474,7 +522,12 @@ export default function AdminShell() {
                               <NavLink
                                 key={`${entry.label}-${child.label}-${child.to ?? "link"}`}
                                 to={child.to || "#"}
-                                onClick={closeMobileNav}
+                                onClick={() => {
+                                  if (child.to === "/admin/users") {
+                                    acknowledgeNewUsers();
+                                  }
+                                  closeMobileNav();
+                                }}
                                 className={`flex items-center gap-2 rounded-xl px-3 py-2 ${
                                   isActive
                                     ? "bg-emerald-500/20 text-white"
@@ -493,6 +546,16 @@ export default function AdminShell() {
                                       }`}
                                     >
                                       {pendingKycCount}
+                                    </span>
+                                  ) : null}
+                                  {child.to === "/admin/users" && newUsersCount > 0 ? (
+                                    <span className="shrink-0 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-100">
+                                      +{newUsersCount}
+                                    </span>
+                                  ) : null}
+                                  {child.to === "/admin/wallet-management/admin-wallet/withdraw-queue" && pendingWithdrawalsCount > 0 ? (
+                                    <span className="shrink-0 rounded-full bg-rose-400/20 px-2 py-0.5 text-[10px] font-semibold text-rose-100">
+                                      {pendingWithdrawalsCount}
                                     </span>
                                   ) : null}
                                 </span>

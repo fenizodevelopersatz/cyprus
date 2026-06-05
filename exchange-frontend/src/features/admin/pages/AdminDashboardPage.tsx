@@ -19,14 +19,10 @@ import {
 } from "recharts";
 import {
   fetchAdminAuditLogs,
-  fetchAdminDashboardActivity,
-  fetchAdminDashboardOverview,
-  fetchAdminServices,
-  fetchAdminTreasury,
-  fetchAdminWebsocketStatus,
+  fetchAdminDashboardContainer,
   type AdminDashboardActivity,
   type AdminAuditLog,
-  type AdminDashboardQueueItem,
+  type AdminDashboardContainer,
 } from "../api/admin.api";
 
 type LiveState = "connecting" | "live" | "fallback";
@@ -95,7 +91,7 @@ const formatRelativeTime = (value?: string) => {
   return `${days}d ago`;
 };
 
-const buildAdminDashboardWsUrl = () => {
+const buildAdminDashboardWsUrl = (rangeDays = 30, activityLimit = 40) => {
   if (typeof window === "undefined") return null;
   const token = window.localStorage.getItem("adminAccessToken");
   if (!token) return null;
@@ -105,21 +101,24 @@ const buildAdminDashboardWsUrl = () => {
     url.pathname = `${url.pathname.replace(/\/?$/, "")}${ADMIN_DASHBOARD_WS_PATH}`;
     url.search = "";
     url.searchParams.set("token", token);
+    url.searchParams.set("rangeDays", String(rangeDays));
+    url.searchParams.set("activityLimit", String(activityLimit));
     return url.toString();
   } catch {
     return null;
   }
 };
 
-function useAdminDashboardLiveFeed() {
+function useAdminDashboardLiveFeed(rangeDays: number, activityLimit = 40) {
   const queryClient = useQueryClient();
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<number | null>(null);
   const [liveState, setLiveState] = useState<LiveState>("connecting");
   const [lastEventAt, setLastEventAt] = useState<string | null>(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   useEffect(() => {
-    const url = buildAdminDashboardWsUrl();
+    const url = buildAdminDashboardWsUrl(rangeDays, activityLimit);
     if (!url) {
       setLiveState("fallback");
       return;
@@ -141,16 +140,24 @@ function useAdminDashboardLiveFeed() {
           setLastEventAt(new Date().toISOString());
           try {
             const payload = JSON.parse(String(message.data || "{}")) as {
-              data?: { kyc?: unknown };
+              data?: { kyc?: unknown; dashboard?: AdminDashboardContainer | null };
             };
+            if (payload.data?.dashboard) {
+              queryClient.setQueryData<AdminDashboardContainer | undefined>(
+                ["admin", "dashboard", "container", rangeDays],
+                (current) => ({
+                  ...payload.data!.dashboard!,
+                  treasury: payload.data!.dashboard!.treasury ?? current?.treasury ?? null,
+                })
+              );
+            }
             if (payload.data?.kyc) {
               queryClient.setQueryData(["admin", "kyc", "sidebar-summary"], payload.data.kyc);
             }
           } catch {
             queryClient.invalidateQueries({ queryKey: ["admin", "kyc", "sidebar-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["admin", "dashboard", "container", rangeDays] });
           }
-          queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
-          queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
         };
 
         socket.onerror = () => {
@@ -177,59 +184,52 @@ function useAdminDashboardLiveFeed() {
       }
       socketRef.current?.close();
     };
-  }, [queryClient]);
+  }, [activityLimit, queryClient, rangeDays]);
 
-  return { liveState, lastEventAt };
+  const refreshDashboard = () => {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ event: "admin:dashboard:refresh" }));
+      return;
+    }
+    setRefreshNonce((value) => value + 1);
+  };
+
+  useEffect(() => {
+    if (refreshNonce === 0) return;
+    void queryClient.fetchQuery({
+      queryKey: ["admin", "dashboard", "container", rangeDays],
+      queryFn: () => fetchAdminDashboardContainer({ rangeDays, activityLimit, refreshTreasury: true }),
+      staleTime: 0,
+    });
+  }, [activityLimit, queryClient, rangeDays, refreshNonce]);
+
+  return { liveState, lastEventAt, refreshDashboard };
 }
 
 function inferSupportOpenCount(activity: AdminDashboardActivity[]) {
   return activity.filter((item) => /support|ticket|chat|complaint/i.test(item.type)).length;
 }
 
-function sumQueueAmounts(items: AdminDashboardQueueItem[]) {
-  return items.reduce((sum, item) => sum + safeNumber(item.amount), 0);
-}
-
 export default function AdminDashboardPage() {
-  const queryClient = useQueryClient();
-  const { liveState, lastEventAt } = useAdminDashboardLiveFeed();
   const [rangeDays, setRangeDays] = useState(30);
+  const { liveState, lastEventAt, refreshDashboard } = useAdminDashboardLiveFeed(rangeDays, 40);
   const [activityPage, setActivityPage] = useState(1);
   const [loginPage, setLoginPage] = useState(1);
+  const dashboardQueryKey = ["admin", "dashboard", "container", rangeDays] as const;
 
-  const overviewQuery = useQuery({
-    queryKey: ["admin", "dashboard", "overview", rangeDays],
-    queryFn: () => fetchAdminDashboardOverview({ rangeDays }),
+  const dashboardQuery = useQuery({
+    queryKey: dashboardQueryKey,
+    queryFn: () => {
+      const current = queryClient.getQueryData<AdminDashboardContainer>(dashboardQueryKey);
+      return fetchAdminDashboardContainer({
+        rangeDays,
+        activityLimit: 40,
+        includeTreasury: !current?.treasury,
+      });
+    },
     refetchInterval: liveState === "live" ? false : 30_000,
     staleTime: 15_000,
-  });
-
-  const activityQuery = useQuery({
-    queryKey: ["admin", "dashboard", "activity"],
-    queryFn: () => fetchAdminDashboardActivity({ limit: 40 }),
-    refetchInterval: liveState === "live" ? false : 20_000,
-    staleTime: 10_000,
-  });
-
-  const servicesQuery = useQuery({
-    queryKey: ["admin", "services"],
-    queryFn: fetchAdminServices,
-    refetchInterval: liveState === "live" ? false : 20_000,
-    staleTime: 10_000,
-  });
-
-  const treasuryQuery = useQuery({
-    queryKey: ["admin", "treasury"],
-    queryFn: fetchAdminTreasury,
-    refetchInterval: liveState === "live" ? false : 20_000,
-    staleTime: 10_000,
-  });
-
-  const websocketStatusQuery = useQuery({
-    queryKey: ["admin", "websocket-status"],
-    queryFn: fetchAdminWebsocketStatus,
-    refetchInterval: 20_000,
-    staleTime: 10_000,
   });
 
   const auditLogsQuery = useQuery({
@@ -239,10 +239,13 @@ export default function AdminDashboardPage() {
     staleTime: 15_000,
   });
 
-  const overview = overviewQuery.data;
-  const activityItems = activityQuery.data?.items ?? overview?.recentActivity ?? [];
-  const services = overview?.services?.length ? overview.services : servicesQuery.data?.services ?? [];
-  const syncedAt = overview?.syncedAt ?? servicesQuery.data?.syncedAt ?? undefined;
+  const dashboardContainer = dashboardQuery.data;
+  const overview = dashboardContainer?.overview;
+  const activityItems = useMemo(
+    () => dashboardContainer?.activity?.items ?? overview?.recentActivity ?? [],
+    [dashboardContainer?.activity?.items, overview?.recentActivity]
+  );
+  const syncedAt = overview?.syncedAt ?? dashboardContainer?.services?.syncedAt ?? undefined;
 
   const usersChart = useMemo(
     () =>
@@ -299,35 +302,48 @@ export default function AdminDashboardPage() {
   );
 
   const latestUsersPoint = usersChart[usersChart.length - 1];
-  const depositTotal = moneyFlowChart.reduce((sum, point) => sum + point.deposits, 0);
-  const withdrawalTotal = moneyFlowChart.reduce((sum, point) => sum + point.withdrawals, 0);
-  const netFlow = depositTotal - withdrawalTotal;
   const kycPending = safeNumber(overview?.summary.users?.kycPending ?? overview?.queues?.kyc?.length);
   const kycApproved = safeNumber(overview?.summary.users?.verified);
   const totalUsers = safeNumber(overview?.summary.users?.total);
   const activeUsers = latestUsersPoint?.active ?? safeNumber(overview?.summary.users?.active24h);
   const newUsers = latestUsersPoint?.newUsers ?? safeNumber(overview?.summary.users?.new24h);
   const pendingFiatCount = safeNumber(overview?.summary.funding?.fiat?.pending);
-  const pendingFiatAmount = safeNumber(overview?.summary.funding?.fiat?.pendingAmount);
-  const fiatQueue = overview?.queues?.fiatDeposits ?? [];
-  const withdrawalQueue = overview?.queues?.withdrawals ?? [];
-  const treasuryWallets = treasuryQuery.data?.custodial?.wallets ?? [];
+  const treasury = dashboardContainer?.treasury;
+  const treasuryWallets = treasury?.custodial?.wallets ?? [];
   const liveUsdtByNetwork = treasuryWallets.reduce<Record<string, string>>((acc, wallet) => {
     acc[String(wallet.network || "").toLowerCase()] = wallet.usdtBalance || "0";
     return acc;
   }, {});
-  const totalAdminUsdt = treasuryQuery.data?.custodial?.totalTreasuryBalance
-    ? Object.values(treasuryQuery.data.custodial.totalTreasuryBalance).reduce((sum, value) => sum + Number(value || 0), 0)
-    : treasuryWallets.reduce((sum, wallet) => sum + Number(wallet.usdtBalance || 0), 0);
+  const totalAdminUsdt = treasuryWallets.reduce((sum, wallet) => sum + Number(wallet.usdtBalance || 0), 0);
+  const internalDepositsByNetwork = treasury?.totalPlatformBalance?.byNetwork ?? {};
+
+  const externalTreasuryCards = [
+    { network: "tron", label: "External TRC-20 Balance", meta: "Live TRON admin treasury wallet", accent: chartPalette.violet },
+    { network: "bsc", label: "External BEP-20 Balance", meta: "Live BSC admin treasury wallet", accent: chartPalette.amber },
+    { network: "ethereum", label: "External ERC-20 Balance", meta: "Live Ethereum admin treasury wallet", accent: chartPalette.cyan },
+    { network: "solana", label: "External Solana USDC Balance", meta: "Live Solana admin treasury wallet", accent: chartPalette.emerald },
+  ].map((card) => ({
+    ...card,
+    value: formatMoney(liveUsdtByNetwork[card.network] || "0", false),
+  }));
+
+  const internalDepositCards = [
+    { network: "tron", label: "Internal Deposit Total TRC", meta: "Credited TRON deposits after withdrawals", accent: chartPalette.violet },
+    { network: "bsc", label: "Internal Deposits BEP-20 Total", meta: "Credited BSC deposits after withdrawals", accent: chartPalette.amber },
+    { network: "ethereum", label: "Internal Deposit ERC-20 Total", meta: "Credited Ethereum deposits after withdrawals", accent: chartPalette.cyan },
+    { network: "solana", label: "Internal Solana USDC Balance", meta: "Credited Solana deposits after withdrawals", accent: chartPalette.emerald },
+  ].map((card) => ({
+    ...card,
+    value: formatMoney(internalDepositsByNetwork[card.network] || "0", false),
+  }));
 
   const summaryCards = [
     { label: "Total Users", value: formatCount(totalUsers), meta: `${formatCount(activeUsers)} active in 24h`, accent: chartPalette.emerald },
     { label: "New Users", value: formatCount(newUsers), meta: `${rangeDays}-day chart range`, accent: chartPalette.cyan },
     { label: "KYC Pending", value: formatCount(kycPending), meta: `${formatCount(kycApproved)} verified users`, accent: chartPalette.amber },
     { label: "Total Admin USDT", value: formatMoney(totalAdminUsdt, false), meta: "Combined live admin treasury balance", accent: chartPalette.blue },
-    { label: "Admin ERC-20 USDT", value: formatMoney(liveUsdtByNetwork.ethereum || "0", false), meta: "Ethereum admin treasury wallet", accent: chartPalette.cyan },
-    { label: "Admin BEP-20 USDT", value: formatMoney(liveUsdtByNetwork.bsc || "0", false), meta: "BSC admin treasury wallet", accent: chartPalette.amber },
-    { label: "Admin TRC-20 USDT", value: formatMoney(liveUsdtByNetwork.tron || "0", false), meta: "TRON admin treasury wallet", accent: chartPalette.violet },
+    ...externalTreasuryCards,
+    ...internalDepositCards,
   ];
 
   const securityRows = [
@@ -415,8 +431,7 @@ export default function AdminDashboardPage() {
             <button
               type="button"
               onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
-                queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+                refreshDashboard();
               }}
               className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100 transition hover:border-emerald-300/40 hover:bg-emerald-400/15"
             >
@@ -750,33 +765,6 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function QueueItemCard({
-  title,
-  amount,
-  subtitle,
-  status,
-}: {
-  title: string;
-  amount: string;
-  subtitle: string;
-  status: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 transition hover:border-white/20 hover:bg-white/[0.07]">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-white">{title}</div>
-          <div className="mt-1 text-xs text-slate-400">{subtitle}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-sm font-semibold text-white">{amount}</div>
-          <div className="mt-1 text-[11px] uppercase tracking-[0.2em] text-emerald-200">{status}</div>
-        </div>
-      </div>
     </div>
   );
 }

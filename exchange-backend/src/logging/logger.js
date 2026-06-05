@@ -3,8 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { getRequestContext } from './context.js';
 
 const env = String(process.env.NODE_ENV || 'development').toLowerCase();
-const level = process.env.LOG_LEVEL || (env === 'production' ? 'info' : 'debug');
+const consoleLoggingEnabled = String(process.env.LOG_CONSOLE ?? 'true').toLowerCase() !== 'false';
+const level = consoleLoggingEnabled
+  ? process.env.LOG_LEVEL || (env === 'production' ? 'info' : 'debug')
+  : 'silent';
 const isLocalPretty =
+  consoleLoggingEnabled &&
   (env === 'development' || env === 'local') &&
   String(process.env.LOG_PRETTY || 'true').toLowerCase() !== 'false';
 

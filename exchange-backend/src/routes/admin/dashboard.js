@@ -13,6 +13,7 @@ import { REQUEST_STATUS_FILTERS } from '../../services/kycService.js';
  *     description: Administrative dashboard snapshots
  */
 import {
+  applyRegularUserFilter,
   getOverviewSnapshot,
   getActivityFeed,
 } from '../../services/adminDashboardService.js';
@@ -119,8 +120,8 @@ router.get('/metrics', guard, async (_req, res) => {
     kycPendingRow,
     uniqueAssets,
   ] = await Promise.all([
-    db('users').count({ count: '*' }).first(),
-    db('users').where({ kyc_verified: true }).count({ count: '*' }).first(),
+    applyRegularUserFilter(db('users')).count({ count: '*' }).first(),
+    applyRegularUserFilter(db('users')).where({ kyc_verified: true }).count({ count: '*' }).first(),
     db('market_symbols').count({ count: '*' }).first(),
     db('deposits').count({ count: '*' }).first(),
     db('withdrawals').count({ count: '*' }).first(),

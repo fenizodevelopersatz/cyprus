@@ -32,6 +32,12 @@ function parseCount(row, field = 'count') {
   return toNumber(first);
 }
 
+export function applyRegularUserFilter(query, alias = 'users') {
+  return query.whereRaw("FIND_IN_SET('admin', REPLACE(COALESCE(??, ''), ' ', '')) = 0", [
+    `${alias}.roles`,
+  ]);
+}
+
 function toDateKey(value) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -339,10 +345,16 @@ export async function getOverviewSnapshot({ rangeDays } = {}) {
     spotLeaders,
     stakingParticipants,
   ] = await Promise.all([
-    db('users').count({ count: '*' }).first(),
-    db('users').where({ kyc_verified: true }).count({ count: '*' }).first(),
-    db('users').where('created_at', '>=', since24h).count({ count: '*' }).first(),
-    db('user_profiles').where('last_login', '>=', since24h).count({ count: '*' }).first(),
+    applyRegularUserFilter(db('users')).count({ count: '*' }).first(),
+    applyRegularUserFilter(db('users')).where({ kyc_verified: true }).count({ count: '*' }).first(),
+    applyRegularUserFilter(db('users')).where('created_at', '>=', since24h).count({ count: '*' }).first(),
+    applyRegularUserFilter(
+      db('user_profiles as p').leftJoin('users as u', 'p.user_id', 'u.id'),
+      'u'
+    )
+      .where('p.last_login', '>=', since24h)
+      .count({ count: '*' })
+      .first(),
     db('kyc_requests')
       .where((qb) => qb.whereIn('status', REQUEST_STATUS_FILTERS.IN_REVIEW).orWhereNull('status'))
       .count({ count: '*' })
@@ -372,18 +384,21 @@ export async function getOverviewSnapshot({ rangeDays } = {}) {
       .whereIn('status', PENDING_FIAT_STATUSES)
       .count({ count: '*' })
       .first(),
-    db('users').where('created_at', '<', sinceRange).count({ count: '*' }).first(),
-    db('users')
+    applyRegularUserFilter(db('users')).where('created_at', '<', sinceRange).count({ count: '*' }).first(),
+    applyRegularUserFilter(db('users'))
       .where('created_at', '>=', sinceRange)
       .select(db.raw('DATE(created_at) as day'))
       .count({ new: '*' })
       .groupByRaw('DATE(created_at)')
       .orderBy('day', 'asc'),
-    db('user_profiles')
-      .where('last_login', '>=', sinceRange)
-      .select(db.raw('DATE(last_login) as day'))
+    applyRegularUserFilter(
+      db('user_profiles as p').leftJoin('users as u', 'p.user_id', 'u.id'),
+      'u'
+    )
+      .where('p.last_login', '>=', sinceRange)
+      .select(db.raw('DATE(p.last_login) as day'))
       .count({ active: '*' })
-      .groupByRaw('DATE(last_login)')
+      .groupByRaw('DATE(p.last_login)')
       .orderBy('day', 'asc'),
     db('deposits')
       .where('created_at', '>=', sinceRange)

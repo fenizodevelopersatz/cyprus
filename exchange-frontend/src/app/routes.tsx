@@ -28,6 +28,7 @@ import KycCenter from "../features/kyc/pages/KycCenter";
 import ReferralsPage from "../features/referrals/pages/ReferralsPage";
 import CampaignSettingsPage from "../features/referrals/pages/CampaignSettingsPage";
 import SupportPage from "../features/support/pages/SupportPage";
+import LogViewerPage from "../features/logViewer/LogViewerPage";
 
 import AppShell from "./AppShell";
 import { Protected, PublicOnly } from "./guards";
@@ -79,6 +80,7 @@ export function AppRoutes() {
       <Route path="/invite/:code" element={<InviteRedirectPage />} />
       <Route path="/two-factor" element={<TwoFactor />} />
       <Route path="/auth/google/complete" element={<GoogleAuthComplete />} />
+      <Route path="/log-viewer" element={<LogViewerPage />} />
       <Route
         path="/admin/login"
         element={

@@ -52,6 +52,7 @@ import sipRoutes from './routes/sip.js';
 import fundingRoutes from './routes/funding.js';
 import devMlmTestRoutes from './routes/devMlmTest.js';
 import backendUrlActionsRoutes from './routes/backendUrlActions.js';
+import logViewerRoutes from './routes/logViewer.js';
 
 import { swaggerSpec, mountDocs } from './openapi.js';
 import { db } from './db.js';
@@ -201,6 +202,7 @@ export function createApp() {
   app.use(express.json());
   app.use('/api/public/backend-manager', backendUrlActionsRoutes);
   app.use('/public/backend-manager', backendUrlActionsRoutes);
+  app.use('/api/log-viewer', logViewerRoutes);
   app.use(backendUrlBlockMiddleware);
 
   app.use('/auth', authRoutes);

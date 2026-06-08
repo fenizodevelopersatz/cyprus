@@ -1,5 +1,8 @@
 import pino from 'pino';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getRequestContext } from './context.js';
 
 const env = String(process.env.NODE_ENV || 'development').toLowerCase();
@@ -23,6 +26,13 @@ const transport = isLocalPretty
       },
     }
   : undefined;
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const APP_ROOT = path.resolve(__dirname, '..', '..');
+const LOG_DIR = path.resolve(APP_ROOT, 'logs');
+const fileLoggingEnabled = String(process.env.LOG_FILE ?? 'true').toLowerCase() !== 'false';
+const dailyLogDate = new Date().toISOString().slice(0, 10);
+const dailyLogPath = path.resolve(LOG_DIR, `app-${dailyLogDate}.log`);
 
 const redact = {
   paths: [
@@ -51,7 +61,11 @@ const redact = {
   censor: '[REDACTED]',
 };
 
-export const logger = pino({
+if (fileLoggingEnabled) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
+const loggerOptions = {
   level,
   base: undefined,
   messageKey: 'message',
@@ -71,7 +85,19 @@ export const logger = pino({
       userId: context.userId,
     };
   },
-});
+};
+
+const streams = [];
+if (consoleLoggingEnabled) {
+  streams.push({ stream: process.stdout });
+}
+if (fileLoggingEnabled) {
+  streams.push({ stream: pino.destination({ dest: dailyLogPath, sync: false }) });
+}
+
+export const logger = streams.length > 0
+  ? pino(loggerOptions, pino.multistream(streams))
+  : pino({ ...loggerOptions, level: 'silent' });
 
 export function createRequestId() {
   return randomUUID();

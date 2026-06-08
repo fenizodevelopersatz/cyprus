@@ -16,6 +16,7 @@ import {
 import bs58 from 'bs58';
 import bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
+import { getSolanaMode } from './networkMode.js';
 
 const DEFAULT_RPC_BY_CLUSTER = {
   devnet: 'https://api.devnet.solana.com',
@@ -32,7 +33,7 @@ const DEFAULT_USDC_MINT_BY_CLUSTER = {
 };
 
 export function getSolanaCluster(assetConfig = {}) {
-  return String(assetConfig.chainId || assetConfig.chain_id || process.env.NETWORK || process.env.SOLANA_NETWORK || 'devnet')
+  return String(assetConfig.chainId || assetConfig.chain_id || getSolanaMode() || 'devnet')
     .trim()
     .toLowerCase();
 }
@@ -50,8 +51,8 @@ export function getSolanaRpcUrl(assetConfig = {}) {
       assetConfig.rpc_url ||
       assetConfig.fullHost ||
       assetConfig.full_host ||
-      process.env.SOLANA_RPC_URL ||
       process.env[envKey] ||
+      process.env.SOLANA_RPC_URL ||
       DEFAULT_RPC_BY_CLUSTER[cluster] ||
       DEFAULT_RPC_BY_CLUSTER.devnet
   ).trim();
@@ -62,9 +63,11 @@ export function getSolanaTokenMint(assetConfig = {}) {
   return String(
     assetConfig.contractAddress ||
       assetConfig.contract_address ||
+      (cluster === 'mainnet' || cluster === 'mainnet-beta' ? process.env.SOLANA_MAINNET_USDC_MINT : '') ||
+      (cluster === 'testnet' ? process.env.SOLANA_TESTNET_USDC_MINT : '') ||
+      (cluster === 'devnet' ? process.env.SOLANA_DEVNET_USDC_MINT : '') ||
       process.env.SOLANA_TOKEN_MINT ||
       process.env.SOLANA_USDC_MINT ||
-      (cluster === 'testnet' ? process.env.SOLANA_TESTNET_USDC_MINT : '') ||
       DEFAULT_USDC_MINT_BY_CLUSTER[cluster] ||
       DEFAULT_USDC_MINT_BY_CLUSTER.devnet
   ).trim();

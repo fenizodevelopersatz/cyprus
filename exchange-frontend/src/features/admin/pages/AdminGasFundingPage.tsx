@@ -42,6 +42,7 @@ export default function AdminGasFundingPage() {
       ethereum: 0,
       bsc: 0,
       tron: 0,
+      solana: 0,
       total: 0,
     };
     for (const item of items) {
@@ -52,6 +53,7 @@ export default function AdminGasFundingPage() {
       if (network === "ethereum") totals.ethereum += safeAmount;
       if (network === "bsc") totals.bsc += safeAmount;
       if (network === "tron") totals.tron += safeAmount;
+      if (network === "solana") totals.solana += safeAmount;
     }
     return totals;
   }, [items]);
@@ -76,7 +78,12 @@ export default function AdminGasFundingPage() {
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">TRC-20 Gas</div>
             <div className="mt-2 text-2xl font-semibold text-white">{gasStats.tron.toFixed(6)} TRX</div>
-          </div>          
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Solana USDC Gas</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{gasStats.solana.toFixed(6)} SOL</div>
+            <div className="mt-1 text-xs text-slate-400">Native SOL top-up for USDC sweep execution</div>
+          </div>
         </div>
       </section>
 
@@ -87,6 +94,7 @@ export default function AdminGasFundingPage() {
             <option value="ethereum">Ethereum</option>
             <option value="bsc">BSC</option>
             <option value="tron">TRON</option>
+            <option value="solana">Solana USDC</option>
           </select>
           <input className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="Status" value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))} />
           <input className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" placeholder="User ID" value={filters.userId} onChange={(event) => setFilters((prev) => ({ ...prev, userId: event.target.value, page: 1 }))} />
@@ -116,7 +124,7 @@ export default function AdminGasFundingPage() {
             <div key={item.id} className="grid grid-cols-[70px_80px_90px_1fr_1fr_110px_120px_1fr_1fr] gap-2 rounded-2xl border border-white/10 px-3 py-3">
               <span>{item.id}</span>
               <span>{item.userId}</span>
-              <span className="capitalize">{item.network}</span>
+              <span className="capitalize">{item.network === "solana" ? "Solana USDC" : item.network}</span>
               <span className="break-all text-xs text-slate-300">{item.sourceAdminWalletAddress}</span>
               <span className="break-all text-xs text-slate-300">{item.destinationUserWalletAddress}</span>
               <span>{item.amountDecimal} {item.gasAsset}</span>

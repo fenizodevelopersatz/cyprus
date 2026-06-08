@@ -15,8 +15,8 @@ const isLocalPretty =
   (env === 'development' || env === 'local') &&
   String(process.env.LOG_PRETTY || 'true').toLowerCase() !== 'false';
 
-const transport = isLocalPretty
-  ? {
+const consoleStream = isLocalPretty
+  ? pino.transport({
       target: 'pino-pretty',
       options: {
         colorize: true,
@@ -24,15 +24,18 @@ const transport = isLocalPretty
         singleLine: true,
         ignore: 'pid,hostname',
       },
-    }
-  : undefined;
+    })
+  : process.stdout;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const LOG_DIR = path.resolve(APP_ROOT, 'logs');
-const fileLoggingEnabled = String(process.env.LOG_FILE ?? 'true').toLowerCase() !== 'false';
+const fileLoggingEnabled = String(process.env.LOG_FILE ?? process.env.LOG_TO_FILE ?? 'true').toLowerCase() !== 'false';
 const dailyLogDate = new Date().toISOString().slice(0, 10);
-const dailyLogPath = path.resolve(LOG_DIR, `app-${dailyLogDate}.log`);
+const configuredLogPath = String(process.env.LOG_FILE_PATH || '').trim();
+const dailyLogPath = configuredLogPath
+  ? path.resolve(APP_ROOT, configuredLogPath)
+  : path.resolve(LOG_DIR, `app-${dailyLogDate}.log`);
 
 const redact = {
   paths: [
@@ -62,7 +65,7 @@ const redact = {
 };
 
 if (fileLoggingEnabled) {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
+  fs.mkdirSync(path.dirname(dailyLogPath), { recursive: true });
 }
 
 const loggerOptions = {
@@ -71,7 +74,6 @@ const loggerOptions = {
   messageKey: 'message',
   timestamp: pino.stdTimeFunctions.isoTime,
   redact,
-  transport,
   formatters: {
     level(label) {
       return { level: label };
@@ -89,7 +91,7 @@ const loggerOptions = {
 
 const streams = [];
 if (consoleLoggingEnabled) {
-  streams.push({ stream: process.stdout });
+  streams.push({ stream: consoleStream });
 }
 if (fileLoggingEnabled) {
   streams.push({ stream: pino.destination({ dest: dailyLogPath, sync: false }) });

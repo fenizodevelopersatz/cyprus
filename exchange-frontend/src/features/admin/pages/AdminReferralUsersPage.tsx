@@ -45,7 +45,16 @@ export default function AdminReferralUsersPage() {
             Open any user referral hub and review their MLM level, wallet balance, member growth, income ledger, and payout history.
           </p>
         </div>
-        <form onSubmit={submitSearch} className="ml-auto flex gap-2">
+        <form onSubmit={submitSearch} className="ml-auto flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={usersQuery.isFetching}
+            onClick={() => void usersQuery.refetch()}
+          >
+            {usersQuery.isFetching ? "Refreshing..." : "Refresh"}
+          </Button>
           <input
             className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-emerald-400/60 focus:outline-none"
             placeholder="Search name or email"

@@ -5,6 +5,7 @@ import { decryptPrivateKey, encryptPrivateKey } from '../utils/crypto.js';
 import { getSignalAssetSecretByNetwork } from './signalAssetService.js';
 import { getTronClient, normalizeTronHost } from '../utils/tron.js';
 import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
+import { pickEnvByMode } from '../utils/networkMode.js';
 import {
   getSolanaNativeBalanceRaw,
   getSolanaTokenBalanceRaw,
@@ -49,6 +50,11 @@ export const NETWORK_CONFIG = {
     gasTopupAmountEnv: 'ETH_GAS_TOPUP_AMOUNT',
     rpcEnv: 'ETH_RPC_URL',
     rpcFallbackEnv: 'ETH_RPC_HTTP',
+    rpcModeEnvs: {
+      mainnet: ['ETH_RPC_MAINNET', 'ETH_MAINNET_RPC_URL'],
+      testnet: ['ETH_RPC_TESTNET', 'ETH_SEPOLIA_RPC_URL', 'ETH_GOERLI_RPC_URL'],
+      devnet: ['ETH_RPC_DEVNET', 'ETH_SEPOLIA_RPC_URL'],
+    },
   },
   bsc: {
     adminWalletEnv: 'BSC_ADMIN_WALLET',
@@ -59,10 +65,20 @@ export const NETWORK_CONFIG = {
     gasTopupAmountEnv: 'BSC_GAS_TOPUP_AMOUNT',
     rpcEnv: 'BSC_RPC_URL',
     rpcFallbackEnv: 'BSC_RPC_HTTP',
+    rpcModeEnvs: {
+      mainnet: ['BSC_RPC_MAINNET', 'BSC_MAINNET_RPC_URL'],
+      testnet: ['BSC_RPC_TESTNET', 'BSC_TESTNET_RPC_URL'],
+      devnet: ['BSC_RPC_TESTNET', 'BSC_TESTNET_RPC_URL'],
+    },
   },
   tron: {
     rpcEnv: 'TRX_API_URL',
     rpcFallbackEnv: 'TRON_FULL_HOST',
+    rpcModeEnvs: {
+      mainnet: ['TRX_API_MAINNET', 'TRON_MAINNET_FULL_HOST'],
+      testnet: ['TRX_API_NILE', 'TRON_NILE_FULL_HOST', 'TRX_API_TESTNET'],
+      devnet: ['TRX_API_NILE', 'TRON_NILE_FULL_HOST', 'TRX_API_TESTNET'],
+    },
   },
   solana: {
     adminWalletEnv: 'ADMIN_WALLET_ADDRESS',
@@ -162,6 +178,7 @@ export async function getSweepNetworkConfig(network) {
       assetConfig?.fullHost ||
       assetRow?.rpc_url ||
       assetRow?.full_host ||
+      pickEnvByMode(envConfig.rpcModeEnvs, [envConfig.rpcEnv, envConfig.rpcFallbackEnv]) ||
       process.env[envConfig.rpcEnv] ||
       process.env[envConfig.rpcFallbackEnv] ||
       ''
@@ -170,6 +187,7 @@ export async function getSweepNetworkConfig(network) {
     assetConfig?.fullHost ||
       assetRow?.rpc_url ||
       assetRow?.full_host ||
+      pickEnvByMode(envConfig.rpcModeEnvs, [envConfig.rpcFallbackEnv, envConfig.rpcEnv]) ||
       process.env[envConfig.rpcFallbackEnv] ||
       process.env[envConfig.rpcEnv] ||
       ''

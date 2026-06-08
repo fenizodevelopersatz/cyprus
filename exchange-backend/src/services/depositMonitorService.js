@@ -10,6 +10,7 @@ import {
 import { bscLogger, cronLogger, depositLogger, ethereumLogger, tronLogger } from '../logging/loggers.js';
 import { getTronClient } from '../utils/tron.js';
 import { createLoggedRpcProvider } from '../utils/rpcDiagnostics.js';
+import { pickEnvByMode } from '../utils/networkMode.js';
 
 const ERC20_TRANSFER_TOPIC = id('Transfer(address,address,uint256)');
 const ERC20_INTERFACE = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
@@ -47,7 +48,11 @@ const NETWORK_CONFIGS = [
   {
     network: 'ethereum',
     walletNetwork: 'ERC20',
-    rpcUrl: process.env.ETH_RPC_URL,
+    rpcUrl: pickEnvByMode({
+      mainnet: ['ETH_RPC_MAINNET', 'ETH_MAINNET_RPC_URL'],
+      testnet: ['ETH_RPC_TESTNET', 'ETH_SEPOLIA_RPC_URL', 'ETH_GOERLI_RPC_URL'],
+      devnet: ['ETH_RPC_DEVNET', 'ETH_SEPOLIA_RPC_URL'],
+    }, ['ETH_RPC_URL', 'ETH_RPC_HTTP']),
     contractAddress: process.env.USDT_ETH_CONTRACT,
     decimals: 6,
     confirmations: getRequiredConfirmations('ethereum'),
@@ -56,7 +61,11 @@ const NETWORK_CONFIGS = [
   {
     network: 'bsc',
     walletNetwork: 'BEP20',
-    rpcUrl: process.env.BSC_RPC_URL,
+    rpcUrl: pickEnvByMode({
+      mainnet: ['BSC_RPC_MAINNET', 'BSC_MAINNET_RPC_URL'],
+      testnet: ['BSC_RPC_TESTNET', 'BSC_TESTNET_RPC_URL'],
+      devnet: ['BSC_RPC_TESTNET', 'BSC_TESTNET_RPC_URL'],
+    }, ['BSC_RPC_URL', 'BSC_RPC_HTTP']),
     contractAddress: process.env.USDT_BSC_CONTRACT,
     decimals: 18,
     confirmations: getRequiredConfirmations('bsc'),
@@ -66,7 +75,11 @@ const NETWORK_CONFIGS = [
     network: 'tron',
     walletNetwork: 'TRC20',
     contractAddress: process.env.USDT_TRON_CONTRACT,
-    fullHost: process.env.TRX_API_URL,
+    fullHost: pickEnvByMode({
+      mainnet: ['TRX_API_MAINNET', 'TRON_MAINNET_FULL_HOST'],
+      testnet: ['TRX_API_NILE', 'TRON_NILE_FULL_HOST', 'TRX_API_TESTNET'],
+      devnet: ['TRX_API_NILE', 'TRON_NILE_FULL_HOST', 'TRX_API_TESTNET'],
+    }, ['TRX_API_URL', 'TRON_FULL_HOST', 'TRON_API_BASE']),
     decimals: 6,
     confirmations: getRequiredConfirmations('tron'),
     networkType: 'TRON',

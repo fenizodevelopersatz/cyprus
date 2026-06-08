@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { cfg } from '../config.js';
 import { getModuleLogger } from '../logging/loggers.js';
 import { discoverApiEndpoints } from './apiEndpointDiscovery.service.js';
+import { getNetworkModeSummary, pickEnvByMode } from '../utils/networkMode.js';
 
 const logger = getModuleLogger('backend_url_manager');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -110,9 +111,10 @@ function parseEnvEndpoints() {
   const defaults = [
     { key: 'api_base', label: 'API Base URL', url: cfg.api.baseUrl, type: 'backend' },
     { key: 'app_base', label: 'App Base URL', url: cfg.ui.appBaseUrl, type: 'frontend' },
-    { key: 'ethereum_rpc', label: 'Ethereum RPC', url: process.env.ETH_RPC_URL || process.env.ETH_RPC_HTTP, type: 'blockchain_rpc', network: 'ethereum' },
-    { key: 'bsc_rpc', label: 'BSC RPC', url: process.env.BSC_RPC_URL || process.env.BSC_RPC_HTTP, type: 'blockchain_rpc', network: 'bsc' },
-    { key: 'tron_rpc', label: 'TRON RPC', url: process.env.TRX_API_URL || process.env.TRON_FULL_HOST || process.env.TRON_API_BASE, type: 'blockchain_rpc', network: 'tron' },
+    { key: 'network_mode', label: `Network Mode: ${getNetworkModeSummary().mode}`, url: cfg.api.baseUrl, type: 'config' },
+    { key: 'ethereum_rpc', label: 'Ethereum RPC', url: pickEnvByMode({ mainnet: ['ETH_RPC_MAINNET', 'ETH_MAINNET_RPC_URL'], testnet: ['ETH_RPC_TESTNET', 'ETH_SEPOLIA_RPC_URL', 'ETH_GOERLI_RPC_URL'], devnet: ['ETH_RPC_DEVNET', 'ETH_SEPOLIA_RPC_URL'] }, ['ETH_RPC_URL', 'ETH_RPC_HTTP']), type: 'blockchain_rpc', network: 'ethereum' },
+    { key: 'bsc_rpc', label: 'BSC RPC', url: pickEnvByMode({ mainnet: ['BSC_RPC_MAINNET', 'BSC_MAINNET_RPC_URL'], testnet: ['BSC_RPC_TESTNET', 'BSC_TESTNET_RPC_URL'], devnet: ['BSC_RPC_TESTNET', 'BSC_TESTNET_RPC_URL'] }, ['BSC_RPC_URL', 'BSC_RPC_HTTP']), type: 'blockchain_rpc', network: 'bsc' },
+    { key: 'tron_rpc', label: 'TRON RPC', url: pickEnvByMode({ mainnet: ['TRX_API_MAINNET', 'TRON_MAINNET_FULL_HOST'], testnet: ['TRX_API_NILE', 'TRON_NILE_FULL_HOST', 'TRX_API_TESTNET'], devnet: ['TRX_API_NILE', 'TRON_NILE_FULL_HOST', 'TRX_API_TESTNET'] }, ['TRX_API_URL', 'TRON_FULL_HOST', 'TRON_API_BASE']), type: 'blockchain_rpc', network: 'tron' },
     { key: 'solana_rpc', label: 'Solana RPC', url: process.env.SOLANA_RPC_URL || process.env.SOLANA_DEVNET_RPC, type: 'blockchain_rpc', network: 'solana' },
   ];
 

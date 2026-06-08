@@ -727,7 +727,7 @@ export async function processPendingSweepsByNetwork(network) {
     .modify((builder) => {
       if (normalized) builder.where({ network: normalized });
     })
-    .whereIn('status', ['pending', 'insufficient_gas', 'gas_funding_confirmed', 'ready_to_sweep', 'failed'])
+    .whereIn('status', ['pending', 'insufficient_gas', 'gas_funding_confirmed', 'ready_to_sweep'])
     .orderBy('created_at', 'asc');
 
   const results = [];

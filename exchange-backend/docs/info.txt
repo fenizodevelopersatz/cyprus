@@ -1,114 +1,8 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- Keep admin user 43 while cleaning user data
 CREATE TEMPORARY TABLE keep_admin_users AS
-SELECT id
-FROM users
-WHERE LOWER(COALESCE(roles, '')) LIKE '%admin%';
-
--- Clear sessions / OTPs
-TRUNCATE TABLE refresh_tokens;
-TRUNCATE TABLE login_otps;
-TRUNCATE TABLE password_reset_otps;
-
--- Clear KYC
-TRUNCATE TABLE kyc_activity;
-TRUNCATE TABLE kyc_documents;
-TRUNCATE TABLE kyc_requests;
-
--- Clear transactions / orders / MLM
-TRUNCATE TABLE wallet_transactions;
-TRUNCATE TABLE wallet_ledger;
-TRUNCATE TABLE deposits;
-TRUNCATE TABLE withdrawals;
-TRUNCATE TABLE fiat_deposits;
-TRUNCATE TABLE deposit_transactions;
-TRUNCATE TABLE deposit_sync_runs;
-TRUNCATE TABLE deposit_scan_state;
-TRUNCATE TABLE deposit_chain_cursors;
-TRUNCATE TABLE sweep_transactions;
-TRUNCATE TABLE treasury_sweep_runs;
-TRUNCATE TABLE gas_funding_transactions;
-
-TRUNCATE TABLE spot_orders;
-TRUNCATE TABLE spot_trades;
-TRUNCATE TABLE futures_positions;
-TRUNCATE TABLE futures_trades;
-TRUNCATE TABLE futures_funding_rates;
-TRUNCATE TABLE futures_price_ticks;
-TRUNCATE TABLE swap_quotes;
-TRUNCATE TABLE paper_orders;
-TRUNCATE TABLE paper_positions;
-
-TRUNCATE TABLE staking_positions;
-TRUNCATE TABLE sip_orders;
-TRUNCATE TABLE sip_subscriptions;
-
-TRUNCATE TABLE referral_referrals;
-TRUNCATE TABLE referral_stats;
-TRUNCATE TABLE referral_profiles;
-TRUNCATE TABLE mlm_income_history;
-TRUNCATE TABLE user_team_wallet_summary;
-TRUNCATE TABLE mlm_level_achievements;
-TRUNCATE TABLE mlm_level_bonus_payouts;
-TRUNCATE TABLE user_level_history;
-TRUNCATE TABLE user_position_status;
-TRUNCATE TABLE recurring_bonus_history;
-TRUNCATE TABLE mlm_bonus_cycle_snapshot_members;
-TRUNCATE TABLE mlm_bonus_cycle_snapshots;
-TRUNCATE TABLE mlm_flow_tracking;
-
-
-TRUNCATE TABLE user_telegram_access_history
-
-TRUNCATE TABLE user_signal_logs;
-
--- Keep only admin wallet/address details
-DELETE FROM wallets
-WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
-
-DELETE FROM user_wallets
-WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
-
-DELETE FROM deposit_addresses
-WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
-
-DELETE FROM wallet_addresses
-WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
-
--- Clear ledger/accounting rows; balances/addresses kept above
-TRUNCATE TABLE accounts;
-TRUNCATE TABLE journals;
-TRUNCATE TABLE entries;
-
--- Delete non-admin profiles and users
-DELETE FROM user_profiles
-WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
-
-DELETE FROM users
-WHERE id NOT IN (SELECT id FROM keep_admin_users);
-
--- Keep admin active
-UPDATE users
-SET
-  status = COALESCE(status, 'active'),
-  kyc_verified = 1,
-  kyc_level = GREATEST(COALESCE(kyc_level, 0), 1),
-  updated_at = NOW()
-WHERE id IN (SELECT id FROM keep_admin_users);
-
-DROP TEMPORARY TABLE keep_admin_users;
-
-SET FOREIGN_KEY_CHECKS = 1;
-
-
-
-
-
-
-
-
-//////////////////////////////////////////
-SET FOREIGN_KEY_CHECKS = 0;
+SELECT 43 AS id;
 
 -- Auth/session/user verification data
 TRUNCATE TABLE refresh_tokens;
@@ -180,14 +74,54 @@ TRUNCATE TABLE mlm_flow_tracking;
 -- Signals user logs
 TRUNCATE TABLE user_signal_logs;
 
--- Delete non-admin users and profiles
-DELETE p
-FROM user_profiles p
-JOIN users u ON u.id = p.user_id
-WHERE LOWER(COALESCE(u.roles, '')) NOT LIKE '%admin%';
+-- Dashboard / exchange user-linked rows that can block user deletes
+DELETE FROM dashboard_summary
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+DELETE FROM exchange_connections
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
+
+-- Delete users and profiles, keeping only admin id 43
+DELETE FROM user_profiles
+WHERE user_id NOT IN (SELECT id FROM keep_admin_users);
 
 DELETE FROM users
-WHERE LOWER(COALESCE(roles, '')) NOT LIKE '%admin%';
+WHERE id NOT IN (SELECT id FROM keep_admin_users);
+
+-- Make user 43 admin/active
+UPDATE users
+SET
+  roles = 'admin',
+  kyc_verified = 1,
+  kyc_level = 1,
+  updated_at = NOW()
+WHERE id = 43;
+
+DROP TEMPORARY TABLE keep_admin_users;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- Optional: only run this if you really need admin user id 43 changed to id 1,
+-- and only after confirming id 1 does not already exist:
+-- SELECT id, email, roles FROM users WHERE id IN (1, 43);
+--
+-- SET FOREIGN_KEY_CHECKS = 0;
+-- UPDATE users SET id = 1 WHERE id = 43;
+-- UPDATE user_profiles SET user_id = 1 WHERE user_id = 43;
+-- UPDATE dashboard_summary SET user_id = 1 WHERE user_id = 43;
+-- UPDATE exchange_connections SET user_id = 1 WHERE user_id = 43;
+-- SET FOREIGN_KEY_CHECKS = 1;
+
+
+
+
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+UPDATE users SET id = 1 WHERE id = 43;
+UPDATE user_profiles SET user_id = 1 WHERE user_id = 43;
+UPDATE dashboard_summary SET user_id = 1 WHERE user_id = 43;
+UPDATE exchange_connections SET user_id = 1 WHERE user_id = 43;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -195,13 +129,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 
 
-
-
-
-
-
-
-
+SELECT id, email, roles FROM users WHERE id IN (1, 43);
 
 
 
@@ -375,3 +303,37 @@ BSC: 56
 Solana: mainnet / mainnet-beta
 TRON: should no longer show nile or shasta
 Do this carefully: existing devnet/Nile wallets and user deposit addresses are not automatically valid balances on mainnet. Mainnet needs real funded admin gas wallets and correct private keys.
+
+
+////////////////////////////////////////////////////
+Also obfuscate these shared source files because many pages depend on them:
+
+https://codebeautify.org/javascript-obfuscator
+For exchange-backend only, obfuscate these most important files first:
+
+
+exchange-backend/src/config.js - environment/config values
+-Completed/ exchange-backend/src/app.js - main backend app setup
+-Completed/exchange-backend/src/index.js - server startup
+-Completed/ exchange-backend/src/middleware/auth.js - user authentication
+exchange-backend/src/middleware/roles.js - admin/user role protection
+exchange-backend/src/routes/auth.js - login/register/admin auth routes
+exchange-backend/src/routes/admin.js - main admin routes
+-Completed/ exchange-backend/src/routes/admin/wallet.js - admin wallet operations
+exchange-backend/src/routes/wallet.js - user wallet operations
+exchange-backend/src/routes/funding.js - deposit/withdraw funding routes
+exchange-backend/src/routes/webhooks.js - external webhook entry points
+-Completed/ exchange-backend/src/services/authService.js - auth business logic
+-Completed/ exchange-backend/src/services/walletService.js - wallet logic
+exchange-backend/src/services/userWalletService.js - user wallet balances
+-Completed/ exchange-backend/src/services/sweep.service.js - treasury sweep logic
+exchange-backend/src/services/gasFunding.service.js - gas funding logic
+exchange-backend/src/services/fundingDepositService.js - deposit processing
+exchange-backend/src/services/futuresService.js - futures trading logic
+exchange-backend/src/services/spotService.js - spot trading logic
+exchange-backend/src/services/referralService.js - referral/commission logic
+-Completed/ exchange-backend/src/services/mlmLevelService.js - MLM level logic
+exchange-backend/src/utils/crypto.js - crypto/encryption helper
+exchange-backend/src/utils/totp.js - 2FA helper
+exchange-backend/src/utils/tron.js - Tron wallet/blockchain helper
+exchange-backend/src/utils/solana.js - Solana wallet/blockchain helper

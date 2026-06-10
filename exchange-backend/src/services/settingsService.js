@@ -144,9 +144,36 @@ function validateImageFile(file, field) {
 
 function toAbsoluteSettingsAssetUrl(value) {
   if (!value) return value;
-  if (/^https?:\/\//i.test(value)) return value;
+  const rawValue = String(value);
   const baseUrl = cfg.api?.baseUrl || 'http://localhost:4000';
-  return `${baseUrl}${String(value).startsWith('/') ? value : `/${value}`}`;
+  if (/^https?:\/\//i.test(rawValue)) {
+    try {
+      const url = new URL(rawValue);
+      if (url.pathname.startsWith('/api/storage/site/')) {
+        return `${baseUrl}${url.pathname}${url.search}${url.hash}`;
+      }
+    } catch {
+      return rawValue;
+    }
+    return rawValue;
+  }
+  return `${baseUrl}${rawValue.startsWith('/') ? rawValue : `/${rawValue}`}`;
+}
+
+function toStoredSettingsAssetUrl(value) {
+  if (!value) return value;
+  const rawValue = String(value);
+  if (/^https?:\/\//i.test(rawValue)) {
+    try {
+      const url = new URL(rawValue);
+      if (url.pathname.startsWith('/api/storage/site/')) {
+        return `${url.pathname}${url.search}${url.hash}`;
+      }
+    } catch {
+      return rawValue;
+    }
+  }
+  return rawValue;
 }
 
 export async function getSettings() {
@@ -170,8 +197,14 @@ export async function getSettings() {
 export async function updateSettings(patch = {}) {
   const current = await getSettings();
   const next = { ...current, ...patch };
+  next.siteLogoUrl = toStoredSettingsAssetUrl(next.siteLogoUrl);
+  next.siteFaviconUrl = toStoredSettingsAssetUrl(next.siteFaviconUrl);
   await fs.writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2));
-  return next;
+  return {
+    ...next,
+    siteLogoUrl: toAbsoluteSettingsAssetUrl(next.siteLogoUrl),
+    siteFaviconUrl: toAbsoluteSettingsAssetUrl(next.siteFaviconUrl),
+  };
 }
 
 export async function saveSettingsAsset(field, file) {

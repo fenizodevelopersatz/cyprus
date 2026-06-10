@@ -58,7 +58,7 @@ async function fetchLogViewer<T>(path: string, authHeader: string): Promise<T> {
 
 export default function LogViewerPage() {
   const [authHeader, setAuthHeader] = useState(() => sessionStorage.getItem(AUTH_STORAGE_KEY) || "");
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [files, setFiles] = useState<LogFile[]>([]);
   const [selectedId, setSelectedId] = useState("");

@@ -7,6 +7,7 @@ import {
   recordBlockchainConnectionIssue,
   recordBlockchainConnectionTransaction,
 } from '../services/backendUrlManager.service.js';
+import { orderRuntimeRpcUrlsForUse, recordRpcStatus } from './rpcPool.js';
 
 const rpcLogger = getModuleLogger('rpc');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,65 +60,83 @@ export async function createLoggedRpcProvider({
   logger = rpcLogger,
   extra = {},
 }) {
-  const provider = new JsonRpcProvider(rpcUrl);
-  const maskedRpcUrl = maskRpcUrl(rpcUrl);
+  const rpcUrls = orderRuntimeRpcUrlsForUse({ rpcUrl, network });
+  if (rpcUrls.length === 0) {
+    throw new Error('RPC_URL_NOT_CONFIGURED');
+  }
 
-  try {
-    const detectedNetwork = await provider.getNetwork();
-    logger.info(
-      {
-        event: 'rpc_connected',
+  let lastError = null;
+
+  for (const candidateRpcUrl of rpcUrls) {
+    const provider = new JsonRpcProvider(candidateRpcUrl);
+    const maskedRpcUrl = maskRpcUrl(candidateRpcUrl);
+    const startedAt = Date.now();
+
+    try {
+      const detectedNetwork = await provider.getNetwork();
+      const chainId = normalizeChainId(detectedNetwork?.chainId);
+      const latencyMs = Date.now() - startedAt;
+      recordRpcStatus({ network, rpcUrl: candidateRpcUrl, ok: true, service, latencyMs, chainId });
+      logger.info(
+        {
+          event: 'rpc_connected',
+          service,
+          network,
+          rpcUrl: maskedRpcUrl,
+          chainId,
+          detectedNetworkName: detectedNetwork?.name || null,
+          latencyMs,
+          ...extra,
+        },
+        'rpc_connected'
+      );
+      recordBlockchainConnectionTransaction('rpc_connected', {
         service,
         network,
         rpcUrl: maskedRpcUrl,
-        chainId: normalizeChainId(detectedNetwork?.chainId),
-        detectedNetworkName: detectedNetwork?.name || null,
-        ...extra,
-      },
-      'rpc_connected'
-    );
-    recordBlockchainConnectionTransaction('rpc_connected', {
-      service,
-      network,
-      rpcUrl: maskedRpcUrl,
-      chainId: normalizeChainId(detectedNetwork?.chainId),
-      extra,
-    });
-    return provider;
-  } catch (err) {
-    appendRpcErrorLog({
-      timestamp: new Date().toISOString(),
-      event: 'rpc_startup_failed',
-      service,
-      network,
-      rpcUrl: maskedRpcUrl,
-      ...extra,
-      error: {
-        message: String(err?.message || err || 'RPC_STARTUP_FAILED'),
-        code: err?.code || null,
-        shortMessage: err?.shortMessage || null,
-      },
-    });
-    logger.error(
-      {
-        err,
+        chainId,
+        extra,
+      });
+      return provider;
+    } catch (err) {
+      lastError = err;
+      recordRpcStatus({ network, rpcUrl: candidateRpcUrl, ok: false, service, latencyMs: Date.now() - startedAt, error: err });
+      appendRpcErrorLog({
+        timestamp: new Date().toISOString(),
         event: 'rpc_startup_failed',
         service,
         network,
         rpcUrl: maskedRpcUrl,
         ...extra,
-      },
-      'rpc_startup_failed'
-    );
-    recordBlockchainConnectionIssue('rpc_startup_failed', {
-      service,
-      network,
-      rpcUrl: maskedRpcUrl,
-      extra,
-      error: err,
-    });
-    throw err;
+        error: {
+          message: String(err?.message || err || 'RPC_STARTUP_FAILED'),
+          code: err?.code || null,
+          shortMessage: err?.shortMessage || null,
+        },
+      });
+      logger.error(
+        {
+          err,
+          event: 'rpc_startup_failed',
+          service,
+          network,
+          rpcUrl: maskedRpcUrl,
+          remainingRpcUrls: rpcUrls.length - rpcUrls.indexOf(candidateRpcUrl) - 1,
+          ...extra,
+        },
+        'rpc_startup_failed'
+      );
+      recordBlockchainConnectionIssue('rpc_startup_failed', {
+        service,
+        network,
+        rpcUrl: maskedRpcUrl,
+        extra,
+        error: err,
+      });
+    }
   }
+
+  throw lastError || new Error('RPC_STARTUP_FAILED');
 }
 
 export { RPC_ERROR_LOG_PATH };

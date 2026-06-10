@@ -11,6 +11,12 @@ const LOG_ROOTS = [
   { key: 'logs', label: 'Logs', dir: path.resolve(APP_ROOT, 'logs') },
   { key: 'storage', label: 'Storage', dir: path.resolve(APP_ROOT, 'storage') },
 ];
+const RPC_LOG_FILES = {
+  status: { rootKey: 'storage', relativePath: 'rpc-status.json' },
+  transactions: { rootKey: 'storage', relativePath: 'backend-url-transactions.jsonl' },
+  issues: { rootKey: 'storage', relativePath: 'backend-url-issues.jsonl' },
+  errors: { rootKey: 'logs', relativePath: 'rpc-errors.log' },
+};
 const ALLOWED_EXTENSIONS = new Set(['.log', '.json', '.jsonl']);
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_TAIL_BYTES = 512 * 1024;
@@ -109,6 +115,59 @@ router.get('/files', async (_req, res) => {
     .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 
   return res.json({ files });
+});
+
+router.get('/rpc', async (_req, res) => {
+  const files = Object.entries(RPC_LOG_FILES).map(([key, file]) => ({
+    key,
+    id: encodeId(file.rootKey, file.relativePath),
+    path: file.relativePath,
+    group: file.rootKey === 'storage' ? 'Storage' : 'Logs',
+  }));
+
+  return res.json({ files });
+});
+
+router.get('/rpc/:key', async (req, res) => {
+  const target = RPC_LOG_FILES[String(req.params.key || '').trim().toLowerCase()];
+  if (!target) {
+    return res.status(404).json({ message: 'RPC log file not found' });
+  }
+
+  const decoded = decodeId(encodeId(target.rootKey, target.relativePath));
+  if (!decoded) {
+    return res.status(400).json({ message: 'Invalid RPC log file' });
+  }
+
+  try {
+    const stats = await fs.stat(decoded.absolutePath);
+    if (!stats.isFile()) {
+      return res.status(404).json({ message: 'RPC log file not found' });
+    }
+
+    const tailBytes = Math.min(DEFAULT_TAIL_BYTES, stats.size);
+    const handle = await fs.open(decoded.absolutePath, 'r');
+    try {
+      const buffer = Buffer.alloc(tailBytes);
+      await handle.read(buffer, 0, tailBytes, Math.max(0, stats.size - tailBytes));
+      return res.json({
+        file: {
+          key: req.params.key,
+          name: path.basename(decoded.absolutePath),
+          path: decoded.relativePath.replaceAll(path.sep, '/'),
+          group: decoded.root.label,
+          size: stats.size,
+          modifiedAt: stats.mtime.toISOString(),
+          truncated: stats.size > tailBytes,
+        },
+        content: buffer.toString('utf8'),
+      });
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return res.status(404).json({ message: 'RPC log file not found' });
+  }
 });
 
 router.get('/files/:id/download', async (req, res) => {

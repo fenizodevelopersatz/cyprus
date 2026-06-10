@@ -6,6 +6,7 @@ import { cfg } from '../config.js';
 import { getModuleLogger } from '../logging/loggers.js';
 import { discoverApiEndpoints } from './apiEndpointDiscovery.service.js';
 import { getNetworkModeSummary, pickEnvByMode } from '../utils/networkMode.js';
+import { parseRpcUrls, recordRpcStatus } from '../utils/rpcPool.js';
 
 const logger = getModuleLogger('backend_url_manager');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -85,6 +86,28 @@ function createEndpoint(input, source = 'json') {
   };
 }
 
+function createRpcEndpoints(input, source = 'env_default') {
+  const urls = parseRpcUrls(input?.url);
+  if (urls.length <= 1) {
+    const endpoint = createEndpoint(input, source);
+    return endpoint ? [endpoint] : [];
+  }
+
+  return urls
+    .map((url, index) =>
+      createEndpoint(
+        {
+          ...input,
+          key: `${input.key}_${index + 1}`,
+          label: `${input.label || input.key} #${index + 1}`,
+          url,
+        },
+        source
+      )
+    )
+    .filter(Boolean);
+}
+
 function parseEnvEndpoints() {
   const endpoints = [];
   const raw = String(process.env.BACKEND_URLS || process.env.URL_MANAGER_URLS || '').trim();
@@ -119,8 +142,11 @@ function parseEnvEndpoints() {
   ];
 
   for (const item of defaults) {
-    const endpoint = createEndpoint({ ...item, enabled: Boolean(item.url) }, 'env_default');
-    if (endpoint) endpoints.push(endpoint);
+    const candidates =
+      item.type === 'blockchain_rpc'
+        ? createRpcEndpoints({ ...item, enabled: Boolean(item.url) }, 'env_default')
+        : [createEndpoint({ ...item, enabled: Boolean(item.url) }, 'env_default')].filter(Boolean);
+    endpoints.push(...candidates);
   }
 
   return endpoints;
@@ -317,6 +343,16 @@ async function checkEndpoint(endpoint, options = {}) {
         ? await checkRpcEndpoint(endpoint)
         : await checkHttpEndpoint(endpoint);
     cache.set(endpoint.key, { expiresAt: Date.now() + endpoint.cacheTtlMs, value: result });
+    if (endpoint.type === 'blockchain_rpc' && normalizeKey(endpoint.network) !== 'tron') {
+      recordRpcStatus({
+        network: endpoint.network,
+        rpcUrl: endpoint.url,
+        ok: Boolean(result.ok),
+        service: 'backend_url_manager',
+        latencyMs: result.latencyMs,
+        error: result.rpcError,
+      });
+    }
     logTransaction('backend_url_status_check_completed', endpoint, { actorId: options.actorId || null, result });
     return result;
   } catch (err) {
@@ -328,6 +364,15 @@ async function checkEndpoint(endpoint, options = {}) {
       code: err?.code || null,
     };
     cache.set(endpoint.key, { expiresAt: Date.now() + endpoint.cacheTtlMs, value: result });
+    if (endpoint.type === 'blockchain_rpc' && normalizeKey(endpoint.network) !== 'tron') {
+      recordRpcStatus({
+        network: endpoint.network,
+        rpcUrl: endpoint.url,
+        ok: false,
+        service: 'backend_url_manager',
+        error: err,
+      });
+    }
     logIssue('backend_url_status_check_failed', endpoint, err, { actorId: options.actorId || null });
     return result;
   }

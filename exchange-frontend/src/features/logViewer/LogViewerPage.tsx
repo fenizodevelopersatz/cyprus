@@ -17,15 +17,30 @@ type LogFileDetail = {
   content: string;
 };
 
+type LogSummary = {
+  totals: Record<string, number>;
+  files: Array<LogFile & { counts: Record<string, number> }>;
+};
+
 const AUTH_STORAGE_KEY = "logViewerBasicAuth";
 const PAYMENT_PRESETS = [
   { label: "All lines", value: "" },
   { label: "Payment issues", value: "payment|deposit|withdraw|fiat|funding|wallet|sweep|gas" },
   { label: "Errors only", value: "error|failed|failure|rejected|timeout|exception" },
+  { label: "Email issues", value: "mail|email|smtp|sent|failed|rate|messageId" },
   { label: "Deposits", value: "deposit|funding" },
   { label: "Withdrawals", value: "withdraw|withdrawal" },
   { label: "Sweeps & gas", value: "sweep|gas|treasury" },
-  { label: "RPC issues", value: "rpc|chain|txHash|blockchain" },
+  { label: "RPC issues", value: "rpc|chain|txHash|blockchain|startup|connected|status" },
+];
+
+const FILE_SHORTCUTS = [
+  { label: "App log", query: "app.log" },
+  { label: "Email log", query: "mail-send-log" },
+  { label: "RPC status", query: "rpc-status" },
+  { label: "RPC checks", query: "backend-url-transactions" },
+  { label: "Backend issues", query: "backend-url-issues" },
+  { label: "RPC errors", query: "rpc-errors" },
 ];
 
 function formatBytes(value: number) {
@@ -67,6 +82,7 @@ export default function LogViewerPage() {
   const [extension, setExtension] = useState("all");
   const [tailBytes, setTailBytes] = useState(512 * 1024);
   const [lineFilter, setLineFilter] = useState("");
+  const [summary, setSummary] = useState<LogSummary | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -117,8 +133,12 @@ export default function LogViewerPage() {
     setLoadingFiles(true);
     setError("");
     try {
-      const payload = await fetchLogViewer<{ files: LogFile[] }>("/api/log-viewer/files", header);
+      const [payload, summaryPayload] = await Promise.all([
+        fetchLogViewer<{ files: LogFile[] }>("/api/log-viewer/files", header),
+        fetchLogViewer<LogSummary>("/api/log-viewer/summary", header),
+      ]);
       setFiles(payload.files);
+      setSummary(summaryPayload);
       setSelectedId((current) => current || payload.files[0]?.id || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load log files");
@@ -267,6 +287,20 @@ export default function LogViewerPage() {
       <main className="mx-auto grid max-w-[1880px] gap-4 px-4 py-4 xl:grid-cols-[320px_1fr] 2xl:grid-cols-[360px_1fr]">
         <aside className="min-h-[calc(100vh-96px)] rounded border border-slate-200 bg-white">
           <div className="border-b border-slate-200 p-4">
+            {summary ? (
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                {[
+                  ["Errors", summary.totals.errors],
+                  ["RPC", summary.totals.rpc],
+                  ["Mail", summary.totals.mail],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
+                    <div className="text-[10px] font-semibold uppercase text-slate-500">{label}</div>
+                    <div className="text-sm font-semibold text-slate-900">{Number(value || 0)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -283,6 +317,22 @@ export default function LogViewerPage() {
               <option value=".json">.json</option>
               <option value=".jsonl">.jsonl</option>
             </select>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {FILE_SHORTCUTS.map((shortcut) => (
+                <button
+                  key={shortcut.label}
+                  type="button"
+                  onClick={() => {
+                    setSearch(shortcut.query);
+                    const target = files.find((file) => file.name.toLowerCase().includes(shortcut.query));
+                    if (target) setSelectedId(target.id);
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-800"
+                >
+                  {shortcut.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="max-h-[calc(100vh-210px)] overflow-auto">
             {filteredFiles.map((file) => (

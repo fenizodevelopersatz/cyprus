@@ -17,6 +17,16 @@ const RPC_LOG_FILES = {
   issues: { rootKey: 'storage', relativePath: 'backend-url-issues.jsonl' },
   errors: { rootKey: 'logs', relativePath: 'rpc-errors.log' },
 };
+const KNOWN_LOG_FILES = {
+  app: { rootKey: 'logs', relativePath: 'app.log' },
+  appToday: { rootKey: 'logs', relativePath: `app-${new Date().toISOString().slice(0, 10)}.log` },
+  email: { rootKey: 'storage', relativePath: 'mail-send-log.jsonl' },
+  rpcStatus: { rootKey: 'storage', relativePath: 'rpc-status.json' },
+  rpcTransactions: { rootKey: 'storage', relativePath: 'backend-url-transactions.jsonl' },
+  rpcIssues: { rootKey: 'storage', relativePath: 'backend-url-issues.jsonl' },
+  rpcErrors: { rootKey: 'logs', relativePath: 'rpc-errors.log' },
+  backendRegistry: { rootKey: 'storage', relativePath: 'backend-url-registry.json' },
+};
 const ALLOWED_EXTENSIONS = new Set(['.log', '.json', '.jsonl']);
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_TAIL_BYTES = 512 * 1024;
@@ -106,15 +116,119 @@ async function walkLogFiles(root, currentDir = root.dir, baseDir = root.dir) {
   return files;
 }
 
+async function getKnownLogFiles() {
+  const files = [];
+  for (const file of Object.values(KNOWN_LOG_FILES)) {
+    const decoded = decodeId(encodeId(file.rootKey, file.relativePath));
+    if (!decoded) continue;
+
+    const extension = path.extname(decoded.relativePath).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(extension)) continue;
+
+    try {
+      const stats = await fs.stat(decoded.absolutePath);
+      files.push({
+        id: encodeId(file.rootKey, file.relativePath),
+        name: path.basename(decoded.absolutePath),
+        path: decoded.relativePath.replaceAll(path.sep, '/'),
+        group: decoded.root.label,
+        extension,
+        size: stats.isFile() ? stats.size : 0,
+        modifiedAt: stats.mtime.toISOString(),
+      });
+    } catch {
+      files.push({
+        id: encodeId(file.rootKey, file.relativePath),
+        name: path.basename(decoded.absolutePath),
+        path: decoded.relativePath.replaceAll(path.sep, '/'),
+        group: decoded.root.label,
+        extension,
+        size: 0,
+        modifiedAt: new Date(0).toISOString(),
+      });
+    }
+  }
+  return files;
+}
+
+async function readTailText(absolutePath, tailBytes = DEFAULT_TAIL_BYTES) {
+  const stats = await fs.stat(absolutePath);
+  if (!stats.isFile()) return '';
+  const bytes = Math.min(Math.max(tailBytes, 4096), MAX_FILE_BYTES, stats.size);
+  const handle = await fs.open(absolutePath, 'r');
+  try {
+    const buffer = Buffer.alloc(bytes);
+    await handle.read(buffer, 0, bytes, Math.max(0, stats.size - bytes));
+    return buffer.toString('utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+function countMatches(content, pattern) {
+  if (!content) return 0;
+  return content.split(/\r?\n/).filter((line) => pattern.test(line)).length;
+}
+
+async function buildLogSummary() {
+  const knownFiles = await getKnownLogFiles();
+  const summaries = [];
+  const patterns = {
+    errors: /error|failed|failure|exception|timeout|rejected/i,
+    warnings: /warn|warning|rate limit|too many/i,
+    rpc: /rpc|blockchain|eth_blocknumber|startup_failed|connected/i,
+    mail: /mail|email|smtp|messageid/i,
+    deposits: /deposit|funding/i,
+    withdrawals: /withdraw|sweep|gas|treasury/i,
+  };
+
+  for (const file of knownFiles) {
+    const decoded = decodeId(file.id);
+    if (!decoded) continue;
+    let content = '';
+    try {
+      content = await readTailText(decoded.absolutePath);
+    } catch {
+      content = '';
+    }
+    summaries.push({
+      ...file,
+      counts: Object.fromEntries(
+        Object.entries(patterns).map(([key, pattern]) => [key, countMatches(content, pattern)])
+      ),
+    });
+  }
+
+  const totals = summaries.reduce(
+    (acc, item) => {
+      for (const [key, value] of Object.entries(item.counts)) {
+        acc[key] = (acc[key] || 0) + Number(value || 0);
+      }
+      return acc;
+    },
+    {}
+  );
+
+  return { files: summaries, totals };
+}
+
 router.use(requireLogViewerAuth);
 
 router.get('/files', async (_req, res) => {
-  const groups = await Promise.all(LOG_ROOTS.map((root) => walkLogFiles(root)));
-  const files = groups
+  const groups = await Promise.all([...LOG_ROOTS.map((root) => walkLogFiles(root)), getKnownLogFiles()]);
+  const byId = new Map();
+  for (const file of groups.flat()) {
+    byId.set(file.id, file);
+  }
+  const files = Array.from(byId.values())
     .flat()
     .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 
   return res.json({ files });
+});
+
+router.get('/summary', async (_req, res) => {
+  return res.json(await buildLogSummary());
 });
 
 router.get('/rpc', async (_req, res) => {
@@ -176,7 +290,12 @@ router.get('/files/:id/download', async (req, res) => {
     return res.status(400).json({ message: 'Invalid log file id' });
   }
 
-  const stats = await fs.stat(decoded.absolutePath);
+  let stats;
+  try {
+    stats = await fs.stat(decoded.absolutePath);
+  } catch {
+    return res.status(404).json({ message: 'Log file not found' });
+  }
   if (!stats.isFile()) {
     return res.status(404).json({ message: 'Log file not found' });
   }
@@ -202,7 +321,23 @@ router.get('/files/:id', async (req, res) => {
     return res.status(400).json({ message: 'Invalid log file id' });
   }
 
-  const stats = await fs.stat(decoded.absolutePath);
+  let stats;
+  try {
+    stats = await fs.stat(decoded.absolutePath);
+  } catch {
+    return res.json({
+      file: {
+        id: req.params.id,
+        name: path.basename(decoded.absolutePath),
+        path: decoded.relativePath.replaceAll(path.sep, '/'),
+        group: decoded.root.label,
+        size: 0,
+        modifiedAt: new Date(0).toISOString(),
+        truncated: false,
+      },
+      content: '',
+    });
+  }
   if (!stats.isFile()) {
     return res.status(404).json({ message: 'Log file not found' });
   }

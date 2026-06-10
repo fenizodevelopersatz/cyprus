@@ -168,7 +168,31 @@ function readRegistry() {
     const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     const stored = Array.isArray(parsed?.endpoints) ? parsed.endpoints.map((item) => createEndpoint(item, item.source || 'json')).filter(Boolean) : [];
     const byKey = new Map(envEndpoints.map((item) => [item.key, item]));
-    for (const item of stored) byKey.set(item.key, { ...byKey.get(item.key), ...item, maskedUrl: maskUrl(item.url) });
+    for (const item of stored) {
+      const envEndpoint = byKey.get(item.key);
+      const matchingEnvDefaultRpc = envEndpoints.some(
+        (endpoint) =>
+          endpoint.source === 'env_default' &&
+          endpoint.type === 'blockchain_rpc' &&
+          item.source === 'env_default' &&
+          item.type === 'blockchain_rpc' &&
+          normalizeKey(endpoint.network) === normalizeKey(item.network)
+      );
+      if (!envEndpoint && matchingEnvDefaultRpc) {
+        continue;
+      }
+      if (item.source === 'env_default' && envEndpoint) {
+        byKey.set(item.key, {
+          ...item,
+          ...envEndpoint,
+          createdAt: item.createdAt || envEndpoint.createdAt,
+          lastStatus: item.lastStatus || null,
+          maskedUrl: maskUrl(envEndpoint.url),
+        });
+        continue;
+      }
+      byKey.set(item.key, { ...envEndpoint, ...item, maskedUrl: maskUrl(item.url) });
+    }
     return {
       version: 1,
       enabled: parsed?.enabled ?? cfg.urlManager.enabled,

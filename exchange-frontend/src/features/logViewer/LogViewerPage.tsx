@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import type { FormEvent } from "react";
 import { API_BASE_URL } from "../../app/apiRoutes";
 
@@ -86,7 +86,10 @@ export default function LogViewerPage() {
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [error, setError] = useState("");
+  const logContainerRef = useRef<HTMLPreElement>(null);
 
   const isAuthed = Boolean(authHeader);
 
@@ -196,6 +199,32 @@ export default function LogViewerPage() {
     }
   };
 
+  const deleteSelectedFile = async () => {
+    if (!authHeader || !selectedId) return;
+    if (!window.confirm("Are you sure you want to delete this log file? This cannot be undone.")) return;
+    
+    setDeleting(true);
+    setError("");
+    try {
+      const response = await fetch(buildUrl(`/api/log-viewer/files/${encodeURIComponent(selectedId)}`), {
+        method: "DELETE",
+        headers: { Authorization: authHeader },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || `Delete failed with ${response.status}`);
+      }
+      
+      setDetail(null);
+      setSelectedId("");
+      await loadFiles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete log file");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   useEffect(() => {
     if (authHeader) void loadFiles(authHeader);
   }, [authHeader]);
@@ -203,6 +232,20 @@ export default function LogViewerPage() {
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId);
   }, [selectedId, tailBytes]);
+
+  useEffect(() => {
+    if (!autoRefresh || !selectedId || !authHeader) return;
+    const interval = setInterval(() => {
+      void loadDetail(selectedId);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, selectedId, authHeader, tailBytes]);
+
+  useEffect(() => {
+    if (autoRefresh && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [visibleContent, autoRefresh]);
 
   const handleLogin = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -395,16 +438,31 @@ export default function LogViewerPage() {
               <option value={1024 * 1024}>Last 1 MB</option>
               <option value={5 * 1024 * 1024}>Last 5 MB</option>
               <option value={10 * 1024 * 1024}>Last 10 MB</option>
+              <option value={tailBytes} className="hidden">Custom ({formatBytes(tailBytes)})</option>
             </select>
+            <button onClick={() => setTailBytes(prev => prev + 512 * 1024)} className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">
+              Load Older
+            </button>
             <button onClick={() => loadDetail()} className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50">
               {loadingDetail ? "Loading..." : "Reload"}
             </button>
+            <label className="flex items-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+              Live Tracking
+            </label>
             <button
               onClick={downloadSelectedFile}
               disabled={!selectedId || downloading}
               className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {downloading ? "Downloading..." : "Download"}
+            </button>
+            <button
+              onClick={deleteSelectedFile}
+              disabled={!selectedId || deleting}
+              className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deleting ? "Deleting..." : "Delete"}
             </button>
           </div>
           {error ? <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div> : null}
@@ -418,8 +476,8 @@ export default function LogViewerPage() {
               Filtering the loaded tail by: {lineFilter}
             </div>
           ) : null}
-          <pre className="h-[calc(100vh-205px)] overflow-auto whitespace-pre bg-[#fbfcfe] p-4 font-mono text-[11px] leading-5 text-slate-800">
-            {loadingDetail ? "Loading log content..." : visibleContent || "No content loaded."}
+          <pre ref={logContainerRef} className="h-[calc(100vh-205px)] overflow-auto whitespace-pre bg-[#fbfcfe] p-4 font-mono text-[11px] leading-5 text-slate-800">
+            {loadingDetail && !autoRefresh ? "Loading log content..." : visibleContent || "No content loaded."}
           </pre>
         </section>
       </main>

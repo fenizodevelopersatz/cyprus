@@ -14,28 +14,29 @@
         "rollback": "knex migrate:rollback --knexfile knexfile.js",
         "seed": "knex seed:run --knexfile knexfile.js",
         "lint": "eslint .",
-        "test": "NODE_ENV=test node ./node_modules/.bin/tap --reporter=spec"
+        "test": "cross-env NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand",
+        "test:html": "cross-env NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --reporters=default --reporters=jest-html-reporters"
     },
     "engines": {
         "node": "20.16.0"
     },
     "dependencies": {
+        "@solana/spl-token": "^0.4.14",
+        "@solana/web3.js": "^1.98.4",
         "axios": "^1.7.7",
         "bcryptjs": "^2.4.3",
         "binance-api-node": "^0.12.9",
-        "@solana/spl-token": "^0.4.14",
-        "@solana/web3.js": "^1.98.4",
         "bip39": "^3.1.0",
         "bs58": "^6.0.0",
         "celebrate": "^15.0.3",
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.6",
         "dotenv": "^16.6.1",
+        "ed25519-hd-key": "^2.0.0",
         "ethers": "^6.15.0",
         "express": "^4.22.1",
         "express-async-errors": "^3.1.1",
         "express-rate-limit": "^7.4.0",
-        "ed25519-hd-key": "^2.0.0",
         "helmet": "^7.1.0",
         "joi": "^17.12.2",
         "jsonwebtoken": "^9.0.3",
@@ -55,8 +56,16 @@
         "ws": "^8.17.1"
     },
     "devDependencies": {
+        "cross-env": "^10.1.0",
         "eslint": "^9.12.0",
+        "jest": "^30.4.2",
+        "jest-html-reporters": "^3.1.7",
         "nodemon": "^3.1.7",
+        "sqlite3": "^6.0.1",
+        "supertest": "^7.2.2",
         "tap": "^21.0.0"
+    },
+    "overrides": {
+        "uuid": "8.3.2"
     }
 }

@@ -570,8 +570,38 @@ export async function decryptItpwd(encryptedString) {
 
 export async function login({ email, password, otp, remember = true }, options = {}) {
   const { bypassOtpForAdmin = false } = options;
+  const ipAddress = getRequestMetadata(options.context).ipAddress || 'unknown';
+  const userAgent = getRequestMetadata(options.context).userAgent || 'unknown';
+
   const u = await db('users').where({ email }).first();
-  if (!u) throw new Error('Invalid credentials');
+  
+  if (!u) {
+    try {
+      await db('login_attempt_logs').insert({
+        email,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        status: 'failed',
+        created_at: new Date()
+      });
+    } catch (err) {}
+    throw new Error('Invalid credentials');
+  }
+
+  const now = new Date();
+  if (u.locked_until && new Date(u.locked_until) > now) {
+    try {
+      await db('login_attempt_logs').insert({
+        email: u.email,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        status: 'locked',
+        created_at: now
+      });
+    } catch (err) {}
+    throw new Error('Account temporarily locked. Try again later.');
+  }
+
   const normalizedStatus = String(u.status || '').trim().toLowerCase();
   if (normalizedStatus === 'deleted') {
     const err = new Error('This account has been deleted');

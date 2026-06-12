@@ -49,8 +49,17 @@ export async function up(knex) {
     if (!exists) return;
     const colInfo = await knex(table).columnInfo();
     if (!columns.every((column) => Object.prototype.hasOwnProperty.call(colInfo, column))) return;
-    const raw = await knex.raw(`SHOW INDEX FROM ?? WHERE Key_name = ?`, [table, indexName]);
-    const rows = Array.isArray(raw) ? raw[0] : raw;
+    let rows = [];
+
+    if (knex.client.config.client === 'sqlite3') {
+      const raw = await knex.raw(`PRAGMA index_list('${table}')`);
+      const indexList = Array.isArray(raw) ? raw : Object.values(raw || []);
+      rows = indexList.filter((row) => String(row.name) === indexName);
+    } else {
+      const raw = await knex.raw(`SHOW INDEX FROM ?? WHERE Key_name = ?`, [table, indexName]);
+      rows = Array.isArray(raw) ? raw[0] : raw;
+    }
+
     if (!rows || rows.length === 0) {
       await knex.schema.alterTable(table, (t) => t.unique(columns, indexName));
     }

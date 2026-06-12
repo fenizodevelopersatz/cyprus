@@ -167,7 +167,11 @@ export async function up(knex) {
   }
 
   if (await knex.schema.hasTable('admin_birthday_gift_settings')) {
-    const rows = await knex('admin_birthday_gift_settings').where({ is_active: true }).orderBy('sort_order', 'asc');
+    const query = knex('admin_birthday_gift_settings').where({ is_active: true });
+    if (await knex.schema.hasColumn('admin_birthday_gift_settings', 'sort_order')) {
+      query.orderBy('sort_order', 'asc');
+    }
+    const rows = await query;
     const existing = await knex('birthday_gift_settings').count({ count: '*' }).first();
     if (Number(existing?.count || 0) === 0 && rows.length > 0) {
       await knex('birthday_gift_settings').insert(rows.map((row) => ({

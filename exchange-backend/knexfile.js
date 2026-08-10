@@ -1,4 +1,4 @@
-﻿import path from 'node:path';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 
@@ -30,7 +30,7 @@ const testConfig = {
     filename: process.env.TEST_DB_FILE || path.resolve(__dirname, '.test.sqlite'),
   },
   useNullAsDefault: true,
-  pool: { min: 1, max: 1 },
+  pool: { min: 1, max: 3 },
   migrations: base.migrations,
   seeds: base.seeds,
 };

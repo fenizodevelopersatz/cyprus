@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+// import nodemailerPkg from 'nodemailer';
+// const nodemailer = nodemailerPkg;
 import { promises as fs } from 'fs';
 import path from 'path';
 import { db } from '../db.js';

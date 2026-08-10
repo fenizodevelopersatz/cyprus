@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @openapi
  * tags:
  *   - name: Auth
@@ -435,6 +435,7 @@ router.post('/refresh', authLimiter, async (req, res) => {
     const { access } = await refresh(req.body.refresh);
     ok(res, { access });
   } catch (e) {
+    console.error("REFRESH ERROR:", e);
     fail(res, e.message, 401);
   }
 });

@@ -16,9 +16,27 @@ async function loadDb() {
 
 beforeAll(async () => {
   if (fs.existsSync(testDbFile)) {
-    fs.unlinkSync(testDbFile);
+    try {
+      fs.unlinkSync(testDbFile);
+    } catch (e) {
+      // Ignore file locks on Windows; we will wipe the DB via rollback instead
+    }
   }
   db = await loadDb();
+
+  // Enable WAL mode for concurrent reads/writes (prevents pool deadlock)
+  await db.raw('PRAGMA journal_mode = WAL');
+  await db.raw('PRAGMA busy_timeout = 20000');
+  
+  await db.raw('PRAGMA foreign_keys = OFF');
+  const tables = await db.raw("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
+  const rows = Array.isArray(tables) ? tables : Object.values(tables || []);
+  for (const row of rows) {
+    const name = row?.name || row?.['name'];
+    if (name) await db.raw(`DROP TABLE IF EXISTS "${name}"`);
+  }
+  await db.raw('PRAGMA foreign_keys = ON');
+  
   await db.migrate.latest();
 });
 
@@ -28,22 +46,19 @@ afterAll(async () => {
     db = null;
   }
   if (fs.existsSync(testDbFile)) {
-    fs.unlinkSync(testDbFile);
+    try {
+      fs.unlinkSync(testDbFile);
+    } catch (e) {
+      // Ignore file locks on Windows
+    }
   }
 });
 
 beforeEach(async () => {
-  await db.raw('PRAGMA foreign_keys = OFF');
-  const tables = await db.raw("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';");
-  const rows = Array.isArray(tables) ? tables : Object.values(tables || []);
-  for (const row of rows) {
-    const name = row?.name || row?.['name'];
-    if (!name || name === 'knex_migrations' || name === 'knex_migrations_lock') continue;
-    await db.raw(`DELETE FROM "${name}"`);
-  }
-  await db.raw('PRAGMA foreign_keys = ON');
+  // Purposefully left empty so state persists sequentially across tests in the same file.
 });
 
 afterEach(async () => {
+  if (!db) return;
   await db.raw('PRAGMA wal_checkpoint(FULL)');
 });

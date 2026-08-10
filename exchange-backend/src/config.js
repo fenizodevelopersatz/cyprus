@@ -111,4 +111,12 @@ export const cfg = {
     cacheTtlMs: Number.isFinite(URL_MANAGER_CACHE_TTL_MS) ? URL_MANAGER_CACHE_TTL_MS : 30000,
     timeoutMs: Number.isFinite(URL_MANAGER_TIMEOUT_MS) ? URL_MANAGER_TIMEOUT_MS : 8000,
   },
+    // Database
+  db: {
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASS || '',
+    database: process.env.DB_NAME || 'u214278766_exchange',
+  },
 };

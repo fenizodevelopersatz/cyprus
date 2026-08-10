@@ -35,12 +35,14 @@ const PASSWORD_RESET_MAX_SENDS_PER_HOUR = 3;
 const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
 
 let googleAuthSchemaReadyPromise = null;
-let loginOtpEmailVerifiedColumnPromise = null;
 let twoFactorSchemaReadyPromise = null;
 
 async function ensureTwoFactorSchema() {
   if (!twoFactorSchemaReadyPromise) {
-    twoFactorSchemaReadyPromise = ensureUserTwoFactorEnabledMigration(db).catch((error) => {
+    twoFactorSchemaReadyPromise = (async () => {
+      await ensureUserTwoFactorEnabledMigration(db);
+      await ensureLoginOtpEmailVerifiedMigration(db);
+    })().catch((error) => {
       twoFactorSchemaReadyPromise = null;
       throw error;
     });
@@ -63,16 +65,8 @@ async function ensureGoogleAuthSchema() {
 }
 
 async function hasLoginOtpEmailVerifiedColumn() {
-  if (!loginOtpEmailVerifiedColumnPromise) {
-    loginOtpEmailVerifiedColumnPromise = (async () => {
-      await ensureLoginOtpEmailVerifiedMigration(db);
-      return db.schema.hasColumn('login_otps', 'email_verified_at');
-    })().catch((error) => {
-      loginOtpEmailVerifiedColumnPromise = null;
-      throw error;
-    });
-  }
-  return loginOtpEmailVerifiedColumnPromise;
+  await ensureTwoFactorSchema();
+  return true;
 }
 
 export async function register({ name, email, password, country, referralCode }) {

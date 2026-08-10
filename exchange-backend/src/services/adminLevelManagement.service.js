@@ -1,20 +1,6 @@
-import { mysqlPool } from '../config/db.js';
-import { db } from '../db.js';
+import { db, withTx } from '../db.js';
 import { up as ensureLevelManagementMigration } from '../../db/migrations/026_admin_level_management.js';
 import { up as ensureBonusIntervalDaysMigration } from '../../db/migrations/040_add_bonus_interval_days_to_admin_level_management.js';
-import {
-  COUNT_LEVEL_SETTINGS,
-  DEFAULT_LEVEL_SETTINGS,
-  getDefaultConfigBindings,
-  getDefaultLevelSettingsBindings,
-  INSERT_DEFAULT_CONFIG,
-  INSERT_DEFAULT_LEVEL_SETTINGS,
-  INSERT_ONE_LEVEL_SETTING,
-  SELECT_ACTIVE_CONFIG,
-  SELECT_LEVEL_SETTINGS,
-  UPDATE_CONFIG,
-  UPDATE_LEVEL_SETTING,
-} from '../queries/adminLevelManagement.query.js';
 import { validateLevelManagementPayload } from '../validations/adminLevelManagement.validation.js';
 
 let schemaReadyPromise = null;
@@ -69,62 +55,99 @@ function mapConfigRow(row) {
   };
 }
 
-async function ensureDefaultLevelRows(connection) {
-  const [countRows] = await connection.execute(COUNT_LEVEL_SETTINGS);
-  const total = Number(countRows?.[0]?.total ?? 0);
+const DEFAULT_LEVEL_SETTINGS_DATA = [
+  { level_code: 'Lv1', qualification_text: 'Direct 5 active members', bonus_percent: 10, promotion_reward_usdt: 0, is_enabled: 1, sort_order: 1 },
+  { level_code: 'Lv2', qualification_text: 'Direct 2 Lv1, Team 25', bonus_percent: 2, promotion_reward_usdt: 15, is_enabled: 1, sort_order: 2 },
+  { level_code: 'Lv3', qualification_text: 'Direct 3 Lv1, Team 125', bonus_percent: 2, promotion_reward_usdt: 50, is_enabled: 1, sort_order: 3 },
+  { level_code: 'Lv4', qualification_text: 'Direct 4 Lv1, Team 500', bonus_percent: 2, promotion_reward_usdt: 150, is_enabled: 1, sort_order: 4 },
+  { level_code: 'Lv5', qualification_text: 'Direct 5 Lv1, Team 1,000', bonus_percent: 2, promotion_reward_usdt: 300, is_enabled: 1, sort_order: 5 },
+  { level_code: 'Lv6', qualification_text: 'Direct 6 Lv1, Team 2,000', bonus_percent: 2, promotion_reward_usdt: 500, is_enabled: 1, sort_order: 6 },
+  { level_code: 'Lv7', qualification_text: 'Direct 7 Lv1, Team 5,000', bonus_percent: 2, promotion_reward_usdt: 1500, is_enabled: 1, sort_order: 7 },
+  { level_code: 'Lv8', qualification_text: 'Direct 3 Lv7, Team 20,000', bonus_percent: 1.5, promotion_reward_usdt: 5000, is_enabled: 1, sort_order: 8 },
+  { level_code: 'Lv9', qualification_text: 'Direct 4 Lv7, Team 50,000', bonus_percent: 1, promotion_reward_usdt: 15000, is_enabled: 1, sort_order: 9 },
+  { level_code: 'Lv10', qualification_text: 'Direct 3 Lv8, Team 100,000', bonus_percent: 1, promotion_reward_usdt: 30000, is_enabled: 1, sort_order: 10 },
+  { level_code: 'Lv11', qualification_text: 'Direct 4 Lv8, Team 200,000', bonus_percent: 1, promotion_reward_usdt: 50000, is_enabled: 1, sort_order: 11 },
+  { level_code: 'Lv12', qualification_text: 'Direct 5 Lv9, Team 300,000', bonus_percent: 1, promotion_reward_usdt: 100000, is_enabled: 1, sort_order: 12 },
+];
+
+const DEFAULT_CONFIG_DATA = {
+  direct_referral_note: 'Direct referral bonus info',
+  new_user_reward_note: 'New user reward info',
+  level_achievement_note: 'Level achievement info',
+  salary_reward_note: 'Salary reward info',
+  one_time_reward_note: 'One time reward info',
+  minimum_deposit_eligibility_note: 'Min deposit info',
+  minimum_eligible_deposit: 300,
+  bonus_interval_days: 1,
+  direct_sponsor_commission_percent: 5,
+  joined_commission_percent: 5,
+  is_commission_active: 1,
+  is_active: 1,
+  created_at: new Date(),
+  updated_at: new Date()
+};
+
+async function ensureDefaultLevelRows(trx) {
+  const countRow = await trx('admin_level_settings').count({ total: '*' }).first();
+  const total = Number(countRow?.total ?? 0);
 
   if (total === 0) {
-    await connection.execute(INSERT_DEFAULT_LEVEL_SETTINGS, getDefaultLevelSettingsBindings());
+    const now = new Date();
+    const rowsToInsert = DEFAULT_LEVEL_SETTINGS_DATA.map(row => ({
+      ...row,
+      created_at: now,
+      updated_at: now
+    }));
+    await trx('admin_level_settings').insert(rowsToInsert);
     return;
   }
 
-  if (total < DEFAULT_LEVEL_SETTINGS.length) {
-    const [rows] = await connection.execute(SELECT_LEVEL_SETTINGS);
+  if (total < DEFAULT_LEVEL_SETTINGS_DATA.length) {
+    const rows = await trx('admin_level_settings').select('level_code');
     const existingCodes = new Set(rows.map((row) => row.level_code));
-    const missing = DEFAULT_LEVEL_SETTINGS.filter(([levelCode]) => !existingCodes.has(levelCode));
-    for (const row of missing) {
-      await connection.execute(INSERT_ONE_LEVEL_SETTING, row);
+    const missing = DEFAULT_LEVEL_SETTINGS_DATA.filter(row => !existingCodes.has(row.level_code));
+    if (missing.length > 0) {
+      const now = new Date();
+      const rowsToInsert = missing.map(row => ({
+        ...row,
+        created_at: now,
+        updated_at: now
+      }));
+      await trx('admin_level_settings').insert(rowsToInsert);
     }
   }
 }
 
-async function ensureDefaultConfigRow(connection) {
-  const [rows] = await connection.execute(SELECT_ACTIVE_CONFIG);
-  if (rows.length === 0) {
-    await connection.execute(INSERT_DEFAULT_CONFIG, getDefaultConfigBindings(null));
+async function ensureDefaultConfigRow(trx) {
+  const active = await trx('admin_level_management_config').where({ is_active: 1 }).first();
+  if (!active) {
+    await trx('admin_level_management_config').insert(DEFAULT_CONFIG_DATA);
   }
 }
 
-export async function ensureDefaultLevelManagementSettings(connection) {
+export async function ensureDefaultLevelManagementSettings(trx = db) {
   await ensureLevelManagementSchema();
-  await ensureDefaultLevelRows(connection);
-  await ensureDefaultConfigRow(connection);
+  await ensureDefaultLevelRows(trx);
+  await ensureDefaultConfigRow(trx);
 }
 
 export async function getLevelManagementSettings() {
-  const connection = await mysqlPool.getConnection();
-  try {
-    await ensureDefaultLevelManagementSettings(connection);
+  await ensureDefaultLevelManagementSettings(db);
 
-    const [levelRows] = await connection.execute(SELECT_LEVEL_SETTINGS);
-    const [configRows] = await connection.execute(SELECT_ACTIVE_CONFIG);
+  const levelRows = await db('admin_level_settings').select('*').orderBy('sort_order', 'asc');
+  const configRows = await db('admin_level_management_config').select('*').where({ is_active: 1 }).limit(1);
 
-    return {
-      levels: levelRows.map(mapLevelRow),
-      config: mapConfigRow(configRows[0]),
-    };
-  } finally {
-    connection.release();
-  }
+  return {
+    levels: levelRows.map(mapLevelRow),
+    config: configRows[0] ? mapConfigRow(configRows[0]) : null,
+  };
 }
 
 export async function updateLevelManagementSettings(payload, adminId = null) {
   validateLevelManagementPayload(payload);
 
-  const connection = await mysqlPool.getConnection();
-  try {
-    await connection.beginTransaction();
-    await ensureDefaultLevelManagementSettings(connection);
+  return withTx(async (trx) => {
+    await ensureDefaultLevelManagementSettings(trx);
 
     for (const level of payload.levels) {
       if (!level.id) {
@@ -135,17 +158,17 @@ export async function updateLevelManagementSettings(payload, adminId = null) {
         throw error;
       }
 
-      const [result] = await connection.execute(UPDATE_LEVEL_SETTING, [
-        String(level.qualificationText).trim(),
-        formatDecimal(level.bonusPercent),
-        formatDecimal(level.promotionRewardUsdt),
-        level.isEnabled ? 1 : 0,
-        level.sortOrder,
-        level.id,
-        String(level.levelCode).trim(),
-      ]);
+      const updated = await trx('admin_level_settings')
+        .where({ id: level.id, level_code: String(level.levelCode).trim() })
+        .update({
+          qualification_text: String(level.qualificationText).trim(),
+          bonus_percent: formatDecimal(level.bonusPercent),
+          promotion_reward_usdt: formatDecimal(level.promotionRewardUsdt),
+          is_enabled: level.isEnabled ? 1 : 0,
+          sort_order: level.sortOrder,
+        });
 
-      if (result.affectedRows === 0) {
+      if (!updated) {
         const error = new Error(`Level ${level.levelCode} was not found`);
         error.status = 400;
         error.code = 'VALIDATION_FAILED';
@@ -154,38 +177,31 @@ export async function updateLevelManagementSettings(payload, adminId = null) {
       }
     }
 
-    const [configRows] = await connection.execute(SELECT_ACTIVE_CONFIG);
-    const activeConfig = configRows[0];
+    const activeConfig = await trx('admin_level_management_config').where({ is_active: 1 }).first();
 
-    await connection.execute(UPDATE_CONFIG, [
-      String(payload.config.directReferralNote).trim(),
-      String(payload.config.newUserRewardNote).trim(),
-      String(payload.config.levelAchievementNote).trim(),
-      String(payload.config.salaryRewardNote).trim(),
-      String(payload.config.oneTimeRewardNote).trim(),
-      String(payload.config.minimumDepositEligibilityNote).trim(),
-      formatDecimal(payload.config.minimumEligibleDeposit),
-      Math.max(1, Math.trunc(Number(payload.config.bonusIntervalDays ?? 10))),
-      formatDecimal(payload.config.directSponsorCommissionPercent),
-      formatDecimal(payload.config.joinedCommissionPercent),
-      payload.config.isCommissionActive ? 1 : 0,
-      adminId,
-      activeConfig.id,
-    ]);
+    await trx('admin_level_management_config')
+      .where({ id: activeConfig.id })
+      .update({
+        direct_referral_note: String(payload.config.directReferralNote).trim(),
+        new_user_reward_note: String(payload.config.newUserRewardNote).trim(),
+        level_achievement_note: String(payload.config.levelAchievementNote).trim(),
+        salary_reward_note: String(payload.config.salaryRewardNote).trim(),
+        one_time_reward_note: String(payload.config.oneTimeRewardNote).trim(),
+        minimum_deposit_eligibility_note: String(payload.config.minimumDepositEligibilityNote).trim(),
+        minimum_eligible_deposit: formatDecimal(payload.config.minimumEligibleDeposit),
+        bonus_interval_days: Math.max(1, Math.trunc(Number(payload.config.bonusIntervalDays ?? 10))),
+        direct_sponsor_commission_percent: formatDecimal(payload.config.directSponsorCommissionPercent),
+        joined_commission_percent: formatDecimal(payload.config.joinedCommissionPercent),
+        is_commission_active: payload.config.isCommissionActive ? 1 : 0,
+        updated_by: adminId,
+      });
 
-    const [levelRows] = await connection.execute(SELECT_LEVEL_SETTINGS);
-    const [freshConfigRows] = await connection.execute(SELECT_ACTIVE_CONFIG);
-
-    await connection.commit();
+    const levelRows = await trx('admin_level_settings').select('*').orderBy('sort_order', 'asc');
+    const freshConfigRows = await trx('admin_level_management_config').select('*').where({ is_active: 1 }).limit(1);
 
     return {
       levels: levelRows.map(mapLevelRow),
       config: mapConfigRow(freshConfigRows[0]),
     };
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
+  });
 }
